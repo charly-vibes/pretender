@@ -9,7 +9,12 @@ The single abstraction every metric operates on. Language adapters map tree-sitt
 
 ```rust
 struct Span { start_line: u32, end_line: u32 }
-impl Span { fn lines(&self) -> u32 { self.end_line - self.start_line + 1 } }
+impl Span {
+    fn lines(&self) -> u32 {
+        assert!(self.end_line >= self.start_line, "Span end_line must be >= start_line");
+        self.end_line - self.start_line + 1
+    }
+}
 
 struct Parameter { name: String, span: Span }
 
@@ -94,6 +99,7 @@ struct Branch {
     nesting_at: u32,      // nesting depth at point of branch (for cognitive weight)
     /// Used to group sequential LogicalAnd/LogicalOr operators for cognitive weight.
     /// A new ID is generated for each new sequence or change in operator type.
+    /// The uniqueness of this ID is scoped to the enclosing `CodeUnit`.
     sequence_id: Option<u32>,
 }
 
@@ -142,7 +148,7 @@ Each supported language ships one `.scm` file. The engine reads captures and bui
 - **Language Visibility Rule:** Where the language is Python or Ruby, the system shall set `is_exported` to false for any `CodeUnit` whose name starts with an underscore.
 - Lambdas are `CodeUnit` instances only when they have a block body; expression lambdas are `Node::Statement(Span)` — they are definitions, not call sites, and must not inflate the ABC C-count
 - If tree-sitter parsing produces errors for a file, emit a diagnostic on stderr (file path + error span) and skip the file entirely — partial `Module` results are never emitted
-- **Cognitive Complexity**: Sequences of identical `LogicalAnd` or `LogicalOr` operators contribute a single increment to the cognitive weight if they are at the same nesting level. Mixed operators (e.g., `a && b || c`) contribute an increment for each change in operator type.
+- **Cognitive Complexity**: Sequences of identical `LogicalAnd` or `LogicalOr` operators contribute a single increment to the cognitive weight if they are at the same nesting level. Mixed operators (e.g., `a && b || c`) contribute an increment for each change in operator type, independent of any nesting depth increments.
 
 ## Metrics as Pure Functions
 

@@ -31,12 +31,12 @@ $ pretender init
 
 Fast pass/fail scan against configured thresholds. Used by hooks and CI.
 
-- While the system is in `gate` mode, if any metric exceeds its `*_max` threshold, the system shall exit with a non-zero code.
+- While the system is in `gate` mode, if any metric exceeds its `*_max` threshold, or if any file is skipped due to parsing errors, the system shall exit with a non-zero code.
 - While the system is in `tiered` mode, if a metric exceeds the maximum threshold but remains within the yellow band, the system shall print a yellow annotation and exit with code 0.
 - In `guidance` mode: exit 0 always, informational output.
 - `--staged` — only check git-staged files.
 - `--diff-only` — only check files changed relative to `diff_base`.
-- `--staged` and `--diff-only` may be combined; the result is the **intersection** — only files that are both staged AND changed relative to `diff_base` are checked (the pre-commit hook uses both flags).
+- `--staged` and `--diff-only` may be combined; the result is the **intersection** — only files that are both staged AND changed relative to `diff_base` are checked (the pre-commit hook uses both flags). If this intersection is empty, the command shall exit with code 0 and emit an informational message.
 - `--diff-base <ref>` — override `diff_base` from config.
 - `--format <fmt>` — `human` (default) | `json` | `sarif` | `junit` | `markdown`.
 - `--output <path>` — write output to file instead of stdout.
