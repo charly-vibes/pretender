@@ -53,6 +53,18 @@ pub struct Parameter {
 }
 
 #[derive(Debug, Clone)]
+pub struct Operand {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Operator {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct CallSite {
     pub callee: String,
     pub span: Span,
@@ -118,6 +130,9 @@ pub enum Node {
     Branch(Branch),
     NestedBlock(Block),
     Call(CallSite),
+    Assignment(Span),
+    Operand(Operand),
+    Operator(Operator),
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +140,7 @@ pub struct Branch {
     pub kind: BranchKind,
     pub span: Span,
     pub nesting_at: u32,
+    pub sequence_id: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

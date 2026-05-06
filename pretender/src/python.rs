@@ -208,6 +208,7 @@ fn handle_if(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::m
         kind: BranchKind::If,
         span: node_span(node),
         nesting_at: nesting,
+        sequence_id: None,
     }));
     // consequence block becomes a NestedBlock
     if let Some(body) = node.child_by_field_name("consequence") {
@@ -228,6 +229,7 @@ fn handle_loop(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate:
         kind: BranchKind::Loop,
         span: node_span(node),
         nesting_at: nesting,
+        sequence_id: None,
     }));
     if let Some(body) = node.child_by_field_name("body") {
         out.push(crate::model::Node::NestedBlock(build_block(
@@ -246,6 +248,7 @@ fn handle_try(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::
                 kind: BranchKind::Catch,
                 span: node_span(clause),
                 nesting_at: nesting,
+                sequence_id: None,
             }));
             // Recurse into except body (last child of except_clause that is a block)
             let mut ec = clause.walk();
@@ -275,6 +278,7 @@ fn handle_logical(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<cra
         kind: BranchKind::Logical,
         span: node_span(node),
         nesting_at: nesting,
+        sequence_id: None,
     }));
     // Recurse for nested branches within the expression
     out.extend(collect_block_children(node, source, nesting));
@@ -285,6 +289,7 @@ fn handle_ternary(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<cra
         kind: BranchKind::Ternary,
         span: node_span(node),
         nesting_at: nesting,
+        sequence_id: None,
     }));
     out.extend(collect_block_children(node, source, nesting));
 }
@@ -301,6 +306,7 @@ fn collect_alternatives(
                 kind: BranchKind::ElseIf,
                 span: node_span(node),
                 nesting_at: nesting,
+                sequence_id: None,
             }));
             if let Some(body) = node.child_by_field_name("consequence") {
                 out.push(crate::model::Node::NestedBlock(build_block(

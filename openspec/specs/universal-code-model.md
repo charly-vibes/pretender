@@ -92,6 +92,9 @@ struct Branch {
     kind: BranchKind,
     span: Span,
     nesting_at: u32,      // nesting depth at point of branch (for cognitive weight)
+    /// Used to group sequential LogicalAnd/LogicalOr operators for cognitive weight.
+    /// A new ID is generated for each new sequence or change in operator type.
+    sequence_id: Option<u32>,
 }
 
 enum BranchKind {
@@ -135,7 +138,8 @@ Each supported language ships one `.scm` file. The engine reads captures and bui
 - A `CodeUnit` body always has `nesting = 0`
 - `Block.nesting` increments by 1 for each nested block within a `CodeUnit`
 - Branches inside nested blocks carry the nesting depth at time of capture
-- `is_exported` defaults to `false` for languages without explicit visibility (e.g. Python, Ruby); adapters set it from grammar nodes where available. Exception: for Python/Ruby, names starting with `_` are always `is_exported = false`
+- `is_exported` defaults to `false` for languages without explicit visibility (e.g. Python, Ruby); adapters set it from grammar nodes where available. 
+- **Language Visibility Rule:** Where the language is Python or Ruby, the system shall set `is_exported` to false for any `CodeUnit` whose name starts with an underscore.
 - Lambdas are `CodeUnit` instances only when they have a block body; expression lambdas are `Node::Statement(Span)` — they are definitions, not call sites, and must not inflate the ABC C-count
 - If tree-sitter parsing produces errors for a file, emit a diagnostic on stderr (file path + error span) and skip the file entirely — partial `Module` results are never emitted
 - **Cognitive Complexity**: Sequences of identical `LogicalAnd` or `LogicalOr` operators contribute a single increment to the cognitive weight if they are at the same nesting level. Mixed operators (e.g., `a && b || c`) contribute an increment for each change in operator type.

@@ -9,10 +9,12 @@
 pretender [init|check|report|hooks|ci]
 pretender [complexity|duplication|mutation]
 ```
-
 ### `pretender init`
 
 Interactive wizard. Writes `pretender.toml`, optionally installs a pre-commit hook and generates a CI workflow.
+
+- `--non-interactive` | `--defaults` — skip prompts, use best-guess defaults.
+- `--mode <mode>` — override default mode.
 
 ```
 $ pretender init
@@ -29,20 +31,26 @@ $ pretender init
 
 Fast pass/fail scan against configured thresholds. Used by hooks and CI.
 
-- Non-zero exit code in `gate` mode when any metric exceeds `*_max`
-- In `tiered` mode: exit 0 but prints yellow/red annotations
-- In `guidance` mode: exit 0 always, informational output
-- `--staged` — only check git-staged files
-- `--diff-only` — only check files changed relative to `diff_base`
-- `--staged` and `--diff-only` may be combined; the result is the **intersection** — only files that are both staged AND changed relative to `diff_base` are checked (the pre-commit hook uses both flags)
-- `--diff-base <ref>` — override `diff_base` from config
-- `--format <fmt>` — `human` (default) | `json` | `sarif` | `junit` | `markdown`
-- `--output <path>` — write output to file instead of stdout
+- While the system is in `gate` mode, if any metric exceeds its `*_max` threshold, the system shall exit with a non-zero code.
+- While the system is in `tiered` mode, if a metric exceeds the maximum threshold but remains within the yellow band, the system shall print a yellow annotation and exit with code 0.
+- In `guidance` mode: exit 0 always, informational output.
+- `--staged` — only check git-staged files.
+- `--diff-only` — only check files changed relative to `diff_base`.
+- `--staged` and `--diff-only` may be combined; the result is the **intersection** — only files that are both staged AND changed relative to `diff_base` are checked (the pre-commit hook uses both flags).
+- `--diff-base <ref>` — override `diff_base` from config.
+- `--format <fmt>` — `human` (default) | `json` | `sarif` | `junit` | `markdown`.
+- `--output <path>` — write output to file instead of stdout.
+- **Performance Note:** Expensive checks (like `duplication --cross-file` or `mutation`) are disabled by default in `check` unless explicitly enabled in `pretender.toml`.
 
-### `pretender complexity [paths]`
+...
 
-ABC scoring + smell weights, sorted worst-first. Deep-dive entry point.
+### `pretender plugins list|add|remove`
 
+Manages language and metric plugins in `~/.config/pretender/`.
+
+- `list` — show installed plugins and their versions.
+- `add <url|path>` — install a plugin from a git URL or local path.
+- `remove <name>` — uninstall a plugin.
 - Top 10 by default; `--top N` to change
 - `--threshold <n>` — highlight above this ABC score
 - Emits per-unit breakdown: A, B, C components and weighted total
