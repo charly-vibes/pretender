@@ -1,0 +1,10 @@
+[default]
+extend-ignore-identifiers-re = [
+    # tree-sitter scheme captures use hyphens which typos may flag
+]
+
+[files]
+extend-exclude = [
+    "vendor/**",
+    "target/**",
+]
