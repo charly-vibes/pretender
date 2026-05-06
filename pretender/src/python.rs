@@ -3,40 +3,48 @@ use std::path::Path;
 use tree_sitter::Node;
 
 use crate::model::{
-    Block, Branch, BranchKind, CodeUnit, Language, Module, Parameter, Span, UnitKind,
+    Block, Branch, BranchKind, CodeUnit, Language, Module, Parameter, Parser, Span, UnitKind,
 };
 
-pub fn parse(path: &Path, source: &str) -> Result<Module> {
-    let source_bytes = source.as_bytes();
-    let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(&tree_sitter_python::LANGUAGE.into())
-        .context("failed to load Python grammar")?;
+pub struct PythonParser;
 
-    let tree = parser
-        .parse(source_bytes, None)
-        .context("tree-sitter returned no tree")?;
+impl Parser for PythonParser {
+    fn parse(&self, path: &Path, source: &str) -> Result<Module> {
+        let source_bytes = source.as_bytes();
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .context("failed to load Python grammar")?;
 
-    let root = tree.root_node();
-    if root.has_error() {
-        anyhow::bail!("parse errors in {}", path.display());
+        let tree = parser
+            .parse(source_bytes, None)
+            .context("tree-sitter returned no tree")?;
+
+        let root = tree.root_node();
+        if root.has_error() {
+            anyhow::bail!("parse errors in {}", path.display());
+        }
+
+        let lines_total = source.lines().count() as u32;
+        let units = collect_units(root, source_bytes);
+
+        Ok(Module {
+            path: path.to_path_buf(),
+            language: Language::Python,
+            span: Span {
+                start_line: 1,
+                end_line: lines_total,
+            },
+            lines_total,
+            lines_code: 0,
+            lines_comment: 0,
+            units,
+        })
     }
 
-    let lines_total = source.lines().count() as u32;
-    let units = collect_units(root, source_bytes);
-
-    Ok(Module {
-        path: path.to_path_buf(),
-        language: Language::Python,
-        span: Span {
-            start_line: 1,
-            end_line: lines_total,
-        },
-        lines_total,
-        lines_code: 0,
-        lines_comment: 0,
-        units,
-    })
+    fn extensions(&self) -> &[&str] {
+        &["py"]
+    }
 }
 
 fn collect_units<'a>(node: Node<'a>, source: &[u8]) -> Vec<CodeUnit> {
@@ -118,7 +126,11 @@ fn extract_params(params_node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
                 .and_then(|n| n.utf8_text(source).ok())
                 .map(str::to_string),
             "list_splat_pattern" | "dictionary_splat_pattern" => {
-                let prefix = if child.kind() == "list_splat_pattern" { "*" } else { "**" };
+                let prefix = if child.kind() == "list_splat_pattern" {
+                    "*"
+                } else {
+                    "**"
+                };
                 let mut c = child.walk();
                 let ident = child
                     .children(&mut c)
@@ -156,91 +168,13 @@ fn collect_block_children(node: Node<'_>, source: &[u8], nesting: u32) -> Vec<cr
             // Never descend into nested function or class definitions
             "function_definition" | "class_definition" => {}
 
-            "if_statement" => {
-                children.push(crate::model::Node::Branch(Branch {
-                    kind: BranchKind::If,
-                    span: node_span(child),
-                    nesting_at: nesting,
-                }));
-                // consequence block becomes a NestedBlock
-                if let Some(body) = child.child_by_field_name("consequence") {
-                    children.push(crate::model::Node::NestedBlock(build_block(
-                        body,
-                        source,
-                        nesting + 1,
-                    )));
-                }
-                // elif/else alternatives
-                if let Some(alt) = child.child_by_field_name("alternative") {
-                    collect_alternatives(alt, source, nesting, &mut children);
-                }
-            }
-
+            "if_statement" => handle_if(child, source, nesting, &mut children),
             "for_statement" | "while_statement" => {
-                children.push(crate::model::Node::Branch(Branch {
-                    kind: BranchKind::Loop,
-                    span: node_span(child),
-                    nesting_at: nesting,
-                }));
-                if let Some(body) = child.child_by_field_name("body") {
-                    children.push(crate::model::Node::NestedBlock(build_block(
-                        body,
-                        source,
-                        nesting + 1,
-                    )));
-                }
+                handle_loop(child, source, nesting, &mut children)
             }
-
-            "try_statement" => {
-                let mut tc = child.walk();
-                for clause in child.children(&mut tc) {
-                    if clause.kind() == "except_clause" || clause.kind() == "except_group_clause" {
-                        children.push(crate::model::Node::Branch(Branch {
-                            kind: BranchKind::Catch,
-                            span: node_span(clause),
-                            nesting_at: nesting,
-                        }));
-                        // Recurse into except body (last child of except_clause that is a block)
-                        let mut ec = clause.walk();
-                        for except_child in clause.children(&mut ec) {
-                            if except_child.kind() == "block" {
-                                children.push(crate::model::Node::NestedBlock(build_block(
-                                    except_child,
-                                    source,
-                                    nesting + 1,
-                                )));
-                            }
-                        }
-                    }
-                }
-                // Also process the try body
-                let mut tc2 = child.walk();
-                for clause in child.children(&mut tc2) {
-                    if clause.kind() == "block" {
-                        children.extend(collect_block_children(clause, source, nesting));
-                        break;
-                    }
-                }
-            }
-
-            "boolean_operator" => {
-                children.push(crate::model::Node::Branch(Branch {
-                    kind: BranchKind::Logical,
-                    span: node_span(child),
-                    nesting_at: nesting,
-                }));
-                // Recurse for nested branches within the expression
-                children.extend(collect_block_children(child, source, nesting));
-            }
-
-            "conditional_expression" => {
-                children.push(crate::model::Node::Branch(Branch {
-                    kind: BranchKind::Ternary,
-                    span: node_span(child),
-                    nesting_at: nesting,
-                }));
-                children.extend(collect_block_children(child, source, nesting));
-            }
+            "try_statement" => handle_try(child, source, nesting, &mut children),
+            "boolean_operator" => handle_logical(child, source, nesting, &mut children),
+            "conditional_expression" => handle_ternary(child, source, nesting, &mut children),
 
             _ => {
                 // Recurse into all other nodes to find branches deeper in expressions/statements
@@ -250,6 +184,92 @@ fn collect_block_children(node: Node<'_>, source: &[u8], nesting: u32) -> Vec<cr
     }
 
     children
+}
+
+fn handle_if(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::model::Node>) {
+    out.push(crate::model::Node::Branch(Branch {
+        kind: BranchKind::If,
+        span: node_span(node),
+        nesting_at: nesting,
+    }));
+    // consequence block becomes a NestedBlock
+    if let Some(body) = node.child_by_field_name("consequence") {
+        out.push(crate::model::Node::NestedBlock(build_block(
+            body,
+            source,
+            nesting + 1,
+        )));
+    }
+    // elif/else alternatives
+    if let Some(alt) = node.child_by_field_name("alternative") {
+        collect_alternatives(alt, source, nesting, out);
+    }
+}
+
+fn handle_loop(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::model::Node>) {
+    out.push(crate::model::Node::Branch(Branch {
+        kind: BranchKind::Loop,
+        span: node_span(node),
+        nesting_at: nesting,
+    }));
+    if let Some(body) = node.child_by_field_name("body") {
+        out.push(crate::model::Node::NestedBlock(build_block(
+            body,
+            source,
+            nesting + 1,
+        )));
+    }
+}
+
+fn handle_try(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::model::Node>) {
+    let mut tc = node.walk();
+    for clause in node.children(&mut tc) {
+        if clause.kind() == "except_clause" || clause.kind() == "except_group_clause" {
+            out.push(crate::model::Node::Branch(Branch {
+                kind: BranchKind::Catch,
+                span: node_span(clause),
+                nesting_at: nesting,
+            }));
+            // Recurse into except body (last child of except_clause that is a block)
+            let mut ec = clause.walk();
+            for except_child in clause.children(&mut ec) {
+                if except_child.kind() == "block" {
+                    out.push(crate::model::Node::NestedBlock(build_block(
+                        except_child,
+                        source,
+                        nesting + 1,
+                    )));
+                }
+            }
+        }
+    }
+    // Also process the try body
+    let mut tc2 = node.walk();
+    for clause in node.children(&mut tc2) {
+        if clause.kind() == "block" {
+            out.extend(collect_block_children(clause, source, nesting));
+            break;
+        }
+    }
+}
+
+fn handle_logical(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::model::Node>) {
+    out.push(crate::model::Node::Branch(Branch {
+        kind: BranchKind::Logical,
+        span: node_span(node),
+        nesting_at: nesting,
+    }));
+    // Recurse for nested branches within the expression
+    out.extend(collect_block_children(node, source, nesting));
+}
+
+fn handle_ternary(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::model::Node>) {
+    out.push(crate::model::Node::Branch(Branch {
+        kind: BranchKind::Ternary,
+        span: node_span(node),
+        nesting_at: nesting,
+    }));
+    out.extend(collect_block_children(node, source, nesting));
 }
 
 fn collect_alternatives(

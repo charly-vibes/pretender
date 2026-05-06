@@ -1,6 +1,12 @@
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use anyhow::Result;
+use std::path::{Path, PathBuf};
+
+pub trait Parser {
+    fn parse(&self, path: &Path, source: &str) -> Result<Module>;
+    fn extensions(&self) -> &[&str];
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
