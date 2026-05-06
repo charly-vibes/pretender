@@ -16,7 +16,10 @@ struct Parameter { name: String, span: Span }
 struct CallSite {
     callee: String,
     span: Span,
-    smell_weight: f64, // 1.0 by default; >1.0 for language-specific smells
+    /// Weights used for ABC calculation.
+    /// Default: 1.0. Language adapters may increase this for known "smelly" patterns 
+    /// (e.g. 1.5 for static method calls in some contexts).
+    smell_weight: f64, 
 }
 
 enum Language {
@@ -98,7 +101,8 @@ enum BranchKind {
     Loop,
     Catch,
     Ternary,
-    Logical,       // both && and || — distinction does not affect any metric
+    LogicalAnd,    // Capture for each && (or equivalent)
+    LogicalOr,     // Capture for each || (or equivalent)
     NullCoalesce,
     EarlyReturn,
 }
@@ -118,10 +122,11 @@ Each supported language ships one `.scm` file. The engine reads captures and bui
 | `@branch.elif` | `Branch { kind: ElseIf }` |
 | `@branch.loop` | `Branch { kind: Loop }` |
 | `@branch.switch` | `Branch { kind: SwitchCase }` |
-| `@branch.catch` | `Branch { kind: Catch }` |
-| `@branch.ternary` | `Branch { kind: Ternary }` |
-| `@branch.logical` | `Branch { kind: Logical }` |
-| `@call` | `CallSite` |
+| @branch.catch | `Branch { kind: Catch }` |
+| @branch.ternary | `Branch { kind: Ternary }` |
+| @branch.logical.and | `Branch { kind: LogicalAnd }` |
+| @branch.logical.or | `Branch { kind: LogicalOr }` |
+| @call | `CallSite` |
 | `@assign` | assignment node (for ABC A-count) |
 | `@assert.*` | assertion pattern (for min_assertions in test role) |
 
@@ -133,12 +138,14 @@ Each supported language ships one `.scm` file. The engine reads captures and bui
 - `is_exported` defaults to `false` for languages without explicit visibility (e.g. Python, Ruby); adapters set it from grammar nodes where available. Exception: for Python/Ruby, names starting with `_` are always `is_exported = false`
 - Lambdas are `CodeUnit` instances only when they have a block body; expression lambdas are `Node::Statement(Span)` — they are definitions, not call sites, and must not inflate the ABC C-count
 - If tree-sitter parsing produces errors for a file, emit a diagnostic on stderr (file path + error span) and skip the file entirely — partial `Module` results are never emitted
+- **Cognitive Complexity**: Sequences of identical `LogicalAnd` or `LogicalOr` operators contribute a single increment to the cognitive weight if they are at the same nesting level. Mixed operators (e.g., `a && b || c`) contribute an increment for each change in operator type.
 
 ## Metrics as Pure Functions
 
 ```rust
 fn cyclomatic(u: &CodeUnit) -> u32 { 1 + count_branches(&u.body) }
 
+/// Cognitive Complexity (simplified SonarSource algorithm)
 fn cognitive(u: &CodeUnit) -> u32 {
     walk(&u.body)
         .filter_map(|n| n.as_branch())
@@ -152,6 +159,9 @@ fn nesting_max(u: &CodeUnit) -> u32 {
     walk_blocks(&u.body).map(|b| b.nesting).max().unwrap_or(0)
 }
 
+/// ABC Metric (Assignment, Branching, Conditionals/Calls)
+/// Calculated per CodeUnit. Module-level ABC is the square root of 
+/// the sum of the squares of its units' A, B, and C totals.
 fn abc(u: &CodeUnit) -> f64 {
     let a = count_assignments(&u.body) as f64;
     let b = count_branches_weighted(&u.body); // smell-weighted
@@ -160,6 +170,10 @@ fn abc(u: &CodeUnit) -> f64 {
 }
 ```
 
-## Extension Policy
+## Versioning and Compatibility
 
-Adding new `BranchKind` variants is non-breaking as long as metrics treat unknown variants with the same cognitive weight as structurally similar known ones. The tree-sitter **query capture table** (the `@capture.name` → type mapping) is the stable API surface; engine internals may add enum variants without a model version bump. A version bump is required only when existing capture semantics change or fields are removed from core types.
+- **Core Model Versioning**: The model uses Semantic Versioning. 
+- **Breaking Changes**: Removing fields or changing capture semantics requires a major version bump.
+- **Additions**: Adding `BranchKind` variants or optional fields are minor bumps.
+- **Rollback**: In the event of a faulty model release, the engine will support the previous N-1 minor version of language plugins via a compatibility layer if feasible, or require a plugin update.
+- **Plugin Contract**: Language adapters MUST specify the minimum supported model version in their `plugin.toml`.
