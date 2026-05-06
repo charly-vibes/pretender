@@ -8,6 +8,32 @@ pub trait Parser {
     fn extensions(&self) -> &[&str];
 }
 
+pub struct ParserRegistry {
+    parsers: Vec<Box<dyn Parser>>,
+}
+
+impl ParserRegistry {
+    pub fn new() -> Self {
+        Self { parsers: Vec::new() }
+    }
+
+    pub fn register(&mut self, parser: Box<dyn Parser>) {
+        self.parsers.push(parser);
+    }
+
+    pub fn get_for_extension(&self, ext: &str) -> Option<&dyn Parser> {
+        self.parsers
+            .iter()
+            .find(|p| p.extensions().contains(&ext))
+            .map(|p| p.as_ref())
+    }
+}
+
+pub trait Metric {
+    fn name(&self) -> &'static str;
+    fn calculate(&self, unit: &CodeUnit) -> u32;
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     pub start_line: u32,

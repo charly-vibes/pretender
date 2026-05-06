@@ -190,13 +190,16 @@ fn dispatch_branch(
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
 ) {
-    match node.kind() {
+    let kind = node.kind();
+    match kind {
         "if_statement" => handle_if(node, source, nesting, out),
         "for_statement" | "while_statement" => handle_loop(node, source, nesting, out),
         "try_statement" => handle_try(node, source, nesting, out),
         "boolean_operator" => handle_logical(node, source, nesting, out),
         "conditional_expression" => handle_ternary(node, source, nesting, out),
-        _ => {}
+        _ => {
+            // Log or handle unknown branch types if needed
+        }
     }
 }
 

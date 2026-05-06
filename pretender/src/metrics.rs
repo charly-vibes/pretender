@@ -1,7 +1,15 @@
-use crate::model::{Block, CodeUnit, Node};
+use crate::model::{Block, CodeUnit, Node, Metric};
 
-pub fn cyclomatic(u: &CodeUnit) -> u32 {
-    1 + count_branches(&u.body)
+pub struct CyclomaticComplexity;
+
+impl Metric for CyclomaticComplexity {
+    fn name(&self) -> &'static str {
+        "Cyclomatic Complexity"
+    }
+
+    fn calculate(&self, unit: &CodeUnit) -> u32 {
+        1 + count_branches(&unit.body)
+    }
 }
 
 fn count_branches(block: &Block) -> u32 {
