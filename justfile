@@ -20,8 +20,8 @@ test:
 test-verbose:
     cargo test -- --nocapture
 
-# Type-check without building
-check:
+# Type-check without building (named to avoid confusion with `pretender check`)
+type-check:
     cargo check
 
 # Lint (deny warnings)
@@ -44,8 +44,8 @@ doc:
 clean:
     cargo clean
 
-# Full CI gate: fmt + lint + test
-ci: fmt-check lint test
+# Full CI gate: fmt + type-check + lint + test
+ci: fmt-check type-check lint test
 
 # Show project status
 status:

@@ -6,7 +6,7 @@
 ## CLI Commands
 
 ```
-pretender [init|check|report|hooks|ci|tui]
+pretender [init|check|report|hooks|ci]
 pretender [complexity|duplication|mutation]
 ```
 
@@ -34,6 +34,7 @@ Fast pass/fail scan against configured thresholds. Used by hooks and CI.
 - In `guidance` mode: exit 0 always, informational output
 - `--staged` — only check git-staged files
 - `--diff-only` — only check files changed relative to `diff_base`
+- `--staged` and `--diff-only` may be combined; the result is the **intersection** — only files that are both staged AND changed relative to `diff_base` are checked (the pre-commit hook uses both flags)
 - `--diff-base <ref>` — override `diff_base` from config
 - `--format <fmt>` — `human` (default) | `json` | `sarif` | `junit` | `markdown`
 - `--output <path>` — write output to file instead of stdout
@@ -58,9 +59,15 @@ Structural clone detection via normalised AST subtree hashing.
 
 Mutation testing wrapper. Delegates to per-language tools (Stryker / PIT / mutmut / cargo-mutants).
 
+- `--score-min <n>` — override mutation score threshold (default: 60, matching Stryker's default)
+- `--format <fmt>` — `human` (default) | `json`
+
 ### `pretender report`
 
 Pretty TUI or HTML report from the last `check` run.
+
+- `--format human|html` — `human` renders in the terminal; `html` writes a static file
+- Reads cached results from the last `pretender check` invocation
 
 ### `pretender hooks install`
 
@@ -74,6 +81,8 @@ exec pretender check --staged --diff-only
 
 ### `pretender hooks uninstall`
 
+Removes the hook file(s) previously installed by `pretender hooks install`.
+
 ### `pretender ci generate <provider>`
 
 Providers: `github` | `gitlab` | `circle` | `azure` | `generic`
@@ -81,6 +90,8 @@ Providers: `github` | `gitlab` | `circle` | `azure` | `generic`
 GitHub output uses SARIF upload to `github/codeql-action/upload-sarif` so findings appear inline in PRs.
 
 ### `pretender plugins list|add|remove`
+
+Manages language and metric plugins in `~/.config/pretender/`. Flags: V1, details TBD.
 
 ### `pretender explain <metric>`
 
@@ -102,6 +113,9 @@ file_lines_max         = 400
 nesting_max            = 3
 params_max             = 4
 duplication_pct_max    = 5
+# Maintainability Index (Microsoft 0–100 scale): weighted combination of Halstead volume,
+# cyclomatic complexity, and lines of code. ≥20 = green zone. Only computed when
+# [execute] enabled = true. Use `pretender explain mi` for formula and citations.
 mi_min                 = 20
 
 coverage_line_min      = 80  # only enforced when [execute] enabled = true
@@ -109,6 +123,9 @@ coverage_branch_min    = 70
 mutation_min           = 60
 
 [bands]                      # tiered mode: values outside _max but inside band = yellow
+# Only metrics with explicit [bands] entries use green/yellow/red banding.
+# Metrics without a bands entry (nesting, params, function_lines, duplication_pct)
+# are binary: pass (≤ threshold) or fail (> threshold).
 cyclomatic = { green = 10, yellow = 15, red = 20 }
 cognitive  = { green = 15, yellow = 25, red = 40 }
 
@@ -137,8 +154,8 @@ diff_base = "origin/main"
 
 [execute]
 enabled      = false
-coverage_cmd = "pytest --cov --cov-report=xml"
-mutation_cmd = "stryker run"
+# coverage_cmd = "your-test-runner --coverage-output=xml"
+# mutation_cmd = "your-mutation-tool run"
 
 [plugins]
 languages = ["python", "javascript", "typescript", "go", "rust"]
@@ -149,12 +166,17 @@ formats    = ["human", "sarif"]
 sarif_path = "pretender.sarif"
 
 [roles]
+# The `app` role is implicit: any file not matched by entries below is role=app.
 test      = { paths = ["tests/**", "**/*_test.*", "spec/**"] }
 library   = { paths = ["pkg/**", "lib/**"] }
 script    = { paths = ["scripts/**", "examples/**"] }
 generated = { paths = ["**/*.pb.go", "**/*_generated.*"] }
 vendor    = { paths = ["vendor/**", "node_modules/**"] }
 ```
+
+## Schema Versioning
+
+Config files do not require a version key. Unknown keys are silently ignored (forward compatible). Breaking changes to key semantics require a new major semver version and are announced in `CHANGELOG.md`. Tools consuming `pretender.toml` should ignore unknown keys rather than erroring.
 
 ## Output Formats
 
@@ -190,7 +212,7 @@ query        = "metrics.scm"
 [assertions]
 patterns = ["assert", "assert_eq!", "assert_ne!"]
 
-[smell_weights]
+# [smell_weights] — no Elixir-specific smell weights defined yet
 ```
 
 ### Metric Plugin (External Tool Wrapper)

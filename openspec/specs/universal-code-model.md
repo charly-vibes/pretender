@@ -5,6 +5,26 @@
 
 The single abstraction every metric operates on. Language adapters map tree-sitter CST nodes to these types via `.scm` query captures.
 
+## Supporting Types
+
+```rust
+struct Span { start_line: u32, end_line: u32 }
+impl Span { fn lines(&self) -> u32 { self.end_line - self.start_line + 1 } }
+
+struct Parameter { name: String, span: Span }
+
+struct CallSite {
+    callee: String,
+    span: Span,
+    smell_weight: f64, // 1.0 by default; >1.0 for language-specific smells
+}
+
+enum Language {
+    Python, JavaScript, TypeScript, Rust, Go, Java, Ruby, C, Cpp, CSharp,
+    // extended by language plugins
+}
+```
+
 ## Core Types
 
 ### Module
@@ -78,8 +98,7 @@ enum BranchKind {
     Loop,
     Catch,
     Ternary,
-    LogicalAnd,
-    LogicalOr,
+    Logical,       // both && and || — distinction does not affect any metric
     NullCoalesce,
     EarlyReturn,
 }
@@ -101,7 +120,7 @@ Each supported language ships one `.scm` file. The engine reads captures and bui
 | `@branch.switch` | `Branch { kind: SwitchCase }` |
 | `@branch.catch` | `Branch { kind: Catch }` |
 | `@branch.ternary` | `Branch { kind: Ternary }` |
-| `@branch.logical` | `Branch { kind: LogicalAnd \| LogicalOr }` |
+| `@branch.logical` | `Branch { kind: Logical }` |
 | `@call` | `CallSite` |
 | `@assign` | assignment node (for ABC A-count) |
 | `@assert.*` | assertion pattern (for min_assertions in test role) |
@@ -111,8 +130,9 @@ Each supported language ships one `.scm` file. The engine reads captures and bui
 - A `CodeUnit` body always has `nesting = 0`
 - `Block.nesting` increments by 1 for each nested block within a `CodeUnit`
 - Branches inside nested blocks carry the nesting depth at time of capture
-- `is_exported` defaults to `true` for languages without explicit visibility; adapters set it from grammar nodes where available
-- Lambdas are `CodeUnit` instances only when they have a block body; expression lambdas are `Node::Call`
+- `is_exported` defaults to `false` for languages without explicit visibility (e.g. Python, Ruby); adapters set it from grammar nodes where available. Exception: for Python/Ruby, names starting with `_` are always `is_exported = false`
+- Lambdas are `CodeUnit` instances only when they have a block body; expression lambdas are `Node::Statement(Span)` — they are definitions, not call sites, and must not inflate the ABC C-count
+- If tree-sitter parsing produces errors for a file, emit a diagnostic on stderr (file path + error span) and skip the file entirely — partial `Module` results are never emitted
 
 ## Metrics as Pure Functions
 
@@ -139,3 +159,7 @@ fn abc(u: &CodeUnit) -> f64 {
     (a*a + b*b + c*c).sqrt()
 }
 ```
+
+## Extension Policy
+
+Adding new `BranchKind` variants is non-breaking as long as metrics treat unknown variants with the same cognitive weight as structurally similar known ones. The tree-sitter **query capture table** (the `@capture.name` → type mapping) is the stable API surface; engine internals may add enum variants without a model version bump. A version bump is required only when existing capture semantics change or fields are removed from core types.

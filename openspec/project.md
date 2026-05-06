@@ -18,6 +18,7 @@ Binary: `pretender` · Config: `pretender.toml` · License: Apache 2.0
 - **rayon** — parallel file processing
 - **indicatif** — progress bars
 - **miette** — pretty diagnostic errors
+- **thiserror** — typed library errors (used with `anyhow` for CLI propagation)
 
 ## Project Conventions
 
@@ -46,7 +47,7 @@ Plugin system is **file-system based** — language plugins are `.scm` files + `
 
 Three operating modes: `guidance` (report only) → `tiered` (green/yellow/red) → `gate` (hard fail).
 
-Code **roles** are first-class: `app`, `library`, `test`, `script`, `generated`, `vendor`. Test code has *stricter* cyclomatic/nesting/cognitive limits and *looser* length/duplication limits. Detected via path globs > explicit pragmas > heuristics.
+Code **roles** are first-class: `app`, `library`, `test`, `script`, `generated`, `vendor`. Test code has *stricter* cyclomatic/nesting/cognitive limits and *looser* length/duplication limits. Detected via explicit pragma > path globs > heuristics (pragma wins when present).
 
 ### Testing Strategy
 
@@ -54,6 +55,7 @@ Code **roles** are first-class: `app`, `library`, `test`, `script`, `generated`,
 - Integration tests: feed real source files through the full pipeline, assert on metric values
 - Snapshot tests (insta) for CLI output format regression
 - No mocking of file I/O — use temp dirs with real files
+- No network calls in tests — grammar downloads must use a pre-seeded local cache dir in test fixtures
 - `cargo test` must pass before commit; `cargo clippy -- -D warnings` in CI
 
 ### Git Workflow
@@ -111,7 +113,7 @@ pretender explain <metric>        # metric description + threshold citation
 - Hook must complete in **<2s** on a normal commit — diff-only mode is critical
 - Tree-sitter is the **core** parser (not LSP). LSP is optional, V2-only, for coupling/dead-code
 - Language plugins ship as `.so`/`.dylib`/`.dll` for dynamic loading — no recompilation
-- Top 10 languages compiled into the binary; others downloaded on demand with checksum pinning
+- Top 10 languages compiled into the binary: Python, JavaScript, TypeScript, Rust, Go, Java, Ruby, C, C++, C# — others downloaded on demand with checksum pinning
 - SARIF output must be valid SARIF 2.1.0 (OASIS standard) for GitHub Code Scanning compat
 - Single-binary distribution via `cargo dist`
 - Duplication detection: within-file in V0/V1, cross-file behind a flag in V1
