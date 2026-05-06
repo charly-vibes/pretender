@@ -30,7 +30,7 @@ impl Parser for PythonParser {
 
         Ok(Module {
             path: path.to_path_buf(),
-            language: Language::Python,
+            language: Language::PYTHON,
             span: Span {
                 start_line: 1,
                 end_line: lines_total,
@@ -164,17 +164,15 @@ fn collect_block_children(node: Node<'_>, source: &[u8], nesting: u32) -> Vec<cr
     let mut cursor = node.walk();
 
     for child in node.children(&mut cursor) {
-        match child.kind() {
+        let kind = child.kind();
+        match kind {
             // Never descend into nested function or class definitions
-            "function_definition" | "class_definition" => {}
+            "function_definition" | "class_definition" => continue,
 
-            "if_statement" => handle_if(child, source, nesting, &mut children),
-            "for_statement" | "while_statement" => {
-                handle_loop(child, source, nesting, &mut children)
+            "if_statement" | "for_statement" | "while_statement" | "try_statement"
+            | "boolean_operator" | "conditional_expression" => {
+                dispatch_branch(child, source, nesting, &mut children);
             }
-            "try_statement" => handle_try(child, source, nesting, &mut children),
-            "boolean_operator" => handle_logical(child, source, nesting, &mut children),
-            "conditional_expression" => handle_ternary(child, source, nesting, &mut children),
 
             _ => {
                 // Recurse into all other nodes to find branches deeper in expressions/statements
@@ -184,6 +182,22 @@ fn collect_block_children(node: Node<'_>, source: &[u8], nesting: u32) -> Vec<cr
     }
 
     children
+}
+
+fn dispatch_branch(
+    node: Node<'_>,
+    source: &[u8],
+    nesting: u32,
+    out: &mut Vec<crate::model::Node>,
+) {
+    match node.kind() {
+        "if_statement" => handle_if(node, source, nesting, out),
+        "for_statement" | "while_statement" => handle_loop(node, source, nesting, out),
+        "try_statement" => handle_try(node, source, nesting, out),
+        "boolean_operator" => handle_logical(node, source, nesting, out),
+        "conditional_expression" => handle_ternary(node, source, nesting, out),
+        _ => {}
+    }
 }
 
 fn handle_if(node: Node<'_>, source: &[u8], nesting: u32, out: &mut Vec<crate::model::Node>) {

@@ -33,18 +33,20 @@ pub struct CallSite {
     pub smell_weight: f64,
 }
 
-#[derive(Debug, Clone)]
-pub enum Language {
-    Python,
-    JavaScript,
-    TypeScript,
-    Rust,
-    Go,
-    Java,
-    Ruby,
-    C,
-    Cpp,
-    CSharp,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Language(pub &'static str);
+
+impl Language {
+    pub const PYTHON: Language = Language("Python");
+    pub const JAVASCRIPT: Language = Language("JavaScript");
+    pub const TYPESCRIPT: Language = Language("TypeScript");
+    pub const RUST: Language = Language("Rust");
+    pub const GO: Language = Language("Go");
+    pub const JAVA: Language = Language("Java");
+    pub const RUBY: Language = Language("Ruby");
+    pub const C: Language = Language("C");
+    pub const CPP: Language = Language("C++");
+    pub const CSHARP: Language = Language("C#");
 }
 
 #[derive(Debug, Clone)]
