@@ -2,7 +2,7 @@ mod metrics;
 mod model;
 mod python;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use crate::model::Metric;
 use std::cmp::Reverse;
@@ -40,10 +40,21 @@ impl Executable for Commands {
 
 impl Executable for ComplexityArgs {
     fn run(&self) -> Result<()> {
-        let source = std::fs::read_to_string(&self.path)?;
+        let source = std::fs::read_to_string(&self.path)
+            .with_context(|| format!("failed to read source file: {}", self.path.display()))?;
         let parser = get_parser(&self.path)?;
-        let module = parser.parse(&self.path, &source)?;
+        let (module, diagnostics) = parser.parse(&self.path, &source)?;
         
+        if !diagnostics.is_empty() {
+            for diag in &diagnostics {
+                eprintln!("{:?}: {}", diag.severity, diag.message);
+                if let Some(span) = &diag.span {
+                    eprintln!("  at lines {}-{}", span.start_line, span.end_line);
+                }
+            }
+            eprintln!(); // Blank line for separation
+        }
+
         let metric = metrics::CyclomaticComplexity;
         let mut results: Vec<(String, u32)> = module
             .units
@@ -63,26 +74,20 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
-        .ok_or_else(|| anyhow!("no file extension for {}", path.display()))?;
+        .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
 
-    // In a more complex app, this registry would be passed around or be a global.
-    // For now, we'll keep the logic here but use the Registry pattern to structure it.
     let mut registry = model::ParserRegistry::new();
     registry.register(Box::new(python::PythonParser));
 
     registry
         .get_for_extension(ext)
         .map(|_p| {
-            // This is a bit awkward because of trait object cloning/ownership,
-            // but it demonstrates the registry pattern.
-            // In a real refactor, we'd probably store Arc<dyn Parser>.
-            // For now, let's just re-instantiate or fix the ownership.
             match ext {
                 "py" => Box::new(python::PythonParser) as Box<dyn model::Parser>,
-                _ => unreachable!(),
+                _ => unreachable!("registry returned parser for unsupported extension .{}", ext),
             }
         })
-        .ok_or_else(|| anyhow!("unsupported language for extension: .{}", ext))
+        .ok_or_else(|| anyhow!("unsupported file extension '.{}' for complexity analysis", ext))
 }
 
 fn main() -> Result<()> {

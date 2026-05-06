@@ -4,12 +4,13 @@ use tree_sitter::Node;
 
 use crate::model::{
     Block, Branch, BranchKind, CodeUnit, Language, Module, Parameter, Parser, Span, UnitKind,
+    Diagnostic, DiagnosticSeverity,
 };
 
 pub struct PythonParser;
 
 impl Parser for PythonParser {
-    fn parse(&self, path: &Path, source: &str) -> Result<Module> {
+    fn parse(&self, path: &Path, source: &str) -> Result<(Module, Vec<Diagnostic>)> {
         let source_bytes = source.as_bytes();
         let mut parser = tree_sitter::Parser::new();
         parser
@@ -21,14 +22,20 @@ impl Parser for PythonParser {
             .context("tree-sitter returned no tree")?;
 
         let root = tree.root_node();
+        let mut diagnostics = Vec::new();
+
         if root.has_error() {
-            anyhow::bail!("parse errors in {}", path.display());
+            diagnostics.push(Diagnostic {
+                message: format!("Parse errors detected in {}", path.display()),
+                span: Some(node_span(root)),
+                severity: DiagnosticSeverity::Warning,
+            });
         }
 
         let lines_total = source.lines().count() as u32;
-        let units = collect_units(root, source_bytes);
+        let units = collect_units(root, source_bytes, &mut diagnostics);
 
-        Ok(Module {
+        Ok((Module {
             path: path.to_path_buf(),
             language: Language::PYTHON,
             span: Span {
@@ -39,7 +46,7 @@ impl Parser for PythonParser {
             lines_code: 0,
             lines_comment: 0,
             units,
-        })
+        }, diagnostics))
     }
 
     fn extensions(&self) -> &[&str] {
@@ -47,20 +54,34 @@ impl Parser for PythonParser {
     }
 }
 
-fn collect_units<'a>(node: Node<'a>, source: &[u8]) -> Vec<CodeUnit> {
+fn collect_units<'a>(node: Node<'a>, source: &[u8], diagnostics: &mut Vec<Diagnostic>) -> Vec<CodeUnit> {
     let mut units = Vec::new();
     let mut cursor = node.walk();
 
     for child in node.children(&mut cursor) {
         match child.kind() {
             "function_definition" => {
-                units.extend(extract_unit(child, source, UnitKind::Function));
+                match extract_unit(child, source, UnitKind::Function) {
+                    Ok(unit) => units.push(unit),
+                    Err(e) => diagnostics.push(Diagnostic {
+                        message: format!("Failed to extract function: {e}"),
+                        span: Some(node_span(child)),
+                        severity: DiagnosticSeverity::Error,
+                    }),
+                }
             }
             "decorated_definition" => {
                 let mut c = child.walk();
                 for inner in child.children(&mut c) {
                     if inner.kind() == "function_definition" {
-                        units.extend(extract_unit(inner, source, UnitKind::Function));
+                        match extract_unit(inner, source, UnitKind::Function) {
+                            Ok(unit) => units.push(unit),
+                            Err(e) => diagnostics.push(Diagnostic {
+                                message: format!("Failed to extract decorated function: {e}"),
+                                span: Some(node_span(inner)),
+                                severity: DiagnosticSeverity::Error,
+                            }),
+                        }
                     }
                 }
             }
@@ -71,14 +92,28 @@ fn collect_units<'a>(node: Node<'a>, source: &[u8]) -> Vec<CodeUnit> {
                         match member.kind() {
                             "function_definition" => {
                                 let kind = method_kind(member, source);
-                                units.extend(extract_unit(member, source, kind));
+                                match extract_unit(member, source, kind) {
+                                    Ok(unit) => units.push(unit),
+                                    Err(e) => diagnostics.push(Diagnostic {
+                                        message: format!("Failed to extract method: {e}"),
+                                        span: Some(node_span(member)),
+                                        severity: DiagnosticSeverity::Error,
+                                    }),
+                                }
                             }
                             "decorated_definition" => {
                                 let mut dc = member.walk();
                                 for inner in member.children(&mut dc) {
                                     if inner.kind() == "function_definition" {
                                         let kind = method_kind(inner, source);
-                                        units.extend(extract_unit(inner, source, kind));
+                                        match extract_unit(inner, source, kind) {
+                                            Ok(unit) => units.push(unit),
+                                            Err(e) => diagnostics.push(Diagnostic {
+                                                message: format!("Failed to extract decorated method: {e}"),
+                                                span: Some(node_span(inner)),
+                                                severity: DiagnosticSeverity::Error,
+                                            }),
+                                        }
                                     }
                                 }
                             }
@@ -94,18 +129,22 @@ fn collect_units<'a>(node: Node<'a>, source: &[u8]) -> Vec<CodeUnit> {
     units
 }
 
-fn extract_unit(node: Node<'_>, source: &[u8], kind: UnitKind) -> Option<CodeUnit> {
-    let name_node = node.child_by_field_name("name")?;
-    let name = name_node.utf8_text(source).ok()?.to_string();
+fn extract_unit(node: Node<'_>, source: &[u8], kind: UnitKind) -> Result<CodeUnit, String> {
+    let name_node = node.child_by_field_name("name")
+        .ok_or_else(|| "missing name node".to_string())?;
+    let name = name_node.utf8_text(source)
+        .map_err(|_| "name node contains invalid UTF-8".to_string())?
+        .to_string();
     let params_node = node.child_by_field_name("parameters");
-    let body_node = node.child_by_field_name("body")?;
+    let body_node = node.child_by_field_name("body")
+        .ok_or_else(|| "missing body node".to_string())?;
 
     let span = node_span(node);
     let parameters = params_node.map_or_else(Vec::new, |p| extract_params(p, source));
     let is_exported = !name.starts_with('_');
     let body = build_block(body_node, source, 0);
 
-    Some(CodeUnit {
+    Ok(CodeUnit {
         name,
         kind,
         span,

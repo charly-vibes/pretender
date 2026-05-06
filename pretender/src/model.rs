@@ -4,8 +4,21 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 pub trait Parser {
-    fn parse(&self, path: &Path, source: &str) -> Result<Module>;
+    fn parse(&self, path: &Path, source: &str) -> Result<(Module, Vec<Diagnostic>)>;
     fn extensions(&self) -> &[&str];
+}
+
+#[derive(Debug, Clone)]
+pub struct Diagnostic {
+    pub message: String,
+    pub span: Option<Span>,
+    pub severity: DiagnosticSeverity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Warning,
+    Error,
 }
 
 pub struct ParserRegistry {
