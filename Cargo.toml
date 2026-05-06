@@ -1,0 +1,3 @@
+[workspace]
+members = ["pretender"]
+resolver = "2"

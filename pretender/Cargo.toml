@@ -1,0 +1,14 @@
+[package]
+name = "pretender"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pretender"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tree-sitter = "0.23"
+tree-sitter-python = "0.23"
