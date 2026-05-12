@@ -1,0 +1,5 @@
+---
+tags: [pipeline-run:tdd-ro5u-2026-05-12-pretender-81c-cli-check-command, pipeline-step:plan]
+---
+
+pretender-81c plan: Desired end state is a new 'pretender check' subcommand that accepts one or more paths plus output/selection flags, loads pretender.toml, parses supported files, detects roles, computes currently-available metrics, and emits either human-readable or JSON results with appropriate exit status. Phase 1: add CLI surface and focused integration tests for human/json output on Python fixtures. Phase 2: implement file collection + config loading + parser dispatch for supported files only. Phase 3: compute role-aware metric results per CodeUnit and aggregate diagnostics/violations into a stable report model. Phase 4: render human and JSON output and set exit code behavior for non-gate modes with current config defaults. Out of scope: staged/diff traversal, SARIF/JUnit/Markdown output, rayon parallelism, and gate-mode-specific red exit semantics beyond preserving current behavior until pretender-6aw/pretender-a80/pretender-t2m.
