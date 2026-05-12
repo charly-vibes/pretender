@@ -32,22 +32,6 @@ phase: implement
 
 ## Context
 
-### git_status
-
-```
- M .wai/.pipeline-run
- M .wai/resources/pipelines/.last-run
- M Cargo.lock
- M pretender/Cargo.toml
- M pretender/src/main.rs
-?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-82e-role-detection-path-glob-matching.yml
-?? .wai/projects/pretender-mvp/designs/2026-05-12-green-implemented-roles-rs-with-role-enum-rolede.md
-?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-82e-role-detection-plan-desired-end-sta.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-role-detection-tests-for-explicit-pragm.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-shape-is-good-roles-rs-isolat.md
-?? pretender/src/roles.rs
-```
-
 ### open_issues
 
 ```
@@ -60,6 +44,7 @@ phase: implement
 ○ pretender-06i ● P2 Cognitive complexity metric
 ○ pretender-3b5 ● P2 CLI: pretender report command (human/markdown/html)
 ○ pretender-4eh ● P2 ABC scoring with smell weights (pretender complexity)
+○ pretender-5rk ● P2 Explore feedback loop: track recurring structural violations to surface as constraints
 ○ pretender-6aw ● P2 Three operating modes: guidance / tiered / gate
 ○ pretender-8ai ● P2 5 additional languages: Go, Java, Ruby, C, C++
 ○ pretender-8n5 ● P2 Rust language plugin (.scm + plugin.toml)
@@ -73,7 +58,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 20 issues (20 open, 0 in progress)
+Total: 21 issues (21 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
