@@ -24,7 +24,7 @@ pub enum ConfigError {
     Validation { path: &'static str, message: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub pretender: PretenderSection,
@@ -66,21 +66,6 @@ impl Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            pretender: PretenderSection::default(),
-            thresholds: Thresholds::default(),
-            bands: Bands::default(),
-            scope: Scope::default(),
-            execute: Execute::default(),
-            plugins: Plugins::default(),
-            output: Output::default(),
-            roles: Roles::default(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct PretenderSection {
@@ -111,7 +96,7 @@ pub enum Mode {
     Gate,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct Thresholds {
     #[serde(flatten)]
@@ -138,17 +123,6 @@ impl Thresholds {
             self.test.duplication_pct_max,
         )?;
         Ok(())
-    }
-}
-
-impl Default for Thresholds {
-    fn default() -> Self {
-        Self {
-            app: AppThresholds::default(),
-            test: TestThresholds::default(),
-            library: LibraryThresholds::default(),
-            script: ScriptThresholds::default(),
-        }
     }
 }
 
