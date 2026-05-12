@@ -1,0 +1,24 @@
+name         = "python"
+display_name = "Python"
+extensions   = [".py"]
+shebangs     = ["python", "python3"]
+tree_sitter  = { source = "builtin:tree-sitter-python", rev = "0.23" }
+query        = "metrics.scm"
+
+[branches]
+"@branch.if"           = { cyclomatic = 1, cognitive = 1 }
+"@branch.elif"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.loop"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.catch"        = { cyclomatic = 1, cognitive = 1 }
+"@branch.ternary"      = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
+
+[assertions]
+patterns = [
+  "^assert$",
+  "^assert[A-Z]",
+  "^self\\.assert",
+  "^pytest\\.raises$",
+  "^pytest\\.warns$",
+]

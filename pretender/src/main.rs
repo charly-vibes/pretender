@@ -2,6 +2,7 @@ mod config;
 mod engine;
 mod metrics;
 mod model;
+mod plugin;
 mod python;
 mod roles;
 

@@ -423,7 +423,7 @@ mod tests {
     }
 
     fn python_query_source() -> &'static str {
-        include_str!("../../queries/python.scm")
+        include_str!("../../languages/python/metrics.scm")
     }
 
     fn engine() -> QueryEngine {
