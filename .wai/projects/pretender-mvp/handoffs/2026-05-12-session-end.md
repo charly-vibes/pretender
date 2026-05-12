@@ -32,11 +32,26 @@ phase: implement
 
 ## Context
 
+### git_status
+
+```
+ M .wai/.pipeline-run
+ M .wai/resources/pipelines/.last-run
+ M pretender/src/main.rs
+ M pretender/src/python.rs
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-6xq-tree-sitter-query-engine.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-12-green-pythonparser-now-delegates-to-queryengine-w.md
+?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-6xq-tree-sitter-query-engine-de.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-red-20-engine-tests-written-all-failing-with-tod.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-the-parser-swap-is-minimal-and-correctly-rou.md
+?? pretender/src/engine.rs
+?? queries/
+```
+
 ### open_issues
 
 ```
 ○ pretender-07m ● P1 Python language plugin (.scm + plugin.toml)
-○ pretender-6xq ● P1 Tree-sitter query engine: parse .scm files into universal model
 ○ pretender-81c ● P1 CLI: pretender check command with human + JSON output
 ○ pretender-hay ● P1 Native pre-commit hook generator
 ○ pretender-rl3 ● P1 CLI: pretender init command
@@ -58,7 +73,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 21 issues (21 open, 0 in progress)
+Total: 20 issues (20 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
