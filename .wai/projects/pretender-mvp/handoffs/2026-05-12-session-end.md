@@ -40,12 +40,12 @@ phase: implement
  M Cargo.lock
  M pretender/Cargo.toml
  M pretender/src/main.rs
-?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-sbq-config-parse-pretender-toml.yml
-?? .wai/projects/pretender-mvp/designs/2026-05-12-green-implemented-config-rs-with-serde-toml-parsi.md
-?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-sbq-config-parse-pretender-toml-plan-de.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-config-tests-for-full-openspec-schema-p.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-shape-is-appropriate-config-r.md
-?? pretender/src/config.rs
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-82e-role-detection-path-glob-matching.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-12-green-implemented-roles-rs-with-role-enum-rolede.md
+?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-82e-role-detection-plan-desired-end-sta.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-role-detection-tests-for-explicit-pragm.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-shape-is-good-roles-rs-isolat.md
+?? pretender/src/roles.rs
 ```
 
 ### open_issues
@@ -54,7 +54,6 @@ phase: implement
 ○ pretender-07m ● P1 Python language plugin (.scm + plugin.toml)
 ○ pretender-6xq ● P1 Tree-sitter query engine: parse .scm files into universal model
 ○ pretender-81c ● P1 CLI: pretender check command with human + JSON output
-○ pretender-82e ● P1 Role detection: path glob matching
 ○ pretender-hay ● P1 Native pre-commit hook generator
 ○ pretender-rl3 ● P1 CLI: pretender init command
 ○ pretender-s7d ● P1 JavaScript/TypeScript language plugins
@@ -74,7 +73,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 21 issues (21 open, 0 in progress)
+Total: 20 issues (20 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```

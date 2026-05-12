@@ -2,6 +2,7 @@ mod config;
 mod metrics;
 mod model;
 mod python;
+mod roles;
 
 use crate::model::Metric;
 use anyhow::{anyhow, Context, Result};
