@@ -8,44 +8,71 @@ phase: implement
 
 ## What Was Done
 
-<!-- Summary of completed work -->
+Closed **pretender-81c** (`pretender check` MVP slice). Extended the
+existing slice with:
+
+- `--output <path>` flag — report routed through a `Box<dyn Write>` sink.
+- Threshold violations listed in human output, tinted ANSI red when
+  writing to a tty and `NO_COLOR` is unset.
+- `ExitCode::FAILURE` when any unit has a violation (basic gate behavior).
+- `rayon` par_iter across input files with post-sort by path for
+  deterministic ordering.
+- New `python_violator.py` fixture; `stage_fixture` helper copies
+  fixtures into a per-test temp dir so default `app` role applies.
+
+44 tests pass (35 unit + 9 cli integration). `cargo fmt --check` and
+`cargo clippy --all-targets -- -D warnings` clean.
+
+Commit: `d49f648 feat: extend pretender check with --output, gate exit code, parallel scan`
 
 ## Key Decisions
 
-<!-- Decisions made and rationale -->
+- Exit code is unconditional (any violation → 1). The
+  guidance/tiered/gate mode selector is the job of pretender-6aw.
+- SARIF / JUnit / markdown formats deferred to their own issues
+  (pretender-t2m, pretender-3b5).
+- `--staged` / `--diff-only` / `--diff-base` deferred to pretender-a80.
+- Color handled directly with ANSI escapes; no extra crate, gated on
+  `IsTerminal` + `NO_COLOR` + writing-to-stdout.
 
 ## Gotchas & Surprises
 
-<!-- What behaved unexpectedly? Non-obvious requirements? Hidden dependencies? -->
+- `tests/fixtures/python_simple.py` matches the default `**/tests/**`
+  glob → role detected as `test`, whose stricter thresholds
+  (cyclomatic_max=3) trip on `complex_func` (cyclomatic=6). Tests now
+  stage fixtures into temp dirs to get the default `app` role.
+- `bd close` warns `auto-export: git add failed: exit status 1`. Issue
+  closure is still persisted to the local Dolt db; the warning is just
+  the export-to-git step. No Dolt remote is configured.
 
 ## What Took Longer Than Expected
 
-<!-- Steps that needed multiple attempts. Commands that failed before the right one. -->
+- Pipeline run state file was stale (current_step 5/5 from prior topic).
+  Required manual edit of
+  `.wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-81c-cli-check-command.yml`
+  to reset to the red step.
 
 ## Open Questions
 
-<!-- Unresolved questions -->
+- Should diagnostics also flow through the `--output` sink (currently
+  still printed to stderr)?
+- Color UX: highlight only the metric name, or the whole violation
+  line? Current code colors only the `VIOLATION` marker.
 
 ## Next Steps
 
-<!-- Prioritized list of what to do next -->
+Ready P1 issues unblocked by this work:
+
+1. **pretender-hay** — Native pre-commit hook generator (now depends on
+   a working `check` command).
+2. **pretender-rl3** — `pretender init` command.
+3. **pretender-07m** — Python language plugin (.scm + plugin.toml) for
+   the universal model.
+4. **pretender-s7d** — JS/TS language plugins.
+
+Then **pretender-6aw** (mode selector) to make exit code mode-aware.
 
 ## Context
-
-### git_status
-
-```
- M .wai/.pipeline-run
- M .wai/resources/pipelines/.last-run
- M pretender/Cargo.toml
- M pretender/src/main.rs
- M pretender/tests/cli_test.rs
-?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-81c-cli-check-command.yml
-?? .wai/projects/pretender-mvp/designs/2026-05-12-green-added-a-minimal-pretender-check-flow-in-mai.md
-?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-81c-plan-desired-end-state-is-a-new-pr.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-cli-integration-tests-for-pretender-ch.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-the-new-check-command-is-intentionally-thin.md
-```
 
 ### open_issues
 
