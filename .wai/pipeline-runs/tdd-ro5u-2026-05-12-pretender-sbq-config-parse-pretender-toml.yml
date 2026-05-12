@@ -1,0 +1,6 @@
+run_id: tdd-ro5u-2026-05-12-pretender-sbq-config-parse-pretender-toml
+pipeline: tdd-ro5u
+topic: pretender-sbq config parse pretender.toml
+created_at: '2026-05-12T18:44:54.542401469+00:00'
+current_step: 5
+approvals: {}

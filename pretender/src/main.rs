@@ -1,3 +1,4 @@
+mod config;
 mod metrics;
 mod model;
 mod python;

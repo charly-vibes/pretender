@@ -36,15 +36,16 @@ phase: implement
 
 ```
  M .wai/.pipeline-run
- M .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-b5o-universal-code-model-types.yml
  M .wai/resources/pipelines/.last-run
- M pretender/src/metrics.rs
- M pretender/src/model.rs
-?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-jy9-pure-metric-functions.yml
-?? .wai/projects/pretender-mvp/designs/2026-05-12-green-implemented-pure-metric-functions-in-metric.md
-?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-jy9-pure-metric-functions-plan-desired.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-metrics-unit-tests-constructing-codeuni.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-shape-is-small-pure-functions.md
+ M Cargo.lock
+ M pretender/Cargo.toml
+ M pretender/src/main.rs
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-sbq-config-parse-pretender-toml.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-12-green-implemented-config-rs-with-serde-toml-parsi.md
+?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-sbq-config-parse-pretender-toml-plan-de.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-config-tests-for-full-openspec-schema-p.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-shape-is-appropriate-config-r.md
+?? pretender/src/config.rs
 ```
 
 ### open_issues
@@ -57,7 +58,6 @@ phase: implement
 ○ pretender-hay ● P1 Native pre-commit hook generator
 ○ pretender-rl3 ● P1 CLI: pretender init command
 ○ pretender-s7d ● P1 JavaScript/TypeScript language plugins
-○ pretender-sbq ● P1 Config: parse pretender.toml with serde + toml
 ○ pretender-06i ● P2 Cognitive complexity metric
 ○ pretender-3b5 ● P2 CLI: pretender report command (human/markdown/html)
 ○ pretender-4eh ● P2 ABC scoring with smell weights (pretender complexity)
@@ -74,7 +74,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 22 issues (22 open, 0 in progress)
+Total: 21 issues (21 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
