@@ -2,9 +2,9 @@ mod metrics;
 mod model;
 mod python;
 
+use crate::model::Metric;
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
-use crate::model::Metric;
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
 
@@ -44,7 +44,7 @@ impl Executable for ComplexityArgs {
             .with_context(|| format!("failed to read source file: {}", self.path.display()))?;
         let parser = get_parser(&self.path)?;
         let (module, diagnostics) = parser.parse(&self.path, &source)?;
-        
+
         if !diagnostics.is_empty() {
             for diag in &diagnostics {
                 eprintln!("{:?}: {}", diag.severity, diag.message);
@@ -81,13 +81,19 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
 
     registry
         .get_for_extension(ext)
-        .map(|_p| {
-            match ext {
-                "py" => Box::new(python::PythonParser) as Box<dyn model::Parser>,
-                _ => unreachable!("registry returned parser for unsupported extension .{}", ext),
-            }
+        .map(|_p| match ext {
+            "py" => Box::new(python::PythonParser) as Box<dyn model::Parser>,
+            _ => unreachable!(
+                "registry returned parser for unsupported extension .{}",
+                ext
+            ),
         })
-        .ok_or_else(|| anyhow!("unsupported file extension '.{}' for complexity analysis", ext))
+        .ok_or_else(|| {
+            anyhow!(
+                "unsupported file extension '.{}' for complexity analysis",
+                ext
+            )
+        })
 }
 
 fn main() -> Result<()> {

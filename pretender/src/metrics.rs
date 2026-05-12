@@ -1,4 +1,4 @@
-use crate::model::{Block, CodeUnit, Node, Metric};
+use crate::model::{Block, CodeUnit, Metric, Node};
 
 pub struct CyclomaticComplexity;
 

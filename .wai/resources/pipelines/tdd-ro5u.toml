@@ -1,0 +1,52 @@
+# TDD implementation pipeline with Universal Rule of 5 review gates.
+# Step prompts are navigation hints. Instructions for HOW to do the
+# work belong in skills.
+[pipeline]
+name = "tdd-ro5u"
+description = "Plan and implement with TDD, then review the result using Universal Rule of 5."
+
+[pipeline.metadata]
+version = "1"
+
+[[steps]]
+id = "plan"
+prompt = """
+{topic}: Research the relevant spec, issue, and code. Use skill `tdd`.
+Produce a small phased plan with desired end state and out of scope.
+Record the plan: `wai add plan "..."`
+Advance: `wai pipeline next`
+"""
+
+[[steps]]
+id = "red"
+prompt = """
+{topic}: Write the failing test(s) first. Use skill `tdd`.
+Run the narrow test command and confirm it fails for the expected reason.
+Record findings: `wai add research "RED: ..."`
+Advance: `wai pipeline next`
+"""
+
+[[steps]]
+id = "green"
+prompt = """
+{topic}: Implement the minimum code to make the failing tests pass. Use skill `tdd`.
+Run the narrow tests, then the relevant package test suite.
+Record decisions: `wai add design "GREEN: ..."`
+Advance: `wai pipeline next`
+"""
+
+[[steps]]
+id = "review"
+prompt = """
+{topic}: Review the changed artifact using skill `rule-of-5-universal`.
+Apply only necessary corrections and keep tests green.
+Record findings: `wai add research "RO5U: ..."`
+Advance: `wai pipeline next`
+"""
+
+[[steps]]
+id = "verify-close"
+prompt = """
+{topic}: Run final quality gates, update beads, commit, push, and create wai close handoff.
+Use the project session close protocol.
+"""

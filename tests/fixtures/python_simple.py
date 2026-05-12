@@ -1,3 +1,5 @@
+# expected_complexity: simple=1, with_branch=2, complex_func=6, __init__=1, method_simple=1, method_with_loop=3
+
 def simple(x):
     return x + 1
 
