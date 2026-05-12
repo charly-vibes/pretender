@@ -182,8 +182,6 @@ pub enum BranchKind {
     Ternary,
     LogicalAnd,
     LogicalOr,
-    NullCoalesce,
-    EarlyReturn,
 }
 
 #[cfg(test)]

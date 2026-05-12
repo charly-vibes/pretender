@@ -112,8 +112,6 @@ enum BranchKind {
     Ternary,
     LogicalAnd,    // Capture for each && (or equivalent)
     LogicalOr,     // Capture for each || (or equivalent)
-    NullCoalesce,
-    EarlyReturn,
 }
 ```
 

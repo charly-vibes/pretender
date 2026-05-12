@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::model::{
-    Block, Branch, BranchKind, CodeUnit, Diagnostic, DiagnosticSeverity, Language, Module,
-    Parameter, Span, UnitKind,
+    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Language,
+    Module, Parameter, Span, UnitKind,
 };
 
 pub struct QueryEngine {
@@ -16,6 +16,9 @@ pub struct QueryEngine {
     fn_params_idx: u32,
     fn_body_idx: u32,
     branch_captures: Vec<(u32, BranchKind)>,
+    call_idx: Option<u32>,
+    call_callee_idx: Option<u32>,
+    assign_idx: Option<u32>,
 }
 
 impl QueryEngine {
@@ -55,6 +58,10 @@ impl QueryEngine {
             .filter_map(|(name, kind)| query.capture_index_for_name(name).map(|idx| (idx, *kind)))
             .collect();
 
+        let call_idx = query.capture_index_for_name("call");
+        let call_callee_idx = query.capture_index_for_name("call.callee");
+        let assign_idx = query.capture_index_for_name("assign");
+
         Ok(Self {
             language,
             lang_kind,
@@ -64,6 +71,9 @@ impl QueryEngine {
             fn_params_idx,
             fn_body_idx,
             branch_captures,
+            call_idx,
+            call_callee_idx,
+            assign_idx,
         })
     }
 
@@ -108,7 +118,7 @@ impl QueryEngine {
 
         let mut query_cursor = tree_sitter::QueryCursor::new();
         let mut functions: Vec<FunctionCapture> = Vec::new();
-        let mut branch_nodes: HashMap<usize, BranchKind> = HashMap::new();
+        let mut captures = CaptureMap::default();
 
         for m in query_cursor.matches(&self.query, root, source_bytes) {
             let has_fn_def = m.captures.iter().any(|c| c.index == self.fn_def_idx);
@@ -128,10 +138,31 @@ impl QueryEngine {
                 }
                 functions.push(fc);
             } else {
+                let mut pending_call: Option<(usize, Option<String>)> = None;
                 for capture in m.captures {
                     if let Some(kind) = self.branch_kind_for_capture(capture.index) {
-                        branch_nodes.insert(capture.node.id(), kind);
+                        captures.branches.insert(capture.node.id(), kind);
+                    } else if Some(capture.index) == self.assign_idx {
+                        captures.assignments.insert(capture.node.id());
+                    } else if Some(capture.index) == self.call_idx {
+                        let id = capture.node.id();
+                        match &mut pending_call {
+                            Some((existing_id, _)) if *existing_id == id => {}
+                            _ => pending_call = Some((id, None)),
+                        }
+                    } else if Some(capture.index) == self.call_callee_idx {
+                        let callee = capture
+                            .node
+                            .utf8_text(source_bytes)
+                            .ok()
+                            .map(str::to_string);
+                        if let Some((_, slot)) = pending_call.as_mut() {
+                            *slot = callee;
+                        }
                     }
+                }
+                if let Some((id, callee)) = pending_call {
+                    captures.calls.insert(id, callee.unwrap_or_default());
                 }
             }
         }
@@ -139,7 +170,7 @@ impl QueryEngine {
         let units: Vec<CodeUnit> = functions
             .iter()
             .filter_map(|fc| {
-                self.build_code_unit(fc, source_bytes, &branch_nodes)
+                self.build_code_unit(fc, source_bytes, &captures)
                     .map_err(|e| {
                         diagnostics.push(Diagnostic {
                             message: format!("Failed to build CodeUnit: {e}"),
@@ -180,7 +211,7 @@ impl QueryEngine {
         &self,
         fc: &FunctionCapture,
         source: &[u8],
-        branch_nodes: &HashMap<usize, BranchKind>,
+        captures: &CaptureMap,
     ) -> Result<CodeUnit, String> {
         let def_node = fc.def_node.ok_or("missing definition node")?;
         let name_node = fc.name_node.ok_or("missing name node")?;
@@ -199,7 +230,7 @@ impl QueryEngine {
             .map(|p| extract_params(p, source))
             .unwrap_or_default();
 
-        let body = build_block(body_node, source, branch_nodes, 0);
+        let body = build_block(body_node, source, captures, 0);
 
         Ok(CodeUnit {
             name,
@@ -210,6 +241,13 @@ impl QueryEngine {
             is_exported,
         })
     }
+}
+
+#[derive(Default)]
+struct CaptureMap {
+    branches: HashMap<usize, BranchKind>,
+    calls: HashMap<usize, String>,
+    assignments: std::collections::HashSet<usize>,
 }
 
 #[derive(Default)]
@@ -279,11 +317,11 @@ fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Paramete
 fn build_block(
     block_node: tree_sitter::Node,
     source: &[u8],
-    branch_map: &HashMap<usize, BranchKind>,
+    captures: &CaptureMap,
     nesting: u32,
 ) -> Block {
     let mut children = Vec::new();
-    walk_block(block_node, source, branch_map, nesting, &mut children);
+    walk_block(block_node, source, captures, nesting, &mut children);
     Block {
         span: node_span(block_node),
         nesting,
@@ -294,7 +332,7 @@ fn build_block(
 fn walk_block(
     node: tree_sitter::Node,
     source: &[u8],
-    branch_map: &HashMap<usize, BranchKind>,
+    captures: &CaptureMap,
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
 ) {
@@ -304,16 +342,26 @@ fn walk_block(
             continue;
         }
 
-        if let Some(&kind) = branch_map.get(&child.id()) {
+        if let Some(&kind) = captures.branches.get(&child.id()) {
             out.push(crate::model::Node::Branch(Branch {
                 kind,
                 span: node_span(child),
                 nesting_at: nesting,
                 sequence_id: None,
             }));
-            collect_nested_blocks(child, source, branch_map, nesting, out);
+            collect_nested_blocks(child, source, captures, nesting, out);
+        } else if captures.assignments.contains(&child.id()) {
+            out.push(crate::model::Node::Assignment(node_span(child)));
+            collect_nested_blocks(child, source, captures, nesting, out);
+        } else if let Some(callee) = captures.calls.get(&child.id()) {
+            out.push(crate::model::Node::Call(CallSite {
+                callee: callee.clone(),
+                span: node_span(child),
+                smell_weight: 1.0,
+            }));
+            collect_nested_blocks(child, source, captures, nesting, out);
         } else {
-            walk_block(child, source, branch_map, nesting, out);
+            walk_block(child, source, captures, nesting, out);
         }
     }
 }
@@ -321,29 +369,39 @@ fn walk_block(
 fn collect_nested_blocks(
     branch_node: tree_sitter::Node,
     source: &[u8],
-    branch_map: &HashMap<usize, BranchKind>,
+    captures: &CaptureMap,
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
 ) {
     let mut cursor = branch_node.walk();
     for child in branch_node.children(&mut cursor) {
-        if let Some(&kind) = branch_map.get(&child.id()) {
+        if let Some(&kind) = captures.branches.get(&child.id()) {
             out.push(crate::model::Node::Branch(Branch {
                 kind,
                 span: node_span(child),
                 nesting_at: nesting,
                 sequence_id: None,
             }));
-            collect_nested_blocks(child, source, branch_map, nesting, out);
+            collect_nested_blocks(child, source, captures, nesting, out);
+        } else if captures.assignments.contains(&child.id()) {
+            out.push(crate::model::Node::Assignment(node_span(child)));
+            collect_nested_blocks(child, source, captures, nesting, out);
+        } else if let Some(callee) = captures.calls.get(&child.id()) {
+            out.push(crate::model::Node::Call(CallSite {
+                callee: callee.clone(),
+                span: node_span(child),
+                smell_weight: 1.0,
+            }));
+            collect_nested_blocks(child, source, captures, nesting, out);
         } else if child.kind() == "block" {
             out.push(crate::model::Node::NestedBlock(build_block(
                 child,
                 source,
-                branch_map,
+                captures,
                 nesting + 1,
             )));
         } else {
-            collect_nested_blocks(child, source, branch_map, nesting, out);
+            collect_nested_blocks(child, source, captures, nesting, out);
         }
     }
 }
@@ -618,6 +676,38 @@ mod tests {
                 actual, expected_cc,
                 "{name}: expected CC={expected_cc}, got CC={actual}"
             );
+        }
+    }
+
+    // --- ABC: assignments + calls are captured ---
+
+    #[test]
+    fn captures_assignments_and_calls_for_abc() {
+        let engine = engine();
+        let source = "def f(x):\n    y = x + 1\n    z = foo(y)\n    return bar(z)\n";
+        let (module, _) = engine.parse(Path::new("test.py"), source).unwrap();
+
+        let unit = &module.units[0];
+        let abc = crate::metrics::abc(unit);
+        assert!(
+            abc > 0.0,
+            "ABC must reflect assignment + call captures; got {abc}",
+        );
+
+        let (mut assigns, mut calls) = (0, 0);
+        collect_assigns_and_calls(&unit.body, &mut assigns, &mut calls);
+        assert!(assigns >= 2, "expected ≥2 assignments, got {assigns}");
+        assert!(calls >= 2, "expected ≥2 calls, got {calls}");
+    }
+
+    fn collect_assigns_and_calls(block: &Block, assigns: &mut u32, calls: &mut u32) {
+        for child in &block.children {
+            match child {
+                crate::model::Node::Assignment(_) => *assigns += 1,
+                crate::model::Node::Call(_) => *calls += 1,
+                crate::model::Node::NestedBlock(b) => collect_assigns_and_calls(b, assigns, calls),
+                _ => {}
+            }
         }
     }
 

@@ -5,7 +5,7 @@ mod model;
 mod python;
 mod roles;
 
-use crate::config::Config;
+use crate::config::{Config, Mode};
 use crate::model::Metric;
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
@@ -18,6 +18,8 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+const NOT_IMPLEMENTED_EXIT: u8 = 2;
+
 #[derive(Parser)]
 #[command(name = "pretender")]
 struct Cli {
@@ -27,10 +29,42 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Interactive wizard: write pretender.toml, install hook, generate CI
+    Init(InitArgs),
+    /// Fast pass/fail scan against configured thresholds
+    Check(CheckArgs),
     /// Show cyclomatic complexity for each function, sorted worst-first
     Complexity(ComplexityArgs),
-    /// Analyze files and emit a report
-    Check(CheckArgs),
+    /// Pretty TUI or HTML report from the last `check` run
+    Report(ReportArgs),
+    /// Structural clone detection via normalised AST subtree hashing
+    Duplication(DuplicationArgs),
+    /// Mutation testing wrapper (Stryker / PIT / mutmut / cargo-mutants)
+    Mutation(MutationArgs),
+    /// Install or uninstall the pre-commit hook
+    #[command(subcommand)]
+    Hooks(HooksCommand),
+    /// CI workflow generator
+    #[command(subcommand)]
+    Ci(CiCommand),
+    /// Manage language and metric plugins
+    #[command(subcommand)]
+    Plugins(PluginsCommand),
+    /// Print metric definition and threshold citation
+    Explain(ExplainArgs),
+}
+
+#[derive(Parser)]
+struct InitArgs {
+    /// Skip prompts, use best-guess defaults
+    #[arg(long)]
+    non_interactive: bool,
+    /// Skip prompts, use best-guess defaults
+    #[arg(long)]
+    defaults: bool,
+    /// Override default mode
+    #[arg(long, value_enum)]
+    mode: Option<ModeArg>,
 }
 
 #[derive(Parser)]
@@ -47,12 +81,116 @@ struct CheckArgs {
     /// Write report to this path instead of stdout
     #[arg(long)]
     output: Option<PathBuf>,
+    /// Only check git-staged files
+    #[arg(long)]
+    staged: bool,
+    /// Only check files changed relative to `diff_base`
+    #[arg(long)]
+    diff_only: bool,
+    /// Override `diff_base` from config
+    #[arg(long)]
+    diff_base: Option<String>,
+    /// Override config `pretender.mode`
+    #[arg(long, value_enum)]
+    mode: Option<ModeArg>,
+}
+
+#[derive(Parser)]
+struct ReportArgs {
+    /// Output format
+    #[arg(long, value_enum, default_value_t = LongReportFormat::Human)]
+    format: LongReportFormat,
+}
+
+#[derive(Parser)]
+struct DuplicationArgs {
+    paths: Vec<PathBuf>,
+    #[arg(long)]
+    min_nodes: Option<u32>,
+    #[arg(long)]
+    cross_file: bool,
+}
+
+#[derive(Parser)]
+struct MutationArgs {
+    paths: Vec<PathBuf>,
+    #[arg(long)]
+    score_min: Option<u32>,
+    #[arg(long, value_enum, default_value_t = ReportFormat::Human)]
+    format: ReportFormat,
+}
+
+#[derive(Subcommand)]
+enum HooksCommand {
+    /// Write .git/hooks/pre-commit (native shim) or lefthook/pre-commit YAML
+    Install,
+    /// Remove the hook file(s) previously installed by `pretender hooks install`
+    Uninstall,
+}
+
+#[derive(Subcommand)]
+enum CiCommand {
+    /// Generate a CI workflow for the given provider
+    Generate {
+        #[arg(value_enum)]
+        provider: CiProvider,
+    },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CiProvider {
+    Github,
+    Gitlab,
+    Circle,
+    Azure,
+    Generic,
+}
+
+#[derive(Subcommand)]
+enum PluginsCommand {
+    /// Show installed plugins and their versions
+    List,
+    /// Install a plugin from a git URL or local path
+    Add { source: String },
+    /// Uninstall a plugin
+    Remove { name: String },
+}
+
+#[derive(Parser)]
+struct ExplainArgs {
+    metric: String,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ReportFormat {
     Human,
     Json,
+    Sarif,
+    Junit,
+    Markdown,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum LongReportFormat {
+    Human,
+    Html,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ModeArg {
+    Guidance,
+    Tiered,
+    Gate,
+}
+
+impl From<ModeArg> for Mode {
+    fn from(value: ModeArg) -> Self {
+        match value {
+            ModeArg::Guidance => Mode::Guidance,
+            ModeArg::Tiered => Mode::Tiered,
+            ModeArg::Gate => Mode::Gate,
+        }
+    }
 }
 
 trait Executable {
@@ -62,10 +200,23 @@ trait Executable {
 impl Executable for Commands {
     fn run(&self) -> Result<ExitCode> {
         match self {
-            Commands::Complexity(args) => args.run(),
+            Commands::Init(_) => not_implemented("init", "pretender-rl3"),
             Commands::Check(args) => args.run(),
+            Commands::Complexity(args) => args.run(),
+            Commands::Report(_) => not_implemented("report", "pretender-3b5"),
+            Commands::Duplication(_) => not_implemented("duplication", "pretender-xgn"),
+            Commands::Mutation(_) => not_implemented("mutation", "pretender-238"),
+            Commands::Hooks(_) => not_implemented("hooks", "pretender-hay"),
+            Commands::Ci(_) => not_implemented("ci generate", "pretender-fb3"),
+            Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
+            Commands::Explain(_) => not_implemented("explain", "pretender-vuc"),
         }
     }
+}
+
+fn not_implemented(name: &str, tracker: &str) -> Result<ExitCode> {
+    eprintln!("pretender {name}: not yet implemented (tracked: {tracker})");
+    Ok(ExitCode::from(NOT_IMPLEMENTED_EXIT))
 }
 
 impl Executable for ComplexityArgs {
@@ -102,7 +253,29 @@ impl Executable for ComplexityArgs {
 
 impl Executable for CheckArgs {
     fn run(&self) -> Result<ExitCode> {
-        let config = load_config()?;
+        if self.staged || self.diff_only || self.diff_base.is_some() {
+            return not_implemented("check --staged/--diff-only/--diff-base", "pretender-a80");
+        }
+        if matches!(
+            self.format,
+            ReportFormat::Sarif | ReportFormat::Junit | ReportFormat::Markdown
+        ) {
+            let tracker = match self.format {
+                ReportFormat::Sarif => "pretender-t2m",
+                ReportFormat::Junit => "pretender-t2m",
+                ReportFormat::Markdown => "pretender-t2m",
+                _ => unreachable!(),
+            };
+            return not_implemented(
+                &format!("check --format {:?}", self.format).to_lowercase(),
+                tracker,
+            );
+        }
+
+        let mut config = load_config()?;
+        if let Some(mode) = self.mode {
+            config.pretender.mode = mode.into();
+        }
         let detector = RoleDetector::new(&config).context("failed to initialize role detector")?;
         let files = collect_input_files(&self.paths)?;
 
@@ -121,19 +294,40 @@ impl Executable for CheckArgs {
                 write_human_report(sink.as_mut(), &report, color)?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
+            _ => unreachable!("sarif/junit/markdown handled above"),
         }
         sink.flush().context("failed to flush report output")?;
 
-        let has_violation = report
-            .files
-            .iter()
-            .any(|file| file.units.iter().any(|unit| !unit.violations.is_empty()));
+        Ok(decide_exit_code(&report, config.pretender.mode))
+    }
+}
 
-        Ok(if has_violation {
-            ExitCode::FAILURE
-        } else {
-            ExitCode::SUCCESS
-        })
+fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
+    let has_skipped = report
+        .files
+        .iter()
+        .any(|file| file.diagnostics.iter().any(|d| d.severity == "Error"));
+    let has_violation = report
+        .files
+        .iter()
+        .any(|file| file.units.iter().any(|unit| !unit.violations.is_empty()));
+
+    match mode {
+        Mode::Guidance => ExitCode::SUCCESS,
+        Mode::Tiered => {
+            if has_violation {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
+            }
+        }
+        Mode::Gate => {
+            if has_violation || has_skipped {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
+            }
+        }
     }
 }
 

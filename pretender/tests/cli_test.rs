@@ -211,6 +211,103 @@ fn test_check_human_output_surfaces_violations() {
 }
 
 #[test]
+fn test_check_guidance_mode_exits_zero_on_violation() {
+    let (_dir, staged) = stage_fixture("python_violator.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("guidance")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "guidance mode must exit 0 even when violations exist; stdout: {}",
+        String::from_utf8_lossy(&output.stdout),
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("VIOLATION"),
+        "guidance mode still surfaces violations as annotations; got: {stdout}",
+    );
+}
+
+#[test]
+fn test_check_gate_mode_fails_on_violation() {
+    let (_dir, staged) = stage_fixture("python_violator.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn test_check_sarif_format_returns_not_implemented() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--format")
+        .arg("sarif")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not yet implemented"),
+        "stderr should describe missing feature; got: {stderr}",
+    );
+}
+
+#[test]
+fn test_check_staged_flag_returns_not_implemented() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--staged")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn test_stub_subcommands_exit_two() {
+    for cmd in [
+        vec!["init"],
+        vec!["report"],
+        vec!["duplication"],
+        vec!["mutation"],
+        vec!["hooks", "install"],
+        vec!["ci", "generate", "github"],
+        vec!["plugins", "list"],
+        vec!["explain", "cyclomatic"],
+    ] {
+        let output = Command::new(pretender_bin())
+            .args(&cmd)
+            .output()
+            .expect("failed to execute process");
+
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{cmd:?} should exit 2 (not yet implemented); stderr: {}",
+            String::from_utf8_lossy(&output.stderr),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("not yet implemented"),
+            "{cmd:?} stderr should explain status; got: {stderr}",
+        );
+    }
+}
+
+#[test]
 fn test_check_parallel_results_are_deterministic() {
     let dir = tempdir();
     for name in ["python_simple.py", "python_violator.py"] {
