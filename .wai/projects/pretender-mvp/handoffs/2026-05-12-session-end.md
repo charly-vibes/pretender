@@ -35,23 +35,16 @@ phase: implement
 ### git_status
 
 ```
- M Cargo.lock
- M pretender/Cargo.toml
- M pretender/src/main.rs
+ M .wai/.pipeline-run
+ M .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-b5o-universal-code-model-types.yml
+ M .wai/resources/pipelines/.last-run
  M pretender/src/metrics.rs
  M pretender/src/model.rs
- M pretender/src/python.rs
- M tests/fixtures/python_simple.py
-?? .wai/.pipeline-run
-?? .wai/pipeline-runs/
-?? .wai/projects/pretender-mvp/designs/2026-05-12-green-added-serde-serialize-deserialize-to-univer.md
-?? .wai/projects/pretender-mvp/plans/
-?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-model-tests-for-json-serialization-incl.md
-?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-scope-matches-issue-model-dat.md
-?? .wai/resources/oracles/
-?? .wai/resources/pipelines/
-?? tests/fixtures/js_simple.js
-?? tests/fixtures/rust_simple.rs
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-12-pretender-jy9-pure-metric-functions.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-12-green-implemented-pure-metric-functions-in-metric.md
+?? .wai/projects/pretender-mvp/plans/2026-05-12-pretender-jy9-pure-metric-functions-plan-desired.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-red-added-metrics-unit-tests-constructing-codeuni.md
+?? .wai/projects/pretender-mvp/research/2026-05-12-ro5u-stage-1-draft-shape-is-small-pure-functions.md
 ```
 
 ### open_issues
@@ -62,7 +55,6 @@ phase: implement
 ○ pretender-81c ● P1 CLI: pretender check command with human + JSON output
 ○ pretender-82e ● P1 Role detection: path glob matching
 ○ pretender-hay ● P1 Native pre-commit hook generator
-○ pretender-jy9 ● P1 Implement pure metric functions
 ○ pretender-rl3 ● P1 CLI: pretender init command
 ○ pretender-s7d ● P1 JavaScript/TypeScript language plugins
 ○ pretender-sbq ● P1 Config: parse pretender.toml with serde + toml
@@ -82,7 +74,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 23 issues (23 open, 0 in progress)
+Total: 22 issues (22 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
