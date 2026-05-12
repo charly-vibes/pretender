@@ -10,10 +10,13 @@ use crate::model::Metric;
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use rayon::prelude::*;
 use serde::Serialize;
 use std::cmp::Reverse;
 use std::fs;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(name = "pretender")]
@@ -41,6 +44,9 @@ struct CheckArgs {
     paths: Vec<PathBuf>,
     #[arg(long, value_enum, default_value_t = ReportFormat::Human)]
     format: ReportFormat,
+    /// Write report to this path instead of stdout
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -50,11 +56,11 @@ enum ReportFormat {
 }
 
 trait Executable {
-    fn run(&self) -> Result<()>;
+    fn run(&self) -> Result<ExitCode>;
 }
 
 impl Executable for Commands {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> Result<ExitCode> {
         match self {
             Commands::Complexity(args) => args.run(),
             Commands::Check(args) => args.run(),
@@ -63,7 +69,7 @@ impl Executable for Commands {
 }
 
 impl Executable for ComplexityArgs {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> Result<ExitCode> {
         let source = std::fs::read_to_string(&self.path)
             .with_context(|| format!("failed to read source file: {}", self.path.display()))?;
         let parser = get_parser(&self.path)?;
@@ -90,28 +96,55 @@ impl Executable for ComplexityArgs {
         for (name, score) in &results {
             println!("{name}: {score}");
         }
-        Ok(())
+        Ok(ExitCode::SUCCESS)
     }
 }
 
 impl Executable for CheckArgs {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> Result<ExitCode> {
         let config = load_config()?;
         let detector = RoleDetector::new(&config).context("failed to initialize role detector")?;
         let files = collect_input_files(&self.paths)?;
 
-        let reports: Vec<FileReport> = files
-            .into_iter()
-            .filter_map(|path| analyze_path(&path, &detector, &config).transpose())
+        let mut reports: Vec<FileReport> = files
+            .par_iter()
+            .filter_map(|path| analyze_path(path, &detector, &config).transpose())
             .collect::<Result<_>>()?;
+        reports.sort_by(|a, b| a.path.cmp(&b.path));
 
         let report = CheckReport { files: reports };
+        let writing_to_stdout = self.output.is_none();
+        let mut sink = open_report_sink(self.output.as_deref())?;
         match self.format {
-            ReportFormat::Human => print_human_report(&report),
-            ReportFormat::Json => print_json_report(&report)?,
+            ReportFormat::Human => {
+                let color = writing_to_stdout && color_enabled();
+                write_human_report(sink.as_mut(), &report, color)?;
+            }
+            ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
         }
+        sink.flush().context("failed to flush report output")?;
 
-        Ok(())
+        let has_violation = report
+            .files
+            .iter()
+            .any(|file| file.units.iter().any(|unit| !unit.violations.is_empty()));
+
+        Ok(if has_violation {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        })
+    }
+}
+
+fn open_report_sink(path: Option<&Path>) -> Result<Box<dyn Write>> {
+    match path {
+        Some(path) => {
+            let file = fs::File::create(path)
+                .with_context(|| format!("failed to open output path: {}", path.display()))?;
+            Ok(Box::new(io::BufWriter::new(file)))
+        }
+        None => Ok(Box::new(io::stdout().lock())),
     }
 }
 
@@ -248,11 +281,18 @@ fn push_limit_violation(
     }
 }
 
-fn print_human_report(report: &CheckReport) {
+fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -> Result<()> {
+    let (red, reset) = if color {
+        ("\u{1b}[31m", "\u{1b}[0m")
+    } else {
+        ("", "")
+    };
+
     for file in &report.files {
-        println!("{} [{}]", file.path, file.role);
+        writeln!(sink, "{} [{}]", file.path, file.role)?;
         for unit in &file.units {
-            println!(
+            writeln!(
+                sink,
                 "  {}: cyclomatic={}, cognitive={}, function_lines={}, params={}, nesting_max={}, abc={:.2}",
                 unit.name,
                 unit.metrics.cyclomatic,
@@ -261,16 +301,32 @@ fn print_human_report(report: &CheckReport) {
                 unit.metrics.params,
                 unit.metrics.nesting_max,
                 unit.metrics.abc,
-            );
+            )?;
+            for violation in &unit.violations {
+                writeln!(
+                    sink,
+                    "    {red}VIOLATION{reset} {} {} > {}",
+                    violation.metric, violation.actual, violation.limit,
+                )?;
+            }
         }
         for diagnostic in &file.diagnostics {
             eprintln!("  {:?}: {}", diagnostic.severity, diagnostic.message);
         }
     }
+    Ok(())
 }
 
-fn print_json_report(report: &CheckReport) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(report)?);
+fn color_enabled() -> bool {
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    io::stdout().is_terminal()
+}
+
+fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
+    serde_json::to_writer_pretty(&mut *sink, report)?;
+    writeln!(sink)?;
     Ok(())
 }
 
@@ -363,7 +419,7 @@ struct ViolationReport {
     limit: f64,
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     let cli = Cli::parse();
     cli.command.run()
 }
