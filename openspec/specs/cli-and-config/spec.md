@@ -1,235 +1,135 @@
 # CLI and Configuration
 
-**Version:** 0.1.0  
-**Status:** Baseline
+## Purpose
 
-## CLI Commands
+Defines Pretender's command-line interface, configuration file schema, output formats, role detection, and plugin manifest contracts.
 
-```
-pretender [init|check|report|hooks|ci]
-pretender [complexity|duplication|mutation]
-```
-### `pretender init`
+## Requirements
 
-Interactive wizard. Writes `pretender.toml`, optionally installs a pre-commit hook and generates a CI workflow.
+### Requirement: Init Command
 
-- `--non-interactive` | `--defaults` — skip prompts, use best-guess defaults.
-- `--mode <mode>` — override default mode.
+The system SHALL provide `pretender init` to interactively create `pretender.toml`, optionally install a pre-commit hook, and optionally generate CI configuration. The command SHALL support `--non-interactive`, `--defaults`, and `--mode <mode>`.
 
-```
-$ pretender init
-? Mode: guidance | tiered | gate
-? Languages: auto-detect ✓
-? Install pre-commit hook? Yes
-? Generate GitHub Actions workflow? Yes
-✓ Wrote pretender.toml
-✓ Wrote .git/hooks/pre-commit
-✓ Wrote .github/workflows/pretender.yml
-```
+#### Scenario: Defaults create config
+- **WHEN** `pretender init --defaults` is run in a repository without `pretender.toml`
+- **THEN** the system writes a default `pretender.toml` and exits with code 0
 
-### `pretender check [paths]`
+### Requirement: Check Command
 
-Fast pass/fail scan against configured thresholds. Used by hooks and CI.
+The system SHALL provide `pretender check [paths]` as the fast pass/fail scan against configured thresholds. In `gate` mode, threshold violations and parse-skip diagnostics SHALL produce a non-zero exit code. In `tiered` mode, values in the configured yellow band SHALL be annotated without failing. In `guidance` mode, the command SHALL always exit 0 after reporting findings.
 
-- While the system is in `gate` mode, if any metric exceeds its `*_max` threshold, or if any file is skipped due to parsing errors, the system shall exit with a non-zero code.
-- While the system is in `tiered` mode, if a metric exceeds the maximum threshold but remains within the yellow band, the system shall print a yellow annotation and exit with code 0.
-- In `guidance` mode: exit 0 always, informational output.
-- `--staged` — only check git-staged files.
-- `--diff-only` — only check files changed relative to `diff_base`.
-- `--staged` and `--diff-only` may be combined; the result is the **intersection** — only files that are both staged AND changed relative to `diff_base` are checked (the pre-commit hook uses both flags). If this intersection is empty, the command shall exit with code 0 and emit an informational message.
-- `--diff-base <ref>` — override `diff_base` from config.
-- `--format <fmt>` — `human` (default) | `json` | `sarif` | `junit` | `markdown`.
-- `--output <path>` — write output to file instead of stdout.
-- **Performance Note:** Expensive checks (like `duplication --cross-file` or `mutation`) are disabled by default in `check` unless explicitly enabled in `pretender.toml`.
+The command SHALL support `--staged`, `--diff-only`, `--diff-base <ref>`, `--format <fmt>`, and `--output <path>`. When `--staged` and `--diff-only` are combined, the checked set SHALL be their intersection. If the intersection is empty, the command SHALL exit 0 and emit an informational message.
 
-...
+Expensive checks, including cross-file duplication and mutation, SHALL be disabled in `check` unless explicitly enabled by configuration.
 
-### `pretender plugins list|add|remove`
+#### Scenario: Gate mode fails on violation
+- **WHEN** `pretender check` runs in `gate` mode and a scanned file exceeds a configured `*_max` threshold
+- **THEN** the command exits with a non-zero code
 
-Manages language and metric plugins in `~/.config/pretender/`.
+#### Scenario: Staged diff-only empty intersection passes
+- **WHEN** `pretender check --staged --diff-only` finds no files that are both staged and changed relative to `diff_base`
+- **THEN** the command exits with code 0 and prints an informational message
 
-- `list` — show installed plugins and their versions.
-- `add <url|path>` — install a plugin from a git URL or local path.
-- `remove <name>` — uninstall a plugin.
-- Top 10 by default; `--top N` to change
-- `--threshold <n>` — highlight above this ABC score
-- Emits per-unit breakdown: A, B, C components and weighted total
+### Requirement: Complexity Command
 
-### `pretender duplication [paths]`
+The system SHALL provide `pretender complexity [paths]` to report ABC scores and component breakdowns per code unit, sorted worst-first. The command SHALL support `--top <n>` and `--threshold <n>`.
 
-Structural clone detection via normalised AST subtree hashing.
+#### Scenario: Complexity reports worst units first
+- **WHEN** multiple code units have ABC scores
+- **THEN** `pretender complexity` lists the highest scoring units before lower scoring units
 
-- Hashes subtrees of ≥10 nodes (configurable via `--min-nodes`)
-- Reports clone pairs with location, size, and similarity score 0–100
-- V0: within-file only; V1: cross-file with `--cross-file` flag
+### Requirement: Duplication Command
 
-### `pretender mutation [paths]`
+The system SHALL provide `pretender duplication [paths]` for structural clone detection via normalized AST subtree hashing. The command SHALL hash subtrees of at least 10 nodes by default, report clone locations, size, and similarity, and initially restrict detection to within-file clones unless cross-file scanning is explicitly requested.
 
-Mutation testing wrapper. Delegates to per-language tools (Stryker / PIT / mutmut / cargo-mutants).
+#### Scenario: Within-file clone reported
+- **WHEN** two matching AST subtrees of at least the minimum size appear in one file
+- **THEN** `pretender duplication` reports the clone locations and similarity
 
-- `--score-min <n>` — override mutation score threshold (default: 60, matching Stryker's default)
-- `--format <fmt>` — `human` (default) | `json`
+### Requirement: Mutation Command
 
-### `pretender report`
+The system SHALL provide `pretender mutation [paths]` as a wrapper around per-language mutation tools. The command SHALL support `--score-min <n>` and `--format human|json`.
 
-Pretty TUI or HTML report from the last `check` run.
+#### Scenario: Mutation delegates to configured tool
+- **WHEN** mutation execution is enabled for a supported language
+- **THEN** `pretender mutation` invokes the configured language mutation tool and reports its score
 
-- `--format human|html` — `human` renders in the terminal; `html` writes a static file
-- Reads cached results from the last `pretender check` invocation
+### Requirement: Report Command
 
-### `pretender hooks install`
+The system SHALL provide `pretender report` to render a human TUI or HTML report from the last check results. The command SHALL support `--format human|html`.
 
-Writes `.git/hooks/pre-commit` (native shim, zero deps) or generates lefthook/pre-commit YAML.
+#### Scenario: Report reads last results
+- **WHEN** `pretender report --format html` is run after a completed check
+- **THEN** the system writes an HTML report derived from the last check results
 
-```bash
-# Generated shim (default)
-#!/usr/bin/env sh
-exec pretender check --staged --diff-only
-```
+### Requirement: Hooks Commands
 
-### `pretender hooks uninstall`
+The system SHALL provide `pretender hooks install` to install a native pre-commit shim that runs `pretender check --staged --diff-only`, and `pretender hooks uninstall` to remove hooks previously installed by Pretender.
 
-Removes the hook file(s) previously installed by `pretender hooks install`.
+#### Scenario: Hook install writes shim
+- **WHEN** `pretender hooks install` is run
+- **THEN** `.git/hooks/pre-commit` runs `pretender check --staged --diff-only`
 
-### `pretender ci generate <provider>`
+### Requirement: CI Generate Command
 
-Providers: `github` | `gitlab` | `circle` | `azure` | `generic`
+The system SHALL provide `pretender ci generate <provider>` for `github`, `gitlab`, `circle`, `azure`, and `generic`. GitHub output SHALL include SARIF upload wiring for GitHub Code Scanning.
 
-GitHub output uses SARIF upload to `github/codeql-action/upload-sarif` so findings appear inline in PRs.
+#### Scenario: GitHub workflow includes SARIF upload
+- **WHEN** `pretender ci generate github` is run
+- **THEN** the generated workflow uploads Pretender SARIF through GitHub Code Scanning
 
-### `pretender plugins list|add|remove`
+### Requirement: Plugins Command
 
-Manages language and metric plugins in `~/.config/pretender/`. Flags: V1, details TBD.
+The system SHALL provide `pretender plugins list|add|remove` to manage language and metric plugins under the configured Pretender plugin directory.
 
-### `pretender explain <metric>`
+#### Scenario: Plugin list shows installed plugins
+- **WHEN** `pretender plugins list` is run
+- **THEN** installed plugin names and versions are printed
 
-Prints metric definition and threshold citation (McCabe 1976, SonarSource, Google/Microsoft style guides).
+### Requirement: Explain Command
 
-## Config Schema (`pretender.toml`)
+The system SHALL provide `pretender explain <metric>` to print a metric definition, threshold behavior, and citation for known metrics.
 
-```toml
-[pretender]
-mode = "tiered"              # guidance | tiered | gate
-languages = ["auto"]         # or explicit list
-exclude = ["vendor/**", "node_modules/**", "**/*_generated.*"]
+#### Scenario: Explain known metric
+- **WHEN** `pretender explain cyclomatic` is run
+- **THEN** the command prints the cyclomatic complexity definition and threshold citation
 
-[thresholds]                 # defaults = app role
-cyclomatic_max         = 10
-cognitive_max          = 15
-function_lines_max     = 40
-file_lines_max         = 400
-nesting_max            = 3
-params_max             = 4
-duplication_pct_max    = 5
-# Maintainability Index (Microsoft 0–100 scale): weighted combination of Halstead volume,
-# cyclomatic complexity, and lines of code. ≥20 = green zone. Only computed when
-# [execute] enabled = true. Use `pretender explain mi` for formula and citations.
-mi_min                 = 20
+### Requirement: Configuration Schema
 
-coverage_line_min      = 80  # only enforced when [execute] enabled = true
-coverage_branch_min    = 70
-mutation_min           = 60
+The system SHALL read `pretender.toml` with tables for `[pretender]`, `[thresholds]`, role-specific threshold tables such as `[thresholds.test]`, `[scope]`, `[execute]`, `[plugins]`, `[output]`, and `[roles]`. The `mode` value SHALL be one of `guidance`, `tiered`, or `gate`. The implicit default role SHALL be `app`.
 
-[bands]                      # tiered mode: values outside _max but inside band = yellow
-# Only metrics with explicit [bands] entries use green/yellow/red banding.
-# Metrics without a bands entry (nesting, params, function_lines, duplication_pct)
-# are binary: pass (≤ threshold) or fail (> threshold).
-cyclomatic = { green = 10, yellow = 15, red = 20 }
-cognitive  = { green = 15, yellow = 25, red = 40 }
+#### Scenario: Role-specific thresholds override app defaults
+- **WHEN** a file is assigned role `test`
+- **THEN** values under `[thresholds.test]` override app threshold defaults for that file
 
-[thresholds.test]
-cyclomatic_max     = 3
-function_lines_max = 80
-nesting_max        = 2
-params_max         = 2
-cognitive_max      = 5
-duplication_pct_max = 30
-min_assertions     = 1
+### Requirement: Role Detection
 
-[thresholds.library]
-exported_params_max     = 3
-exported_cyclomatic_max = 8
-exported_lines_max      = 30
-require_docstring       = true
+The system SHALL assign each file a role from `app`, `library`, `test`, `script`, `generated`, or `vendor`. Explicit Pretender role pragmas SHALL take priority over path globs from `[roles]`; when neither applies, the role SHALL be `app`.
 
-[thresholds.script]
-function_lines_max = 100
-file_lines_max     = 300
+#### Scenario: Pragma wins over path glob
+- **WHEN** a file declares an explicit Pretender role pragma and also matches a configured role glob
+- **THEN** the pragma role is assigned
 
-[scope]
-diff_only = true
-diff_base = "origin/main"
+### Requirement: Schema Versioning
 
-[execute]
-enabled      = false
-# coverage_cmd = "your-test-runner --coverage-output=xml"
-# mutation_cmd = "your-mutation-tool run"
+The system SHALL not require a config version key. Unknown config keys SHALL be ignored for forward compatibility. Breaking changes to config key semantics SHALL require a major semver version and changelog entry.
 
-[plugins]
-languages = ["python", "javascript", "typescript", "go", "rust"]
-metrics   = ["eslint", "ruff", "clippy"]
+#### Scenario: Unknown key is ignored
+- **WHEN** `pretender.toml` contains an unknown key
+- **THEN** parsing succeeds and the unknown key has no effect
 
-[output]
-formats    = ["human", "sarif"]
-sarif_path = "pretender.sarif"
+### Requirement: Output Formats
 
-[roles]
-# The `app` role is implicit: any file not matched by entries below is role=app.
-test      = { paths = ["tests/**", "**/*_test.*", "spec/**"] }
-library   = { paths = ["pkg/**", "lib/**"] }
-script    = { paths = ["scripts/**", "examples/**"] }
-generated = { paths = ["**/*.pb.go", "**/*_generated.*"] }
-vendor    = { paths = ["vendor/**", "node_modules/**"] }
-```
+The system SHALL support output formats `human`, `json`, `sarif`, `junit`, and `markdown` where applicable. SARIF output SHALL target SARIF 2.1.0 compatibility for GitHub Code Scanning and SARIF-aware IDEs.
 
-## Schema Versioning
+#### Scenario: SARIF validates
+- **WHEN** Pretender emits SARIF output
+- **THEN** the output conforms to the SARIF 2.1.0 schema
 
-Config files do not require a version key. Unknown keys are silently ignored (forward compatible). Breaking changes to key semantics require a new major semver version and are announced in `CHANGELOG.md`. Tools consuming `pretender.toml` should ignore unknown keys rather than erroring.
+### Requirement: Plugin Manifests
 
-## Output Formats
+Language plugins SHALL be data-only plugin packages made of `.scm` query files and `plugin.toml` manifests; they SHALL NOT execute native code during metric collection. Metric plugins SHALL be external command-wrapper packages that declare a command, applicable languages, parser, and output mapping. Future native or WASM plugin execution models require a separate compatibility and trust specification before implementation.
 
-| Format | Use |
-|--------|-----|
-| `human` | Terminal, colored, default |
-| `json` | Machine pipelines, custom integrations |
-| `sarif` | GitHub Code Scanning, GitLab SAST, IDE diagnostics (OASIS SARIF 2.1.0) |
-| `junit` | CI test reporters |
-| `markdown` | `$GITHUB_STEP_SUMMARY`, PR comments |
-
-SARIF is the highest-priority format — once valid SARIF is emitted, GitHub PR annotations, IDE squiggles (SARIF viewer extension), and future aggregators work automatically.
-
-## Plugin Manifests
-
-### Language Plugin
-
-```toml
-# ~/.config/pretender/languages/elixir/plugin.toml
-name         = "elixir"
-display_name = "Elixir"
-extensions   = [".ex", ".exs"]
-shebangs     = ["elixir"]
-tree_sitter  = { source = "github:elixir-lang/tree-sitter-elixir", rev = "main" }
-query        = "metrics.scm"
-
-[branches]
-"@branch.if"      = { cyclomatic = 1, cognitive = 1 }
-"@branch.loop"    = { cyclomatic = 1, cognitive = 1 }
-"@branch.logical" = { cyclomatic = 1, cognitive = 1 }
-"@branch.catch"   = { cyclomatic = 1, cognitive = 1 }
-
-[assertions]
-patterns = ["assert", "assert_eq!", "assert_ne!"]
-
-# [smell_weights] — no Elixir-specific smell weights defined yet
-```
-
-### Metric Plugin (External Tool Wrapper)
-
-```toml
-# ~/.config/pretender/metrics/eslint.toml
-name       = "eslint"
-applies_to = ["javascript", "typescript"]
-command    = "eslint --format json {files}"
-parser     = "json"
-mapping    = { "errorCount" = "issues.error", "warningCount" = "issues.warn" }
-```
+#### Scenario: Language plugin declares query
+- **WHEN** a language plugin is installed
+- **THEN** its manifest identifies the tree-sitter grammar source and query file used to populate the universal model

@@ -4,8 +4,8 @@
 
 The system SHALL provide `pretender baseline create` to snapshot the current set of rule violations
 into a file (default: `pretender.baseline.json`). The snapshot MUST include, for each finding, a
-fingerprint derived from `(file, unit_name, rule, bucketed_value)`, the rule name, the file path,
-the unit name, the raw metric value, and the configured threshold.
+stable identity fingerprint derived from `(file, unit_name, rule)`, the rule name, the file path,
+the unit name, the raw metric value, the configured threshold, and a coarse bucket value for regression comparison.
 
 #### Scenario: Create writes baseline file
 
@@ -57,33 +57,34 @@ recorded in the baseline file in a human-readable table. The command MUST suppor
 ### Requirement: Baseline Fingerprinting
 
 The system SHALL derive the fingerprint for each baseline entry as the SHA-256 hash of
-`file_path + NUL + unit_name + NUL + rule + NUL + bucket_value_str`. The bucket value
-MUST be computed as `floor(value / max(1, threshold / 5))`, producing coarse buckets so that
-minor metric fluctuations within the same bucket do not invalidate the fingerprint.
+`file_path + NUL + unit_name + NUL + rule`. The fingerprint identifies the finding independent
+of its current metric value. The baseline entry MUST also store a `bucket` value computed as
+`floor(value / max(1, threshold / 5))`, producing coarse buckets so that minor metric fluctuations
+within the same bucket do not count as regressions.
 
 #### Scenario: Same bucket value matches fingerprint
 
-- **WHEN** a function's metric value changes but remains within the same coarse bucket relative to its threshold
+- **WHEN** a function's metric value changes but its file, unit name, and rule are unchanged
 - **THEN** the fingerprint is identical and the finding is considered to match the baseline entry
 
-#### Scenario: Bucket increase does not match fingerprint
+#### Scenario: Bucket increase is a regression
 
-- **WHEN** a function's metric value increases enough to move it into a higher coarse bucket
-- **THEN** the fingerprint does not match the baseline entry and the finding is treated as a regression
+- **WHEN** a function's metric value increases enough to move it above the stored baseline bucket
+- **THEN** the fingerprint still matches but the finding is treated as a regression
 
 ---
 
 ### Requirement: Baseline Ratchet
 
 When `auto_update_improved = true` (the default), the system SHALL silently tighten a baseline entry
-whenever the actual metric value is strictly less than the baselined value. The updated entry MUST use
-the new lower value and new fingerprint. This prevents re-introduction of previously grandfathered
-values without triggering a failure.
+whenever the actual metric value moves into a lower bucket than the stored baseline bucket. The updated entry MUST use
+the new lower value and new lower bucket while preserving the stable identity fingerprint. This prevents re-introduction of previously grandfathered
+bucket ranges without triggering a failure.
 
 #### Scenario: Improvement silently tightens baseline
 
-- **WHEN** `pretender check --baseline` is run and a finding's value is lower than its baselined value
-- **THEN** the baseline entry is updated to the new lower value without user intervention
+- **WHEN** `pretender check --baseline` is run and a finding's value falls into a lower bucket than its stored baseline bucket
+- **THEN** the baseline entry is updated to the new lower value and bucket without user intervention
 
 #### Scenario: Re-introduction of grandfathered value fails
 
@@ -107,7 +108,8 @@ The baseline file MUST be a JSON file conforming to:
       "file": "<relative-path>",
       "unit": "<unit-name>",
       "value": <number>,
-      "threshold": <number>
+      "threshold": <number>,
+      "bucket": <integer>
     }
   ]
 }

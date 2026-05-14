@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Explain Finding by Location
 
@@ -11,7 +11,7 @@ The output SHALL include four sections:
 3. **Top contributors** — up to 5 nodes ranked by contribution value, each showing line number, node description, and contribution
 4. **What helps** — 2-3 mechanical suggestions and the language-appropriate suppression pragma template
 
-When no cache entry exists for the specified location, the system SHALL exit non-zero and print: `No cached results for '<arg>'. Run 'pretender check' first.`
+The most recent `pretender check` cache entry MUST include an explainable findings index containing stable finding ids, finding locations, rule ids, zone labels, top contributor traces, and the suppression pragma template required by this command. When no cache entry exists for the specified location, the system SHALL exit non-zero and print: `No cached results for '<arg>'. Run 'pretender check' first.`
 
 #### Scenario: Explain by file and function
 

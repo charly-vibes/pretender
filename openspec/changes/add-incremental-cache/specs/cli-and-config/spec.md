@@ -37,9 +37,9 @@ The system SHALL support a `[cache]` table in `pretender.toml` with the followin
 | `enabled`      | boolean | `true`                    | Enable or disable the cache globally     |
 | `max_age_days` | integer | `30`                      | Entries older than this are pruned       |
 | `max_size_gb`  | float   | `1`                       | Total cache size ceiling in gigabytes    |
-| `path`         | string  | `"~/.cache/pretender"`    | Base directory for the cache             |
+| `path`         | string  | `"~/.cache/pretender"`    | Root directory for all repository caches |
 
-The `PRETENDER_CACHE_DIR` environment variable MUST override the `path` key when set.
+The configured `path` is a cache root; Pretender SHALL append a stable `<repo-id>` subdirectory for the current repository before reading or writing entries. The `PRETENDER_CACHE_DIR` environment variable MUST override the `path` key when set and is also treated as a cache root.
 When `enabled = false`, the engine MUST skip all cache reads and writes.
 
 #### Scenario: Cache disabled skips all cache I/O
@@ -50,9 +50,9 @@ When `enabled = false`, the engine MUST skip all cache reads and writes.
 #### Scenario: Custom path overrides default
 
 - **WHEN** `[cache] path = "/tmp/my-cache"` is set
-- **THEN** all cache files are read from and written to `/tmp/my-cache`
+- **THEN** all cache files for the current repository are read from and written to `/tmp/my-cache/<repo-id>`
 
 #### Scenario: Environment variable overrides config path
 
 - **WHEN** the environment variable `PRETENDER_CACHE_DIR=/ci/cache` is set
-- **THEN** it takes precedence over the `path` key in `pretender.toml`
+- **THEN** it takes precedence over the `path` key in `pretender.toml` and repository cache files are stored under `/ci/cache/<repo-id>`

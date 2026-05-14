@@ -128,7 +128,7 @@ The curated registry publishes a signed index (minisign ed25519). The system SHA
 
 ### Requirement: WASM Sandbox Placeholder
 
-The system architecture SHALL reserve a capability slot for a future WASM sandbox layer that would execute language plugin logic in an isolated WASM runtime rather than as native code. No implementation is required in this change; this requirement documents the intended extension point.
+The system architecture SHALL reserve a capability slot for a future WASM sandbox layer that would execute future plugin logic in an isolated WASM runtime. Current language plugins remain data-only `.scm` query packages and do not execute native code during metric collection. No WASM implementation is required in this change; this requirement documents the intended extension point.
 
 #### Scenario: Future WASM layer extension point
 

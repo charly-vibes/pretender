@@ -15,7 +15,7 @@ expiry dates provide a targeted, auditable escape hatch.
 - Scope: the pragma suppresses the next `CodeUnit` (or the entire `Module` if placed at file top)
 - Expiry: after `until=YYYY-MM-DD`, the suppression is ignored and the violation resurfaces
 - New `pretender suppressions list` command — reports every active suppression across the repo
-- Language plugins declare suppression-comment syntax in `plugin.toml` via a `[suppressions]` key
+- Language plugins declare Pretender pragma comment syntax in `plugin.toml` via a shared `[pragmas]` key
 
 ## Impact
 

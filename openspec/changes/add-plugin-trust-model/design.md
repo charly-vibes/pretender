@@ -1,6 +1,6 @@
 ## Context
 
-Pretender plugins are loaded from arbitrary URLs. Any plugin installed via `pretender plugins add <url>` executes as native code (`.so`/`.dylib`/`.dll`) or runs an external command (`command` spec). Without integrity checking, a compromised upstream rev or a MITM can silently replace plugin code. This design adds a lock-file-first trust model analogous to `Cargo.lock` / `package-lock.json`, augmented by a curated registry.
+Pretender plugins are loaded from arbitrary URLs. Language plugins are data-only `.scm` query packages, while metric plugins may run external commands via their `command` spec. Without integrity checking, a compromised upstream rev or a MITM can silently replace plugin content or command-wrapper manifests. This design adds a lock-file-first trust model analogous to `Cargo.lock` / `package-lock.json`, augmented by a curated registry.
 
 Stakeholders: individual developers (want frictionless install), CI operators (want reproducible, tamper-evident runs), security teams (want supply-chain guarantees).
 

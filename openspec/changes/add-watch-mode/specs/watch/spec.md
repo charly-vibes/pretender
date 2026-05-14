@@ -25,12 +25,17 @@ The watcher SHALL filter events to source file extensions known to installed lan
 
 ### Requirement: Single-File Re-Check Performance
 
-With a warm incremental cache (from `add-incremental-cache`), a single-file re-check SHALL complete in less than 100ms. This requirement gates the watch mode on the incremental cache being available.
+With a warm incremental cache (from `add-incremental-cache`), a single-file re-check SHALL complete in less than 100ms. When cache is disabled, unavailable, cold, or corrupt, watch mode SHALL still run but SHALL report that the performance guarantee is inactive and SHALL recompute normally.
 
 #### Scenario: Sub-100ms re-check with warm cache
 
 - **WHEN** `pretender watch` is running with a warm cache and a single file is saved
 - **THEN** the re-check completes and results are written to the SARIF output path in less than 100ms
+
+#### Scenario: Cold or disabled cache degrades gracefully
+
+- **WHEN** `pretender watch` is running with cache disabled, unavailable, cold, or corrupt and a single file is saved
+- **THEN** the file is rechecked normally, the console indicates the performance guarantee is inactive, and no sub-100ms guarantee is asserted
 
 ---
 

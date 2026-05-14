@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: SARIF Fix Suggestions
 
@@ -15,7 +15,7 @@ Fix strategies by rule:
 | `function_lines_max` | `// pretender: consider extracting '<block>' (lines N–M)` above the largest nested block |
 | `cyclomatic_max` | `// pretender: highest-weight branch at line N — consider extracting` |
 | `cognitive_max` | `// pretender: highest-weight branch at line N — consider extracting` |
-| `duplication` | `// pretender: clone of <other-file>:<line>` on both sides of the duplicate pair |
+| `duplication` | `// pretender: clone of <other-file>:<line>` on the primary clone-pair result, referencing the related location |
 
 Fixes are suggestion-only and SHALL NOT be auto-applied. They appear as IDE quick-fix options in SARIF-aware tooling.
 
@@ -44,10 +44,10 @@ Fixes are suggestion-only and SHALL NOT be auto-applied. They appear as IDE quic
 - **WHEN** a finding for `cognitive_max` is emitted in `sarif` format
 - **THEN** the fix inserts a comment referencing the line of the branch with the highest cognitive weight (branch_weight × (1 + nesting_at))
 
-#### Scenario: duplication fix cross-references both sides
+#### Scenario: duplication fix cross-references related location
 
 - **WHEN** a `duplication` finding is emitted in `sarif` format for a clone pair at locations A and B
-- **THEN** the result for location A includes a fix referencing location B, and the result for location B includes a fix referencing location A
+- **THEN** the single clone-pair SARIF result includes one fix on the primary location that references the related location B
 
 #### Scenario: nesting_max produces no fixes block
 

@@ -1,10 +1,10 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Three-Tier Role Detection
 
 The system SHALL assign a role to each file using exactly three tiers in priority order. **BREAKING**: the heuristics tier is removed and no other role assignment logic exists.
 
-1. **Pragma**: if `// pretender: role=<role>` (or language-appropriate comment prefix) appears within the first 10 lines of the file, that role is assigned
+1. **Pragma**: if `<comment-prefix> pretender: role=<role>` appears within the first 10 lines of the file, that role is assigned. The `<comment-prefix>` MUST be resolved by the shared Pretender pragma scanner used for both role and suppression pragmas.
 2. **Path glob**: if the file path matches a glob in `[roles]` config, the matching role is assigned; when multiple globs match, the first defined entry in config wins
 3. **Default**: the role `app` is assigned
 
@@ -34,7 +34,7 @@ The system SHALL assign a role to each file using exactly three tiers in priorit
 
 ### Requirement: Pragma Comment Syntax
 
-The system SHALL recognise language-appropriate comment prefixes for the role pragma. For C-family languages the prefix is `//`. For Python, Ruby, Shell, and TOML the prefix is `#`. The pragma form is `<prefix> pretender: role=<role>` with no leading whitespace required on the comment prefix.
+The system SHALL recognise role pragmas through the shared Pretender pragma scanner. The scanner SHALL use plugin-declared pragma comment prefixes when available and built-in defaults otherwise. Built-in defaults are `//` for C-family languages and `#` for Python, Ruby, Shell, and TOML. The pragma form is `<prefix> pretender: role=<role>` with no leading whitespace required on the comment prefix.
 
 #### Scenario: Python pragma recognised
 - **WHEN** a `.py` file contains `# pretender: role=script` within the first 10 lines

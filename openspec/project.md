@@ -10,7 +10,7 @@ Binary: `pretender` · Config: `pretender.toml` · License: Apache 2.0
 
 - **Rust** — single-binary distribution, tree-sitter Rust bindings, <10ms startup
 - **tree-sitter** — CST parsing for 100+ grammars; `.scm` query files per language
-- **tree-sitter-loader** — dynamic language loading (`.so`/`.dylib`/`.dll` plugins)
+- **tree-sitter-loader** — loads tree-sitter grammars and query files used by data-only language plugins
 - **clap** — CLI argument parsing
 - **serde + toml** — config parsing
 - **serde_sarif** — SARIF 2.1.0 emission
@@ -43,7 +43,7 @@ Metrics are **pure functions** over the universal model:
 fn cyclomatic(u: &CodeUnit) -> u32 { 1 + count_branches(&u.body) }
 ```
 
-Plugin system is **file-system based** — language plugins are `.scm` files + `plugin.toml` manifests. No compilation required for new languages.
+Plugin system is **file-system based** — language plugins are data-only `.scm` files + `plugin.toml` manifests. No compilation or native code execution is required for new languages.
 
 Three operating modes: `guidance` (report only) → `tiered` (green/yellow/red) → `gate` (hard fail).
 
@@ -112,7 +112,7 @@ pretender explain <metric>        # metric description + threshold citation
 
 - Hook must complete in **<2s** on a normal commit — diff-only mode is critical
 - Tree-sitter is the **core** parser (not LSP). LSP is optional, V2-only, for coupling/dead-code
-- Language plugins ship as `.so`/`.dylib`/`.dll` for dynamic loading — no recompilation
+- Language plugins ship as data-only `.scm` query files plus `plugin.toml` manifests — no native dynamic loading or recompilation
 - Top 10 languages compiled into the binary: Python, JavaScript, TypeScript, Rust, Go, Java, Ruby, C, C++, C# — others downloaded on demand with checksum pinning
 - SARIF output must be valid SARIF 2.1.0 (OASIS standard) for GitHub Code Scanning compat
 - Single-binary distribution via `cargo dist`

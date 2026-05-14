@@ -24,19 +24,19 @@ be included in the output with a clear `[EXPIRED]` annotation.
 
 ---
 
-### Requirement: Plugin Suppression Attachment Rule
+### Requirement: Shared Pretender Pragma Scanner
 
-Language plugin `plugin.toml` manifests SHALL support a `[suppressions]` table that declares
-how suppression comments are recognized for that language. The table MUST support at minimum
+Language plugin `plugin.toml` manifests SHALL support a `[pragmas]` table that declares
+how Pretender pragmas are recognized for that language. The table MUST support at minimum
 a `comment_prefix` key specifying the line comment token (e.g., `"//"`, `"#"`, `"--"`).
-The engine MUST use the plugin-declared prefix when scanning for suppression pragmas.
+The engine MUST use the shared Pretender pragma scanner and plugin-declared prefix when scanning for both suppression and role pragmas.
 
 #### Scenario: Plugin comment prefix is used for pragma detection
 
-- **WHEN** a language plugin declares `[suppressions] comment_prefix = "#"` in `plugin.toml`
+- **WHEN** a language plugin declares `[pragmas] comment_prefix = "#"` in `plugin.toml`
 - **THEN** the engine recognizes `# pretender: allow[rule] reason="..."` as a valid suppression pragma for that language
 
-#### Scenario: Default comment prefix falls back to double-slash
+#### Scenario: Default comment prefix uses built-in language default
 
-- **WHEN** a language plugin does not declare a `[suppressions]` table
-- **THEN** the engine uses `//` as the default suppression comment prefix for that plugin
+- **WHEN** a language plugin does not declare a `[pragmas]` table
+- **THEN** the engine uses the built-in default pragma comment prefix for that plugin's language

@@ -25,7 +25,7 @@
 
 ## 5. Plugin Manifest Extension
 
-- [ ] 5.1 Add `[suppressions]` key parsing in language plugin `plugin.toml` loader
+- [ ] 5.1 Add shared `[pragmas]` key parsing in language plugin `plugin.toml` loader
 - [ ] 5.2 Allow plugins to specify `comment_prefix` and `comment_style` (inline vs block)
 
 ## 6. Tests
