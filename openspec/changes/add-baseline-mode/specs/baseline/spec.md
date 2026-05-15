@@ -62,6 +62,8 @@ of its current metric value while disambiguating repeated or nested units with t
 `floor(value / max(1, threshold / 5))`, producing coarse buckets so that minor metric fluctuations
 within the same bucket do not count as regressions.
 
+Preconditions for the bucket formula: `value` MUST be a finite, non-negative real number and `threshold` MUST be a finite, strictly positive real number. The division and `max` operations MUST be evaluated in IEEE-754 double precision and the `floor` result MUST be truncated toward zero to a non-negative integer. The system SHALL reject any rule whose configured threshold is `<= 0`, NaN, or infinite at config-load time.
+
 #### Scenario: Same bucket value matches fingerprint
 
 - **WHEN** a function's metric value changes but its file, unit name, unit start line, and rule are unchanged
@@ -83,6 +85,8 @@ produce stderr output, MUST NOT alter the process exit code, and MUST NOT emit a
 only via a structured-log entry at `INFO` level with event name `baseline.tightened`. This prevents re-introduction of
 previously grandfathered bucket ranges without triggering a failure.
 
+Monotonicity invariant: for any fingerprint `F` present in the baseline at times `t1 < t2` with no intervening `pretender baseline create` or `pretender baseline update` command, `bucket(F, t2) <= bucket(F, t1)`. The ratchet path MUST NOT raise a stored `bucket` and MUST NOT mutate the stored `fingerprint`; only `pretender baseline create` and `pretender baseline update` may raise a stored `bucket` (by replacing the snapshot wholesale).
+
 #### Scenario: Improvement tightens baseline without user-visible output
 
 - **WHEN** `pretender check --baseline` is run and a finding's value falls into a lower bucket than its stored baseline bucket
@@ -92,6 +96,11 @@ previously grandfathered bucket ranges without triggering a failure.
 
 - **WHEN** a baseline entry has been tightened to value 18 and the function is later edited to value 23
 - **THEN** `pretender check --baseline` exits with a non-zero code for that finding
+
+#### Scenario: Ratchet never loosens within a stored bucket
+
+- **WHEN** `pretender check --baseline` is run, a finding's value increases but stays within the bucket already stored in the baseline
+- **THEN** the stored `bucket` and stored `value` are both unchanged (no widening), the structured log contains zero `baseline.tightened` entries for the affected fingerprint, and the command exits with code 0 (assuming no other failing findings)
 
 ---
 

@@ -28,6 +28,10 @@ installed_at    = "2026-05-13T00:00:00Z"
 
 The system SHALL write a new lock entry whenever a plugin is successfully installed via `pretender plugins add`. The system SHALL update an existing lock entry when a plugin is reinstalled or updated. The system SHALL also be able to generate lock entries for already-installed plugins via `pretender plugins lock-generate`.
 
+Initial state: at first invocation in a project with no plugins installed, `pretender.plugins.lock` either does not exist or is a well-formed TOML file containing zero `[[plugin]]` entries.
+
+Uniqueness invariant: in any well-formed lock file, `name` is the primary key — no two `[[plugin]]` entries SHALL share the same `name`. The system MUST reject (with a non-zero exit and a clear error) any lock file containing duplicate names, and MUST replace rather than append the existing entry whenever a plugin with the same `name` is reinstalled.
+
 #### Scenario: Lock file written on install
 
 - **WHEN** `pretender plugins add elixir` completes successfully
@@ -85,7 +89,7 @@ When `pretender plugins add <source>` is called with a source that contains a UR
 
 - The system SHALL print: `Warning: installing from an unverified URL executes untrusted code. Review the source before continuing.`
 - In a non-interactive environment (stdin is not a TTY), the system SHALL require the `--i-trust-this` flag and exit with an error if it is absent
-- In an interactive environment, the system SHALL prompt "Trust and install this plugin? [y/N]" and abort on any input other than `y` or `Y`
+- In an interactive environment, the system SHALL prompt "Trust and install this plugin? [y/N]" and SHALL abort (exit code 0, no install) on any input that is not exactly `y` or `Y` — including an empty line, EOF on stdin, SIGINT, or any read error
 
 #### Scenario: Non-interactive without flag
 

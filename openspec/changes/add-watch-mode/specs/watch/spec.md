@@ -6,6 +6,10 @@ The system SHALL watch one or more paths for file-write and file-rename events a
 
 The watcher SHALL filter events to source file extensions known to installed language plugins. For events on non-source files, the watcher SHALL NOT trigger a re-check, SHALL NOT write to stdout or stderr, and SHALL NOT modify the SARIF output path; the event SHALL be recorded only as an `INFO`-level structured-log entry `watch.event_ignored` (path, extension).
 
+When one or more save events for file `F` arrive while a re-check of `F` is already in flight, the watcher SHALL coalesce them into exactly one additional re-check of `F`, scheduled to start after the in-flight re-check completes. The watcher MUST NOT drop the trailing save and MUST NOT spawn overlapping re-checks for the same file.
+
+Liveness: for any save event `E` on a tracked source file with no subsequent save within `debounce_ms`, a re-check reflecting the on-disk content at the moment the debounce window closes MUST start within `debounce_ms + scheduling_latency` (best-effort, observable as the gap between event timestamp and re-check start in the structured log) and MUST eventually run to completion or terminate with a structured-log error entry — the watcher MUST NOT silently drop scheduled re-checks.
+
 #### Scenario: Source file save triggers re-check
 
 - **WHEN** `pretender watch` is running and a tracked source file is saved
@@ -20,6 +24,11 @@ The watcher SHALL filter events to source file extensions known to installed lan
 
 - **WHEN** a file is saved three times within 30ms
 - **THEN** exactly one re-check is triggered (debounced)
+
+#### Scenario: Save during in-flight re-check is coalesced, not lost
+
+- **WHEN** one or more saves for file `F` arrive while a previous re-check of `F` is still running
+- **THEN** exactly one additional re-check of `F` is scheduled to start after the in-flight re-check completes (regardless of how many saves arrived during the in-flight window), and the structured log records exactly one `watch.recheck_started` entry for that follow-up
 
 ---
 
@@ -61,7 +70,7 @@ The system SHALL print a one-line status to stdout for each re-check:
 
 The system SHALL write SARIF results to a configurable output path after each re-check. The default path is `pretender.sarif` in the project root. The `--output <path>` CLI flag and the `[watch] sarif_path` config key SHALL override the default.
 
-The SARIF file SHALL be fully rewritten (not appended) on each re-check so that SARIF-aware IDE extensions see a consistent file.
+The SARIF file SHALL be replaced atomically on each re-check via write-to-temp-then-rename (the temporary file MUST live in the same directory as the destination so the rename is a same-filesystem operation). Any concurrent reader (e.g. a SARIF-aware IDE extension) MUST observe either the previous complete SARIF document or the new complete SARIF document — never a truncated, partially written, or zero-length file.
 
 #### Scenario: Default SARIF path used
 
@@ -83,6 +92,10 @@ The SARIF file SHALL be fully rewritten (not appended) on each re-check so that 
 ### Requirement: JSON-RPC Push Socket
 
 The system SHALL support an optional `--port <n>` flag that opens a TCP JSON-RPC push socket. After each re-check the system SHALL push a `pretender/findings` notification to all connected clients with the SARIF result payload. When a client's TCP connection closes or a write fails, the watcher SHALL remove that client from the connection set, SHALL NOT write to stderr, SHALL NOT alter the watcher's exit code, and SHALL record an `INFO`-level structured-log entry `watch.client_disconnected` (remote_addr, reason). Multiple simultaneous clients SHALL be supported.
+
+Per-client ordering: for any two re-checks `r1` and `r2` with `r1` started strictly before `r2`, every surviving client SHALL receive the `pretender/findings` notification for `r1` before the notification for `r2` (per-client FIFO across the lifetime of one TCP connection).
+
+Bounded resource: the connection set size MUST be bounded by `max_clients` (default `64`, configurable via `[watch] max_clients`). Connection attempts that would exceed the bound SHALL be refused at TCP `accept` (the kernel closes the socket immediately) and SHALL produce exactly one `INFO`-level structured-log entry `watch.client_rejected` (remote_addr, reason `"max_clients"`); they MUST NOT write to stderr and MUST NOT affect the watcher's exit code.
 
 #### Scenario: Findings pushed to connected client
 

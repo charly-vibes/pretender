@@ -7,10 +7,17 @@ The cache MUST store serialized `Module` structs and their computed metric resul
 `metrics/<sha256-of-file-content>/<pretender-version>/<language-plugin-version>`. A JSON index at `index.json` MUST record, for each tracked
 source path, its current content hash, Pretender version, language-plugin version, and the epoch timestamp of last use.
 
+Cache entry writes MUST be atomic at file granularity: the system SHALL write each entry to a temporary file in the same directory and rename it into place so that any concurrent reader observes either no entry or the fully written entry, never a truncated or partially populated file.
+
 #### Scenario: Cold run writes cache entry
 
 - **WHEN** a source file is checked and no cache entry exists for its content hash
 - **THEN** the engine computes metrics normally and writes a new cache entry before returning results
+
+#### Scenario: Concurrent read during write observes no partial entry
+
+- **WHEN** a writer is mid-write for content hash `H` and a concurrent reader looks up `H`
+- **THEN** the reader observes either a cache miss or the fully written, checksum-valid entry; the reader never observes a partial file
 
 #### Scenario: Warm run returns cached metrics
 
@@ -45,8 +52,19 @@ All three components MUST be encoded in the cache entry path and repeated in the
 
 The system SHALL automatically prune cache entries that are older than `max_age_days` (default: 30)
 or that cause the total cache size to exceed `max_size_gb` (default: 1). When size pruning is
-required, the system MUST evict least-recently-used entries first. Pruning SHALL run at the start of
-`pretender check` in a non-blocking best-effort manner.
+required, the system MUST evict least-recently-used entries first; when two entries share the same
+last-used epoch timestamp, the entry whose content-hash compares lexicographically smaller MUST be
+evicted first (deterministic tie-breaker). Pruning SHALL run at the start of `pretender check` in a
+non-blocking best-effort manner.
+
+After any successful pruning pass completes, the following invariants MUST hold:
+
+- `total_size <= max_size_gb`
+- no entry exists whose `now - last_used > max_age_days`
+
+Pruning SHALL operate at entry granularity via atomic file removal so that a concurrent reader
+observes any given entry as either fully present (with valid checksum) or absent — never as a
+partially deleted or truncated entry.
 
 #### Scenario: Age-based pruning removes stale entries
 
