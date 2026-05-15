@@ -26,6 +26,7 @@ Stakeholders: individual developers (want frictionless install), CI operators (w
   - Alternatives: GPG (too heavy), TUF (correct but complex). Minisign is the minimum viable solution.
 - **Decision**: Metric plugin (command) hashes the resolved binary path via `which <cmd>` at install time. Commands with embedded arguments hash the binary only.
 - **Decision**: Lock file is created in the project root (alongside `pretender.toml`), not in `~/.config/pretender/`. This enables per-project pinning and makes the lock commitable.
+- **Decision**: Reserve an optional `runtime` field on each lock entry (default `"data-only"`) to leave room for a future WASM sandbox without a breaking schema change. Parsers MUST round-trip unknown runtime values rather than error out. No WASM implementation is delivered in this change; the field is the only forward-compat affordance committed to here.
 
 ## Risks / Trade-offs
 

@@ -76,15 +76,17 @@ within the same bucket do not count as regressions.
 
 ### Requirement: Baseline Ratchet
 
-When `auto_update_improved = true` (the default), the system SHALL silently tighten a baseline entry
+When `auto_update_improved = true` (the default), the system SHALL tighten a baseline entry
 whenever the actual metric value moves into a lower bucket than the stored baseline bucket. The updated entry MUST use
-the new lower value and new lower bucket while preserving the stable identity fingerprint. This prevents re-introduction of previously grandfathered
-bucket ranges without triggering a failure.
+the new lower value and new lower bucket while preserving the stable identity fingerprint. The tightening MUST NOT
+produce stderr output, MUST NOT alter the process exit code, and MUST NOT emit a SARIF result; it SHALL be recorded
+only via a structured-log entry at `INFO` level with event name `baseline.tightened`. This prevents re-introduction of
+previously grandfathered bucket ranges without triggering a failure.
 
-#### Scenario: Improvement silently tightens baseline
+#### Scenario: Improvement tightens baseline without user-visible output
 
 - **WHEN** `pretender check --baseline` is run and a finding's value falls into a lower bucket than its stored baseline bucket
-- **THEN** the baseline entry is updated to the new lower value and bucket without user intervention
+- **THEN** the baseline entry is updated to the new lower value and bucket, the command exits with code 0 (assuming no other failing findings), stderr is empty for this event, and the structured log contains exactly one `baseline.tightened` entry for the affected fingerprint
 
 #### Scenario: Re-introduction of grandfathered value fails
 

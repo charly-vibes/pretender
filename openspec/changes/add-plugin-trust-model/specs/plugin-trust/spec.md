@@ -10,6 +10,7 @@ Lock file format:
 [[plugin]]
 name            = "elixir"
 kind            = "language"
+runtime         = "data-only"      # optional; default "data-only"
 source          = "github:elixir-lang/tree-sitter-elixir"
 rev             = "a3f2c8d9e1b4f7c2a5d8e3b6f9c2a5d8"
 artifact_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -131,11 +132,21 @@ The curated registry publishes a signed index (minisign ed25519). The system SHA
 
 ---
 
-### Requirement: WASM Sandbox Placeholder
+### Requirement: Plugin Runtime Field Reservation
 
-The system architecture SHALL reserve a capability slot for a future WASM sandbox layer that would execute future plugin logic in an isolated WASM runtime. Current language plugins remain data-only `.scm` query packages and do not execute native code during metric collection. No WASM implementation is required in this change; this requirement documents the intended extension point.
+Each `[[plugin]]` entry in `pretender.plugins.lock` SHALL accept an optional `runtime` field of type string. When the field is absent, the system SHALL treat the entry as `runtime = "data-only"`. The system SHALL accept and round-trip without error any `runtime` value it does not recognise, so future runtimes (e.g. `"wasm"`) can be added without breaking parsers written against this schema.
 
-#### Scenario: Future WASM layer extension point
+#### Scenario: Missing runtime field defaults to data-only
 
-- **WHEN** a future change implements the WASM sandbox
-- **THEN** it SHALL be addable without breaking the lock file schema or the registry protocol defined in this change
+- **WHEN** a `[[plugin]]` entry is parsed and contains no `runtime` field
+- **THEN** the in-memory representation reports `runtime = "data-only"` and the entry is treated as a data-only language or metric plugin
+
+#### Scenario: Unknown runtime value is preserved
+
+- **WHEN** a lock file contains `runtime = "wasm"` (a value not implemented by the current binary)
+- **THEN** `pretender plugins verify` does not fail with a parse error, the unknown value is preserved on rewrite, and the plugin is reported as `SKIP <name>: unsupported runtime 'wasm'` with a non-zero exit only if `--frozen-plugins` is in effect
+
+#### Scenario: data-only runtime executes no native code during metrics
+
+- **WHEN** metric collection runs against a plugin with `runtime = "data-only"`
+- **THEN** no process is spawned for that plugin during metric computation (verified by counting child-process spawns during a `pretender check` run)

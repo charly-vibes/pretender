@@ -23,7 +23,7 @@
 - [ ] 4.2 On `--baseline`: load baseline file; for each finding, look up fingerprint
 - [ ] 4.3 Pass (exit 0) if finding is in baseline AND value ≤ baselined value
 - [ ] 4.4 Fail (exit non-zero) if finding is NOT in baseline OR value > baselined value (regression)
-- [ ] 4.5 If `auto_update_improved = true` and value < baselined value: silently write tighter baseline entry
+- [ ] 4.5 If `auto_update_improved = true` and value < baselined value: write tighter baseline entry, log `baseline.tightened` at INFO, emit no stderr and no SARIF result
 
 ## 5. Configuration
 

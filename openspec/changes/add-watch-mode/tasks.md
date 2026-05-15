@@ -22,7 +22,7 @@
 
 - [ ] 4.1 Add `--port <n>` flag to `pretender watch`
 - [ ] 4.2 On each re-check: push a JSON-RPC notification to connected clients with SARIF result payload
-- [ ] 4.3 Accept multiple simultaneous clients; disconnect gracefully on client drop
+- [ ] 4.3 Accept multiple simultaneous clients; on client drop, remove from the connection set, emit no stderr, and log `watch.client_disconnected` at INFO
 
 ## 5. Signal Handling
 

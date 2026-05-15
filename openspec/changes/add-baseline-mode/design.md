@@ -63,8 +63,10 @@ audited in git history, and shared across CI and developer machines.
 
 **Why:** Without a ratchet, the baseline never shrinks and there is no incentive to clean up
 grandfathered findings. With `auto_update_improved = true` (default), when a finding's value
-drops below the baselined value, the baseline entry is silently updated to the new (lower) value.
-This means it is impossible to re-introduce the previously grandfathered value without failing.
+drops below the baselined value, the baseline entry is updated to the new (lower) value without
+stderr output, without altering the exit code, and without emitting a SARIF result — the only
+trace is an `INFO`-level structured-log entry `baseline.tightened`. This means it is impossible
+to re-introduce the previously grandfathered value without failing.
 
 ### Decision 4: SHA-256 fingerprint hash
 

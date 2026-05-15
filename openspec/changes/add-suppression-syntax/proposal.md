@@ -3,9 +3,9 @@
 ## Why
 
 Repo-wide rule disables in `pretender.toml` are too coarse: teams need to suppress a specific
-violation at a specific site (e.g., an intentionally complex parser function) without silently
-disabling the rule everywhere. Inline pragma suppressions with mandatory reasons and optional
-expiry dates provide a targeted, auditable escape hatch.
+violation at a specific site (e.g., an intentionally complex parser function) without disabling
+the rule at every other site where it should still fail. Inline pragma suppressions with
+mandatory reasons and optional expiry dates provide a targeted, auditable escape hatch.
 
 ## What Changes
 

@@ -14,7 +14,7 @@ violations are blocked. The ratchet mechanism ensures the baseline can only shri
 - `pretender baseline update` — re-snapshots after manual cleanup
 - `pretender baseline show` — lists all grandfathered findings
 - `pretender check --baseline` — fails only on findings absent from the baseline or worse than their baselined value
-- Ratchet: if a baselined finding improves, the baseline entry is silently tightened; if it regresses, it fails
+- Ratchet: if a baselined finding improves, the baseline entry is tightened without stderr output or exit-code change (logged at INFO as `baseline.tightened`); if it regresses, the run fails
 - New `[baseline]` config table in `pretender.toml`
 
 ## Impact

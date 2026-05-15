@@ -4,7 +4,7 @@
 
 The system SHALL watch one or more paths for file-write and file-rename events and trigger a single-file re-check on each event. Paths default to the project root when not specified. Events SHALL be debounced (default: 50ms) to avoid duplicate re-checks on rapid saves.
 
-The watcher SHALL filter events to source file extensions known to installed language plugins; changes to non-source files SHALL be silently ignored.
+The watcher SHALL filter events to source file extensions known to installed language plugins. For events on non-source files, the watcher SHALL NOT trigger a re-check, SHALL NOT write to stdout or stderr, and SHALL NOT modify the SARIF output path; the event SHALL be recorded only as an `INFO`-level structured-log entry `watch.event_ignored` (path, extension).
 
 #### Scenario: Source file save triggers re-check
 
@@ -14,7 +14,7 @@ The watcher SHALL filter events to source file extensions known to installed lan
 #### Scenario: Non-source file ignored
 
 - **WHEN** `pretender watch` is running and a `.json` config file is saved (with no language plugin for JSON)
-- **THEN** no re-check is triggered
+- **THEN** no re-check is triggered, no output is written to stdout or stderr, the SARIF file's modification time is unchanged, and exactly one `watch.event_ignored` entry is appended to the structured log
 
 #### Scenario: Rapid saves debounced
 
@@ -32,10 +32,10 @@ With a warm incremental cache (from `add-incremental-cache`), a single-file re-c
 - **WHEN** `pretender watch` is running with a warm cache and a single file is saved
 - **THEN** the re-check completes and results are written to the SARIF output path in less than 100ms
 
-#### Scenario: Cold or disabled cache degrades gracefully
+#### Scenario: Cold or disabled cache continues without the latency guarantee
 
 - **WHEN** `pretender watch` is running with cache disabled, unavailable, cold, or corrupt and a single file is saved
-- **THEN** the file is rechecked normally, the console indicates the performance guarantee is inactive, and no sub-100ms guarantee is asserted
+- **THEN** the file is rechecked normally, the watcher prints exactly the line `! cache unavailable: --watch latency guarantee inactive` to stdout once per watch session (deduped across re-checks), and no sub-100ms guarantee is asserted
 
 ---
 
@@ -82,17 +82,17 @@ The SARIF file SHALL be fully rewritten (not appended) on each re-check so that 
 
 ### Requirement: JSON-RPC Push Socket
 
-The system SHALL support an optional `--port <n>` flag that opens a TCP JSON-RPC push socket. After each re-check the system SHALL push a `pretender/findings` notification to all connected clients with the SARIF result payload. Clients that disconnect SHALL be silently removed. Multiple simultaneous clients SHALL be supported.
+The system SHALL support an optional `--port <n>` flag that opens a TCP JSON-RPC push socket. After each re-check the system SHALL push a `pretender/findings` notification to all connected clients with the SARIF result payload. When a client's TCP connection closes or a write fails, the watcher SHALL remove that client from the connection set, SHALL NOT write to stderr, SHALL NOT alter the watcher's exit code, and SHALL record an `INFO`-level structured-log entry `watch.client_disconnected` (remote_addr, reason). Multiple simultaneous clients SHALL be supported.
 
 #### Scenario: Findings pushed to connected client
 
 - **WHEN** `pretender watch --port 7777` is running and a source file is saved producing a finding
 - **THEN** a `pretender/findings` JSON-RPC notification is pushed to all connected clients
 
-#### Scenario: Client disconnect is silent
+#### Scenario: Client disconnect does not perturb watcher
 
 - **WHEN** a client disconnects while `pretender watch --port 7777` is running
-- **THEN** the watcher continues operating without error
+- **THEN** the watcher keeps running, stderr remains empty for the event, the next re-check completes normally for the remaining clients, and the structured log contains exactly one `watch.client_disconnected` entry for the dropped peer
 
 ---
 

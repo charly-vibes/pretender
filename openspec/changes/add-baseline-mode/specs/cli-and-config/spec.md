@@ -52,14 +52,14 @@ The system SHALL support a `[baseline]` table in `pretender.toml` with the follo
 | Key                   | Type    | Default                      | Description                                     |
 |-----------------------|---------|------------------------------|-------------------------------------------------|
 | `path`                | string  | `"pretender.baseline.json"`  | Path to the baseline snapshot file              |
-| `auto_update_improved`| boolean | `true`                       | Silently tighten baseline on improved findings  |
+| `auto_update_improved`| boolean | `true`                       | Tighten baseline on improved findings without stderr output or exit-code change (logs `baseline.tightened` at INFO) |
 
 #### Scenario: Custom baseline path is honored
 
 - **WHEN** `[baseline] path = ".pretender/baseline.json"` is set in `pretender.toml`
 - **THEN** all baseline subcommands and `check --baseline` read from and write to that path
 
-#### Scenario: auto_update_improved disabled prevents silent tightening
+#### Scenario: auto_update_improved disabled prevents baseline tightening
 
 - **WHEN** `[baseline] auto_update_improved = false` is set
-- **THEN** improved findings do not modify the baseline file during `pretender check --baseline`
+- **THEN** improved findings do not modify the baseline file during `pretender check --baseline` and no `baseline.tightened` log entry is emitted
