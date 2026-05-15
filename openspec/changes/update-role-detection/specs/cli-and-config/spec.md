@@ -1,12 +1,14 @@
 ## MODIFIED Requirements
 
-### Requirement: Three-Tier Role Detection
+### Requirement: Role Detection
 
-The system SHALL assign a role to each file using exactly three tiers in priority order. **BREAKING**: the heuristics tier is removed and no other role assignment logic exists.
+The system SHALL assign each file a role from `app`, `library`, `test`, `script`, `generated`, or `vendor` using exactly three tiers in priority order. **BREAKING**: this change modifies the MVP role detector from `pragma → glob → heuristic → default` to a three-tier model with no heuristic fallback.
 
-1. **Pragma**: if `<comment-prefix> pretender: role=<role>` appears within the first 10 lines of the file, that role is assigned. The `<comment-prefix>` MUST be resolved by the shared Pretender pragma scanner used for both role and suppression pragmas.
-2. **Path glob**: if the file path matches a glob in `[roles]` config, the matching role is assigned; when multiple globs match, the first defined entry in config wins
-3. **Default**: the role `app` is assigned
+1. **Pragma**: if a supported line-comment prefix followed by `pretender: role=<role>` appears within the first 10 lines of the file, that role is assigned.
+2. **Path glob**: if the file path matches a glob in `[roles]` config, the matching role is assigned; when multiple globs match, the first defined entry in config wins.
+3. **Default**: the role `app` is assigned.
+
+Built-in line-comment prefixes are `//` for C-family languages and `#` for Python, Ruby, Shell, and TOML. Block-comment forms such as `/* pretender: role=test */` SHALL NOT be treated as valid role pragmas.
 
 #### Scenario: Pragma in first line assigns role
 - **WHEN** a file begins with `// pretender: role=test`
@@ -28,21 +30,27 @@ The system SHALL assign a role to each file using exactly three tiers in priorit
 - **WHEN** a file has no pragma and its path matches no configured glob
 - **THEN** the file is assigned role `app`
 
+#### Scenario: Matching globs use first-defined entry
+- **WHEN** a file matches both `tests/**` and `tests/manual/**`, and `tests/**` is defined first in config
+- **THEN** the file is assigned the role from `tests/**`
+
 #### Scenario: Pragma wins over matching glob
 - **WHEN** a file has `// pretender: role=app` and its path matches `tests/**`
 - **THEN** the file is assigned role `app`, not `test`
 
-### Requirement: Pragma Comment Syntax
-
-The system SHALL recognise role pragmas through the shared Pretender pragma scanner. The scanner SHALL use plugin-declared pragma comment prefixes when available and built-in defaults otherwise. Built-in defaults are `//` for C-family languages and `#` for Python, Ruby, Shell, and TOML. The pragma form is `<prefix> pretender: role=<role>` with no leading whitespace required on the comment prefix.
+#### Scenario: Files that formerly relied on heuristics fall back to app
+- **WHEN** a file has no pragma, matches no configured glob, and would previously have received a heuristic role
+- **THEN** the file is assigned role `app`
 
 #### Scenario: Python pragma recognised
 - **WHEN** a `.py` file contains `# pretender: role=script` within the first 10 lines
 - **THEN** the file is assigned role `script`
 
-#### Scenario: Unknown prefix not treated as pragma
+#### Scenario: Block comment form not treated as pragma
 - **WHEN** a file contains `/* pretender: role=test */` (block comment form)
 - **THEN** this is not treated as a valid pragma; glob/default tiers apply
+
+## ADDED Requirements
 
 ### Requirement: pretender check --explain-roles Flag
 

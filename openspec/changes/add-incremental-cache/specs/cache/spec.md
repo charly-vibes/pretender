@@ -3,9 +3,9 @@
 ### Requirement: Content-Addressed Cache Storage
 
 The system SHALL maintain a two-layer content-addressed cache under `~/.cache/pretender/<repo-id>/`.
-The cache MUST store serialized `Module` structs and their computed metric results as flat files at
-`metrics/<sha256-of-file-content>`. A JSON index at `index.json` MUST record, for each tracked
-source path, its current content hash and the epoch timestamp of last use.
+The cache MUST store serialized `Module` structs and their computed metric results as flat files under
+`metrics/<sha256-of-file-content>/<pretender-version>/<language-plugin-version>`. A JSON index at `index.json` MUST record, for each tracked
+source path, its current content hash, Pretender version, language-plugin version, and the epoch timestamp of last use.
 
 #### Scenario: Cold run writes cache entry
 
@@ -27,7 +27,7 @@ source path, its current content hash and the epoch timestamp of last use.
 ### Requirement: Invalidation Key
 
 The cache invalidation key for each entry MUST be the tuple `(SHA-256 of file content, Pretender version, language-plugin version)`.
-An entry MUST NOT be served if any component of the key differs from the current runtime values.
+All three components MUST be encoded in the cache entry path and repeated in the entry header for integrity checks. An entry MUST NOT be served if any component of the key differs from the current runtime values.
 
 #### Scenario: Pretender version bump invalidates cache
 

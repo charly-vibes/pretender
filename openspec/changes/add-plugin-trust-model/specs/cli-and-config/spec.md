@@ -16,6 +16,17 @@ The system SHALL expose `pretender plugins verify` as a subcommand that re-check
 
 ---
 
+### Requirement: Plugins Lock-Generate Subcommand
+
+The system SHALL expose `pretender plugins lock-generate` as a subcommand that scans the configured plugin installation directory, computes lock entries for installed plugins, and writes `pretender.plugins.lock` in the project root.
+
+#### Scenario: Lock generated for existing plugins
+
+- **WHEN** plugins are already installed and `pretender plugins lock-generate` is run
+- **THEN** `pretender.plugins.lock` is written with one `[[plugin]]` entry per installed plugin
+
+---
+
 ### Requirement: Frozen Plugins Flag
 
 The system SHALL support a `--frozen-plugins` flag on `pretender check` that verifies all installed plugins match the lock file before running any analysis. If any plugin is missing from the lock or its hash does not match, the command SHALL exit with a non-zero code and print an actionable error message.
@@ -33,7 +44,7 @@ The system SHALL support a `--frozen-plugins` flag on `pretender check` that ver
 #### Scenario: Frozen plugins fails on missing lock file
 
 - **WHEN** `pretender check --frozen-plugins` is run and `pretender.plugins.lock` does not exist
-- **THEN** the command exits non-zero and prints: "No lock file found. Run 'pretender plugins add' to generate one."
+- **THEN** the command exits non-zero and prints: "No lock file found. Run 'pretender plugins lock-generate' to generate one."
 
 ---
 

@@ -16,4 +16,5 @@ Pretender detects assertions in test files via `@assert.*` tree-sitter captures 
 
 - Affected specs: `cli-and-config`
 - Affected code: `src/assertions.rs` (or equivalent), `src/config/`
+- Dependencies: `update-mvp-spec-baseline` must be applied first; assertion-count enforcement (`min_assertions`) must be restored before project assertion patterns can satisfy that rule
 - No breaking changes — existing configs without `[assertions]` behave identically

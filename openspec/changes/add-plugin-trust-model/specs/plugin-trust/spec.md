@@ -25,7 +25,7 @@ command_sha256  = "ba7816bf8f01cfea414140de5dae2ec73b00361bbef0469132d0eb37f5756
 installed_at    = "2026-05-13T00:00:00Z"
 ```
 
-The system SHALL write a new lock entry whenever a plugin is successfully installed via `pretender plugins add`. The system SHALL update an existing lock entry when a plugin is reinstalled or updated.
+The system SHALL write a new lock entry whenever a plugin is successfully installed via `pretender plugins add`. The system SHALL update an existing lock entry when a plugin is reinstalled or updated. The system SHALL also be able to generate lock entries for already-installed plugins via `pretender plugins lock-generate`.
 
 #### Scenario: Lock file written on install
 
@@ -41,6 +41,11 @@ The system SHALL write a new lock entry whenever a plugin is successfully instal
 
 - **WHEN** `pretender plugins add elixir` is run for an already-installed plugin with a different rev
 - **THEN** the existing lock entry for `elixir` is replaced with the new rev and SHA-256
+
+#### Scenario: Lock file generated for existing installation
+
+- **WHEN** plugins were installed before lock-file support and `pretender plugins lock-generate` is run
+- **THEN** the system hashes the installed plugin artifacts and writes corresponding lock entries
 
 ---
 

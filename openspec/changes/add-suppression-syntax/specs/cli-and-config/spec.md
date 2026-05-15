@@ -27,9 +27,9 @@ be included in the output with a clear `[EXPIRED]` annotation.
 ### Requirement: Shared Pretender Pragma Scanner
 
 Language plugin `plugin.toml` manifests SHALL support a `[pragmas]` table that declares
-how Pretender pragmas are recognized for that language. The table MUST support at minimum
+how Pretender line-comment pragmas are recognized for that language. The table MUST support at minimum
 a `comment_prefix` key specifying the line comment token (e.g., `"//"`, `"#"`, `"--"`).
-The engine MUST use the shared Pretender pragma scanner and plugin-declared prefix when scanning for both suppression and role pragmas.
+The engine MUST use the shared Pretender pragma scanner and plugin-declared prefix when scanning for both suppression and role pragmas. For role pragmas, the shared scanner MUST preserve the role-detection rules from `update-role-detection`: only line-comment prefixes are valid, only the first 10 lines are scanned, and block-comment forms are ignored.
 
 #### Scenario: Plugin comment prefix is used for pragma detection
 

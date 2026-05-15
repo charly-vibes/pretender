@@ -1,8 +1,8 @@
 ## 1. Fingerprint and Baseline Data Model
 
-- [ ] 1.1 Define `Fingerprint` struct: `(file, unit_name, rule, bucketed_value)`
+- [ ] 1.1 Define `Fingerprint` struct: `(file, unit_name, unit_start_line, rule)`
 - [ ] 1.2 Implement `bucket(value, threshold)` — coarse bucketing so minor fluctuations don't invalidate
-- [ ] 1.3 Define `BaselineEntry` struct: `{ fingerprint: String, rule, file, unit, value, threshold }`
+- [ ] 1.3 Define `BaselineEntry` struct: `{ fingerprint: String, rule, file, unit, unit_start_line, value, threshold, bucket }`
 - [ ] 1.4 Define `BaselineFile` struct: `{ version: u32, created_at: DateTime, findings: Vec<BaselineEntry> }`
 
 ## 2. Baseline File I/O

@@ -22,3 +22,4 @@ violations are blocked. The ratchet mechanism ensures the baseline can only shri
 - Affected specs: `baseline` (new), `cli-and-config` (new subcommands + config + flag on `check`)
 - Affected code: `src/baseline/` (new), `src/cli/`, `src/check_runner.rs`
 - Cross-cutting: fingerprint design is a significant decision; see `design.md`
+- Fingerprints include the unit start line to disambiguate repeated or nested units with the same name; moving or renaming a unit intentionally creates a new baseline identity

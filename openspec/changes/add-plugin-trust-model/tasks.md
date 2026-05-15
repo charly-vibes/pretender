@@ -4,6 +4,7 @@
 - [ ] 1.2 Implement lock file read/write in plugin loader
 - [ ] 1.3 Populate lock entry on `pretender plugins add`
 - [ ] 1.4 Include command hash for metric plugins (TOML `command` spec)
+- [ ] 1.5 Implement `pretender plugins lock-generate` for existing installations
 
 ## 2. Verify Command
 
@@ -37,3 +38,4 @@
 - [ ] 6.2 Integration test: `plugins verify` detects tampered artifact
 - [ ] 6.3 Integration test: `--frozen-plugins` fails on missing lock entry
 - [ ] 6.4 Integration test: bare name install from registry populates lock
+- [ ] 6.5 Integration test: `plugins lock-generate` writes lock entries for already-installed plugins

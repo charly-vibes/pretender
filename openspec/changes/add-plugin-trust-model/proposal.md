@@ -8,6 +8,7 @@ Pretender plugins are loaded from arbitrary URLs (git remotes, local paths), cre
 
 - New `pretender.plugins.lock` file — pins source URL, git rev, artifact SHA-256, and install timestamp for every installed plugin
 - `pretender plugins verify` command — re-checks installed plugins against lock entries
+- `pretender plugins lock-generate` command — derives a lock file for existing installations by hashing installed plugins
 - `pretender plugins add <url>` — warns "unverified code" and requires `--i-trust-this` for non-interactive use
 - `pretender plugins add <name>` (no URL scheme) — installs from curated registry with signature verification, no `--i-trust-this` required
 - `--frozen-plugins` flag on `pretender check` — refuses to start if any lock entry is missing or mismatched
@@ -18,4 +19,5 @@ Pretender plugins are loaded from arbitrary URLs (git remotes, local paths), cre
 
 - Affected specs: `plugin-trust` (new), `cli-and-config` (modified: lock file format, plugins verify command, --frozen-plugins flag)
 - Affected code: plugin loader, `pretender plugins` subcommand, `pretender check` entrypoint
+- Dependencies: `update-mvp-spec-baseline` must be applied first; the reserved `plugins` command must be restored before this trust model can be implemented
 - **BREAKING**: `pretender plugins add <url>` now requires `--i-trust-this` flag in non-interactive environments

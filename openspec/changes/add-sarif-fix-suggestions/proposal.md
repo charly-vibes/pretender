@@ -20,4 +20,5 @@ Pretender already emits valid SARIF 2.1.0 for findings, but the output omits the
 
 - Affected specs: `cli-and-config` (SARIF output format extended with fixes)
 - Affected code: SARIF emitter, per-rule result builders
+- Dependencies: requires `update-mvp-spec-baseline` to be applied first and requires a SARIF output implementation to restore `--format sarif` before fix suggestions can be emitted
 - No breaking changes — `fixes` is an optional SARIF field; existing consumers ignore it

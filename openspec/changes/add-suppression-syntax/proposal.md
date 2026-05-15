@@ -21,4 +21,5 @@ expiry dates provide a targeted, auditable escape hatch.
 
 - Affected specs: `suppressions` (new), `cli-and-config` (new command + plugin spec extension)
 - Affected code: `src/suppressions/` (new), `src/engine/`, `src/cli/`
+- Dependencies: `update-mvp-spec-baseline` must be applied first; when combined with `update-role-detection`, the shared pragma scanner preserves line-comment-only role pragmas and first-10-lines role scanning
 - No `design.md` needed: the suppression model is self-contained and not cross-cutting

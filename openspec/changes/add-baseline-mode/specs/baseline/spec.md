@@ -4,13 +4,13 @@
 
 The system SHALL provide `pretender baseline create` to snapshot the current set of rule violations
 into a file (default: `pretender.baseline.json`). The snapshot MUST include, for each finding, a
-stable identity fingerprint derived from `(file, unit_name, rule)`, the rule name, the file path,
-the unit name, the raw metric value, the configured threshold, and a coarse bucket value for regression comparison.
+stable identity fingerprint derived from `(file, unit_name, unit_start_line, rule)`, the rule name, the file path,
+the unit name, the unit start line, the raw metric value, the configured threshold, and a coarse bucket value for regression comparison.
 
 #### Scenario: Create writes baseline file
 
 - **WHEN** `pretender baseline create` is invoked on a repository with existing violations
-- **THEN** `pretender.baseline.json` is written containing one entry per violation with its fingerprint, rule, file, unit, value, and threshold
+- **THEN** `pretender.baseline.json` is written containing one entry per violation with its fingerprint, rule, file, unit, unit start line, value, threshold, and bucket
 
 #### Scenario: Create on clean repo writes empty findings
 
@@ -57,14 +57,14 @@ recorded in the baseline file in a human-readable table. The command MUST suppor
 ### Requirement: Baseline Fingerprinting
 
 The system SHALL derive the fingerprint for each baseline entry as the SHA-256 hash of
-`file_path + NUL + unit_name + NUL + rule`. The fingerprint identifies the finding independent
-of its current metric value. The baseline entry MUST also store a `bucket` value computed as
+`file_path + NUL + unit_name + NUL + unit_start_line + NUL + rule`. The fingerprint identifies the finding independent
+of its current metric value while disambiguating repeated or nested units with the same name in one file. The baseline entry MUST also store a `bucket` value computed as
 `floor(value / max(1, threshold / 5))`, producing coarse buckets so that minor metric fluctuations
 within the same bucket do not count as regressions.
 
 #### Scenario: Same bucket value matches fingerprint
 
-- **WHEN** a function's metric value changes but its file, unit name, and rule are unchanged
+- **WHEN** a function's metric value changes but its file, unit name, unit start line, and rule are unchanged
 - **THEN** the fingerprint is identical and the finding is considered to match the baseline entry
 
 #### Scenario: Bucket increase is a regression
@@ -107,6 +107,7 @@ The baseline file MUST be a JSON file conforming to:
       "rule": "<rule-id>",
       "file": "<relative-path>",
       "unit": "<unit-name>",
+      "unit_start_line": <integer>,
       "value": <number>,
       "threshold": <number>,
       "bucket": <integer>

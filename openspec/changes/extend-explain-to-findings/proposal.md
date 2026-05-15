@@ -19,5 +19,6 @@
 
 - Affected specs: `cli-and-config` (explain command extended)
 - Affected code: `pretender explain` command handler, cache reader
-- Dependencies: `add-incremental-cache` (must be applied first for cache data to exist)
+- Dependencies: `update-mvp-spec-baseline` must be applied first; the reserved `explain` command must be restored before this extension; `add-incremental-cache` must be applied first for cache data to exist
+- Cache scope: this change extends the most-recent check cache with an explainable findings index; the base cache capability does not provide that index by itself
 - No breaking changes — existing `pretender explain <metric>` behavior is preserved
