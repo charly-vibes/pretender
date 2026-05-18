@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::model::{Block, BranchKind, CodeUnit, Metric, Node};
 use std::collections::HashSet;
@@ -6,10 +5,6 @@ use std::collections::HashSet;
 pub struct CyclomaticComplexity;
 
 impl Metric for CyclomaticComplexity {
-    fn name(&self) -> &'static str {
-        "Cyclomatic Complexity"
-    }
-
     fn calculate(&self, unit: &CodeUnit) -> u32 {
         cyclomatic(unit)
     }

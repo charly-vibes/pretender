@@ -278,7 +278,7 @@ impl Executable for CheckArgs {
             config.pretender.mode = mode.into();
         }
         let detector = RoleDetector::new(&config).context("failed to initialize role detector")?;
-        let files = collect_input_files(&self.paths)?;
+        let files = collect_input_files(&self.paths, &config)?;
 
         let mut reports: Vec<FileReport> = files
             .par_iter()
@@ -308,10 +308,10 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
         .files
         .iter()
         .any(|file| file.diagnostics.iter().any(|d| d.severity == "Error"));
-    let has_violation = report
-        .files
-        .iter()
-        .any(|file| file.units.iter().any(|unit| !unit.violations.is_empty()));
+    let has_violation = report.files.iter().any(|file| {
+        !file.file_violations.is_empty()
+            || file.units.iter().any(|unit| !unit.violations.is_empty())
+    });
 
     match mode {
         Mode::Guidance => ExitCode::SUCCESS,
@@ -365,10 +365,19 @@ fn analyze_path(
         .map(|unit| build_unit_report(unit, &thresholds))
         .collect();
 
+    let mut file_violations = Vec::new();
+    push_limit_violation(
+        &mut file_violations,
+        "file_lines",
+        module.lines_total,
+        thresholds.file_lines_max,
+    );
+
     Ok(Some(FileReport {
         path: path.display().to_string(),
         role: role_name(role),
         diagnostics: diagnostics.into_iter().map(Into::into).collect(),
+        file_violations,
         units,
     }))
 }
@@ -382,17 +391,33 @@ fn load_config() -> Result<Config> {
     }
 }
 
-fn collect_input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf>> {
+    let mut builder = globset::GlobSetBuilder::new();
+    for pattern in &config.pretender.exclude {
+        let glob = globset::Glob::new(pattern)
+            .with_context(|| format!("invalid exclude pattern: {}", pattern))?;
+        builder.add(glob);
+    }
+    let exclude_set = builder.build().context("failed to build exclude GlobSet")?;
+
     let mut files = Vec::new();
     for path in paths {
-        collect_path(path, &mut files)?;
+        collect_path(path, &exclude_set, &mut files)?;
     }
     files.sort();
     files.dedup();
     Ok(files)
 }
 
-fn collect_path(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+fn collect_path(
+    path: &Path,
+    exclude_set: &globset::GlobSet,
+    out: &mut Vec<PathBuf>,
+) -> Result<()> {
+    if exclude_set.is_match(path) {
+        return Ok(());
+    }
+
     if path.is_file() {
         out.push(path.to_path_buf());
         return Ok(());
@@ -403,7 +428,7 @@ fn collect_path(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
             .with_context(|| format!("failed to read directory: {}", path.display()))?
         {
             let entry = entry?;
-            collect_path(&entry.path(), out)?;
+            collect_path(&entry.path(), exclude_set, out)?;
         }
         return Ok(());
     }
@@ -452,6 +477,24 @@ fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -
         metrics.nesting_max,
         thresholds.nesting_max,
     );
+    push_limit_violation_f64(
+        &mut violations,
+        "abc",
+        metrics.abc,
+        thresholds.abc_max,
+    );
+
+    if unit.is_exported {
+        if let Some(max) = thresholds.exported_cyclomatic_max {
+            push_limit_violation(&mut violations, "exported_cyclomatic", metrics.cyclomatic, max);
+        }
+        if let Some(max) = thresholds.exported_params_max {
+            push_limit_violation(&mut violations, "exported_params", metrics.params, max);
+        }
+        if let Some(max) = thresholds.exported_lines_max {
+            push_limit_violation(&mut violations, "exported_lines", metrics.function_lines, max);
+        }
+    }
 
     UnitReport {
         name: unit.name.clone(),
@@ -476,6 +519,21 @@ fn push_limit_violation(
     }
 }
 
+fn push_limit_violation_f64(
+    out: &mut Vec<ViolationReport>,
+    metric: &'static str,
+    actual: f64,
+    max: u32,
+) {
+    if actual > max as f64 {
+        out.push(ViolationReport {
+            metric,
+            actual,
+            limit: max as f64,
+        });
+    }
+}
+
 fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -> Result<()> {
     let (red, reset) = if color {
         ("\u{1b}[31m", "\u{1b}[0m")
@@ -485,6 +543,13 @@ fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -
 
     for file in &report.files {
         writeln!(sink, "{} [{}]", file.path, file.role)?;
+        for violation in &file.file_violations {
+            writeln!(
+                sink,
+                "  {red}VIOLATION{reset} {} {} > {}",
+                violation.metric, violation.actual, violation.limit,
+            )?;
+        }
         for unit in &file.units {
             writeln!(
                 sink,
@@ -542,19 +607,10 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
 
-    let mut registry = model::ParserRegistry::new();
-    registry.register(Box::new(python::PythonParser));
-
-    registry
-        .get_for_extension(ext)
-        .map(|_p| match ext {
-            "py" => Box::new(python::PythonParser) as Box<dyn model::Parser>,
-            _ => unreachable!(
-                "registry returned parser for unsupported extension .{}",
-                ext
-            ),
-        })
-        .ok_or_else(|| anyhow!("unsupported file extension '.{}'", ext))
+    match ext {
+        "py" => Ok(Box::new(python::PythonParser)),
+        _ => Err(anyhow!("unsupported file extension '.{}'", ext)),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -567,6 +623,7 @@ struct FileReport {
     path: String,
     role: &'static str,
     diagnostics: Vec<DiagnosticReport>,
+    file_violations: Vec<ViolationReport>,
     units: Vec<UnitReport>,
 }
 

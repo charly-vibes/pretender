@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use miette::Diagnostic;
 use serde::Deserialize;
@@ -146,6 +145,7 @@ pub struct AppThresholds {
     pub file_lines_max: u32,
     pub nesting_max: u32,
     pub params_max: u32,
+    pub abc_max: u32,
     pub duplication_pct_max: u32,
     pub mi_min: u32,
     pub coverage_line_min: u32,
@@ -162,6 +162,7 @@ impl Default for AppThresholds {
             file_lines_max: 400,
             nesting_max: 3,
             params_max: 4,
+            abc_max: 30,
             duplication_pct_max: 5,
             mi_min: 20,
             coverage_line_min: 80,

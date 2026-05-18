@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -6,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 pub trait Parser {
     fn parse(&self, path: &Path, source: &str) -> Result<(Module, Vec<Diagnostic>)>;
-    fn extensions(&self) -> &[&str];
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -22,31 +20,7 @@ pub enum DiagnosticSeverity {
     Error,
 }
 
-pub struct ParserRegistry {
-    parsers: Vec<Box<dyn Parser>>,
-}
-
-impl ParserRegistry {
-    pub fn new() -> Self {
-        Self {
-            parsers: Vec::new(),
-        }
-    }
-
-    pub fn register(&mut self, parser: Box<dyn Parser>) {
-        self.parsers.push(parser);
-    }
-
-    pub fn get_for_extension(&self, ext: &str) -> Option<&dyn Parser> {
-        self.parsers
-            .iter()
-            .find(|p| p.extensions().contains(&ext))
-            .map(|p| p.as_ref())
-    }
-}
-
 pub trait Metric {
-    fn name(&self) -> &'static str;
     fn calculate(&self, unit: &CodeUnit) -> u32;
 }
 

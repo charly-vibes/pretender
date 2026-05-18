@@ -1,3 +1,5 @@
+// Plugin infrastructure is not yet wired to production code; allow dead_code
+// until the plugin loader is implemented.
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};

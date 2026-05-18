@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::config::{Config, Thresholds};
 use globset::{Glob, GlobMatcher};
@@ -176,6 +175,7 @@ pub struct EffectiveThresholds {
     pub nesting_max: u32,
     pub params_max: u32,
     pub duplication_pct_max: u32,
+    pub abc_max: u32,
     pub min_assertions: Option<u32>,
     pub exported_params_max: Option<u32>,
     pub exported_cyclomatic_max: Option<u32>,
@@ -221,6 +221,7 @@ impl EffectiveThresholds {
             nesting_max: thresholds.app.nesting_max,
             params_max: thresholds.app.params_max,
             duplication_pct_max: thresholds.app.duplication_pct_max,
+            abc_max: thresholds.app.abc_max,
             min_assertions: None,
             exported_params_max: None,
             exported_cyclomatic_max: None,

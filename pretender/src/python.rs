@@ -23,7 +23,5 @@ impl Parser for PythonParser {
         self.engine()?.parse(path, source)
     }
 
-    fn extensions(&self) -> &[&str] {
-        &["py"]
-    }
+
 }

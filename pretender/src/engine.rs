@@ -92,6 +92,8 @@ impl QueryEngine {
         let mut diagnostics = Vec::new();
         let lines_total = source.lines().count() as u32;
 
+        let (lines_code, lines_comment) = classify_lines(root, lines_total);
+
         if root.has_error() {
             diagnostics.push(Diagnostic {
                 message: format!("Parse errors detected in {}", path.display()),
@@ -107,8 +109,8 @@ impl QueryEngine {
                         end_line: lines_total,
                     },
                     lines_total,
-                    lines_code: 0,
-                    lines_comment: 0,
+                    lines_code,
+                    lines_comment,
                     units: Vec::new(),
                     imports: Vec::new(),
                 },
@@ -191,8 +193,8 @@ impl QueryEngine {
                     end_line: lines_total,
                 },
                 lines_total,
-                lines_code: 0,
-                lines_comment: 0,
+                lines_code,
+                lines_comment,
                 units,
                 imports: Vec::new(),
             },
@@ -329,6 +331,44 @@ fn build_block(
     }
 }
 
+fn visit_child(
+    parent: tree_sitter::Node,
+    child: tree_sitter::Node,
+    source: &[u8],
+    captures: &CaptureMap,
+    nesting: u32,
+    out: &mut Vec<crate::model::Node>,
+) -> bool {
+    if let Some(&kind) = captures.branches.get(&child.id()) {
+        let sequence_id = match kind {
+            BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
+            _ => None,
+        };
+        out.push(crate::model::Node::Branch(Branch {
+            kind,
+            span: node_span(child),
+            nesting_at: nesting,
+            sequence_id,
+        }));
+        collect_nested_blocks(child, source, captures, nesting, out);
+        true
+    } else if captures.assignments.contains(&child.id()) {
+        out.push(crate::model::Node::Assignment(node_span(child)));
+        collect_nested_blocks(child, source, captures, nesting, out);
+        true
+    } else if let Some(callee) = captures.calls.get(&child.id()) {
+        out.push(crate::model::Node::Call(CallSite {
+            callee: callee.clone(),
+            span: node_span(child),
+            smell_weight: 1.0,
+        }));
+        collect_nested_blocks(child, source, captures, nesting, out);
+        true
+    } else {
+        false
+    }
+}
+
 fn walk_block(
     node: tree_sitter::Node,
     source: &[u8],
@@ -341,26 +381,7 @@ fn walk_block(
         if child.kind() == "function_definition" || child.kind() == "class_definition" {
             continue;
         }
-
-        if let Some(&kind) = captures.branches.get(&child.id()) {
-            out.push(crate::model::Node::Branch(Branch {
-                kind,
-                span: node_span(child),
-                nesting_at: nesting,
-                sequence_id: None,
-            }));
-            collect_nested_blocks(child, source, captures, nesting, out);
-        } else if captures.assignments.contains(&child.id()) {
-            out.push(crate::model::Node::Assignment(node_span(child)));
-            collect_nested_blocks(child, source, captures, nesting, out);
-        } else if let Some(callee) = captures.calls.get(&child.id()) {
-            out.push(crate::model::Node::Call(CallSite {
-                callee: callee.clone(),
-                span: node_span(child),
-                smell_weight: 1.0,
-            }));
-            collect_nested_blocks(child, source, captures, nesting, out);
-        } else {
+        if !visit_child(node, child, source, captures, nesting, out) {
             walk_block(child, source, captures, nesting, out);
         }
     }
@@ -375,33 +396,64 @@ fn collect_nested_blocks(
 ) {
     let mut cursor = branch_node.walk();
     for child in branch_node.children(&mut cursor) {
-        if let Some(&kind) = captures.branches.get(&child.id()) {
-            out.push(crate::model::Node::Branch(Branch {
-                kind,
-                span: node_span(child),
-                nesting_at: nesting,
-                sequence_id: None,
-            }));
-            collect_nested_blocks(child, source, captures, nesting, out);
-        } else if captures.assignments.contains(&child.id()) {
-            out.push(crate::model::Node::Assignment(node_span(child)));
-            collect_nested_blocks(child, source, captures, nesting, out);
-        } else if let Some(callee) = captures.calls.get(&child.id()) {
-            out.push(crate::model::Node::Call(CallSite {
-                callee: callee.clone(),
-                span: node_span(child),
-                smell_weight: 1.0,
-            }));
-            collect_nested_blocks(child, source, captures, nesting, out);
-        } else if child.kind() == "block" {
-            out.push(crate::model::Node::NestedBlock(build_block(
-                child,
-                source,
-                captures,
-                nesting + 1,
-            )));
-        } else {
-            collect_nested_blocks(child, source, captures, nesting, out);
+        if !visit_child(branch_node, child, source, captures, nesting, out) {
+            if child.kind() == "block" {
+                out.push(crate::model::Node::NestedBlock(build_block(
+                    child,
+                    source,
+                    captures,
+                    nesting + 1,
+                )));
+            } else {
+                collect_nested_blocks(child, source, captures, nesting, out);
+            }
+        }
+    }
+}
+
+/// Classify each line in the file using tree-sitter node types.
+/// Returns (lines_code, lines_comment).
+/// A line is a comment line if every leaf node on that line is a comment.
+/// Otherwise if any named non-comment leaf touches the line, it is a code line.
+fn classify_lines(root: tree_sitter::Node, lines_total: u32) -> (u32, u32) {
+    use std::collections::HashSet;
+
+    let mut comment_lines: HashSet<u32> = HashSet::new();
+    let mut code_lines: HashSet<u32> = HashSet::new();
+
+    let mut cursor = root.walk();
+    loop {
+        let node = cursor.node();
+        if node.child_count() == 0 {
+            // leaf node
+            let start = node.start_position().row as u32 + 1;
+            let end = node.end_position().row as u32 + 1;
+            let is_comment = node.kind().contains("comment");
+            for line in start..=end {
+                if is_comment {
+                    if !code_lines.contains(&line) {
+                        comment_lines.insert(line);
+                    }
+                } else if !node.kind().trim().is_empty() {
+                    code_lines.insert(line);
+                    comment_lines.remove(&line);
+                }
+            }
+        }
+
+        if cursor.goto_first_child() {
+            continue;
+        }
+        loop {
+            if cursor.goto_next_sibling() {
+                break;
+            }
+            if !cursor.goto_parent() {
+                return (
+                    code_lines.len() as u32,
+                    comment_lines.iter().filter(|&&l| l <= lines_total).count() as u32,
+                );
+            }
         }
     }
 }
