@@ -6,6 +6,7 @@ mod model;
 mod plugin;
 mod python;
 mod roles;
+mod rust;
 mod typescript;
 
 use crate::config::{Config, Mode};
@@ -717,6 +718,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
     match ext {
         "js" | "jsx" | "mjs" | "cjs" => Ok(Box::new(javascript::JavaScriptParser)),
         "py" => Ok(Box::new(python::PythonParser)),
+        "rs" => Ok(Box::new(rust::RustParser)),
         "ts" | "mts" => Ok(Box::new(typescript::TypeScriptParser)),
         "tsx" | "cts" => Ok(Box::new(typescript::TypeScriptXParser)),
         _ => Err(anyhow!("unsupported file extension '.{}'", ext)),

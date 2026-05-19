@@ -424,6 +424,34 @@ fn test_stub_subcommands_exit_two() {
 }
 
 #[test]
+fn test_rust_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("rust_simple.rs"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with_branch: 2"),
+        "expected with_branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex_func: 5"),
+        "expected complex_func: 5 in stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_javascript_complexity() {
     let output = Command::new(pretender_bin())
         .arg("complexity")
