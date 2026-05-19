@@ -36,18 +36,13 @@ phase: implement
 
 ```
  M .wai/.pipeline-run
+ M .wai/pipeline-runs/tdd-ro5u-2026-05-19-run.yml
+ M .wai/projects/pretender-mvp/handoffs/2026-05-19-session-end.md
  M .wai/resources/pipelines/.last-run
- M languages/python/metrics.scm
- M pretender/src/engine.rs
- M pretender/src/main.rs
- M pretender/src/metrics.rs
- M pretender/src/model.rs
- M pretender/tests/cli_test.rs
-?? .wai/pipeline-runs/tdd-ro5u-2026-05-19-pretender-oyg-min-assertions.yml
-?? .wai/projects/pretender-mvp/designs/2026-05-19-green-added-per-codeunit-assertion-counts-from-a.md
-?? .wai/projects/pretender-mvp/plans/2026-05-19-pretender-oyg-add-assertion-captures-to-the-unive.md
-?? .wai/projects/pretender-mvp/research/2026-05-19-red-added-cli-regression-for-tests-test-no-assert.md
-?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-fixed-one-correctness-issue-during-review-r.md
+?? .wai/projects/pretender-mvp/designs/2026-05-19-green-threaded-call-weights-btreemap-string-f6.md
+?? .wai/projects/pretender-mvp/plans/2026-05-19-abc-smell-weights-thread-manifest-smell-weights-t.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-red-test-eval-call-has-elevated-abc-smell-weight.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-reviewer-flagged-callee-exact-match-as-high.md
 ```
 
 ### open_issues
@@ -56,7 +51,6 @@ phase: implement
 ○ pretender-hay ● P1 Native pre-commit hook generator
 ○ pretender-rl3 ● P1 CLI: pretender init command
 ○ pretender-3b5 ● P2 CLI: pretender report command (human/markdown/html)
-○ pretender-4eh ● P2 ABC scoring with smell weights (pretender complexity)
 ○ pretender-5rk ● P2 Explore feedback loop: track recurring structural violations to surface as constraints
 ○ pretender-6aw ● P2 Three operating modes: guidance / tiered / gate
 ○ pretender-8ai ● P2 5 additional languages: Go, Java, Ruby, C, C++
@@ -69,7 +63,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 14 issues (14 open, 0 in progress)
+Total: 13 issues (13 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
