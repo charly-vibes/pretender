@@ -32,19 +32,6 @@ phase: implement
 
 ## Context
 
-### git_status
-
-```
- M .wai/.pipeline-run
- M .wai/pipeline-runs/tdd-ro5u-2026-05-19-run.yml
- M .wai/projects/pretender-mvp/handoffs/2026-05-19-session-end.md
- M .wai/resources/pipelines/.last-run
-?? .wai/projects/pretender-mvp/designs/2026-05-19-green-threaded-call-weights-btreemap-string-f6.md
-?? .wai/projects/pretender-mvp/plans/2026-05-19-abc-smell-weights-thread-manifest-smell-weights-t.md
-?? .wai/projects/pretender-mvp/research/2026-05-19-red-test-eval-call-has-elevated-abc-smell-weight.md
-?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-reviewer-flagged-callee-exact-match-as-high.md
-```
-
 ### open_issues
 
 ```
