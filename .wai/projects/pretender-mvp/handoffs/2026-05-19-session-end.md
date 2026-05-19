@@ -32,12 +32,17 @@ phase: implement
 
 ## Context
 
+### git_status
+
+```
+ M .wai/pipeline-runs/tdd-ro5u-2026-05-19-run.yml
+```
+
 ### open_issues
 
 ```
 ○ pretender-hay ● P1 Native pre-commit hook generator
 ○ pretender-rl3 ● P1 CLI: pretender init command
-○ pretender-s7d ● P1 JavaScript/TypeScript language plugins
 ○ pretender-06i ● P2 Cognitive complexity metric
 ○ pretender-3b5 ● P2 CLI: pretender report command (human/markdown/html)
 ○ pretender-4eh ● P2 ABC scoring with smell weights (pretender complexity)
@@ -55,7 +60,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 18 issues (18 open, 0 in progress)
+Total: 17 issues (17 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
