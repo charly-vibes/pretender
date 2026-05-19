@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use crate::model::{
     Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Language,
     Module, Parameter, Span, UnitKind,
 };
+use crate::plugin::BranchWeights;
 
 pub struct QueryEngine {
     language: tree_sitter::Language,
@@ -15,17 +16,34 @@ pub struct QueryEngine {
     fn_name_idx: u32,
     fn_params_idx: u32,
     fn_body_idx: u32,
-    branch_captures: Vec<(u32, BranchKind)>,
+    branch_captures: Vec<(u32, BranchCaptureSpec)>,
     call_idx: Option<u32>,
     call_callee_idx: Option<u32>,
     assign_idx: Option<u32>,
 }
 
+#[derive(Clone, Copy)]
+struct BranchCaptureSpec {
+    kind: BranchKind,
+    cyclomatic_weight: u32,
+    cognitive_weight: u32,
+}
+
 impl QueryEngine {
+    #[allow(dead_code)]
     pub fn new(
         language: tree_sitter::Language,
         lang_kind: Language,
         query_source: &str,
+    ) -> Result<Self> {
+        Self::new_with_branch_weights(language, lang_kind, query_source, &BTreeMap::new())
+    }
+
+    pub fn new_with_branch_weights(
+        language: tree_sitter::Language,
+        lang_kind: Language,
+        query_source: &str,
+        branch_weights: &BTreeMap<String, BranchWeights>,
     ) -> Result<Self> {
         let query = tree_sitter::Query::new(&language, query_source)
             .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))?;
@@ -46,6 +64,7 @@ impl QueryEngine {
         let branch_mapping = [
             ("branch.if", BranchKind::If),
             ("branch.elif", BranchKind::ElseIf),
+            ("branch.switch_case", BranchKind::SwitchCase),
             ("branch.loop", BranchKind::Loop),
             ("branch.catch", BranchKind::Catch),
             ("branch.ternary", BranchKind::Ternary),
@@ -53,9 +72,29 @@ impl QueryEngine {
             ("branch.logical.or", BranchKind::LogicalOr),
         ];
 
-        let branch_captures: Vec<(u32, BranchKind)> = branch_mapping
+        let branch_captures: Vec<(u32, BranchCaptureSpec)> = branch_mapping
             .iter()
-            .filter_map(|(name, kind)| query.capture_index_for_name(name).map(|idx| (idx, *kind)))
+            .filter_map(|(name, kind)| {
+                query.capture_index_for_name(name).map(|idx| {
+                    let capture_name = format!("@{name}");
+                    let weights =
+                        branch_weights
+                            .get(&capture_name)
+                            .copied()
+                            .unwrap_or(BranchWeights {
+                                cyclomatic: 1,
+                                cognitive: 1,
+                            });
+                    (
+                        idx,
+                        BranchCaptureSpec {
+                            kind: *kind,
+                            cyclomatic_weight: weights.cyclomatic,
+                            cognitive_weight: weights.cognitive,
+                        },
+                    )
+                })
+            })
             .collect();
 
         let call_idx = query.capture_index_for_name("call");
@@ -142,8 +181,8 @@ impl QueryEngine {
             } else {
                 let mut pending_call: Option<(usize, Option<String>)> = None;
                 for capture in m.captures {
-                    if let Some(kind) = self.branch_kind_for_capture(capture.index) {
-                        captures.branches.insert(capture.node.id(), kind);
+                    if let Some(spec) = self.branch_capture_for_index(capture.index) {
+                        captures.branches.insert(capture.node.id(), spec);
                     } else if Some(capture.index) == self.assign_idx {
                         captures.assignments.insert(capture.node.id());
                     } else if Some(capture.index) == self.call_idx {
@@ -202,11 +241,11 @@ impl QueryEngine {
         ))
     }
 
-    fn branch_kind_for_capture(&self, idx: u32) -> Option<BranchKind> {
+    fn branch_capture_for_index(&self, idx: u32) -> Option<BranchCaptureSpec> {
         self.branch_captures
             .iter()
             .find(|(capture_idx, _)| *capture_idx == idx)
-            .map(|(_, kind)| *kind)
+            .map(|(_, spec)| *spec)
     }
 
     fn build_code_unit(
@@ -247,7 +286,7 @@ impl QueryEngine {
 
 #[derive(Default)]
 struct CaptureMap {
-    branches: HashMap<usize, BranchKind>,
+    branches: HashMap<usize, BranchCaptureSpec>,
     calls: HashMap<usize, String>,
     assignments: std::collections::HashSet<usize>,
 }
@@ -339,16 +378,18 @@ fn visit_child(
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
 ) -> bool {
-    if let Some(&kind) = captures.branches.get(&child.id()) {
-        let sequence_id = match kind {
+    if let Some(&spec) = captures.branches.get(&child.id()) {
+        let sequence_id = match spec.kind {
             BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
             _ => None,
         };
         out.push(crate::model::Node::Branch(Branch {
-            kind,
+            kind: spec.kind,
             span: node_span(child),
             nesting_at: nesting,
             sequence_id,
+            cyclomatic_weight: spec.cyclomatic_weight,
+            cognitive_weight: spec.cognitive_weight,
         }));
         collect_nested_blocks(child, source, captures, nesting, out);
         true
@@ -469,6 +510,8 @@ fn node_span(node: tree_sitter::Node) -> Span {
 mod tests {
     use super::*;
     use crate::model::*;
+    use crate::plugin::BranchWeights;
+    use std::collections::BTreeMap;
 
     fn python_language() -> tree_sitter::Language {
         tree_sitter_python::LANGUAGE.into()
@@ -480,6 +523,16 @@ mod tests {
 
     fn engine() -> QueryEngine {
         QueryEngine::new(python_language(), Language::Python, python_query_source()).unwrap()
+    }
+
+    fn weighted_engine(weights: BTreeMap<String, BranchWeights>) -> QueryEngine {
+        QueryEngine::new_with_branch_weights(
+            python_language(),
+            Language::Python,
+            python_query_source(),
+            &weights,
+        )
+        .unwrap()
     }
 
     // --- Phase 1: Query engine scaffolding ---
@@ -671,6 +724,21 @@ mod tests {
         assert_eq!(branches.len(), 2);
         assert_eq!(branches[0].nesting_at, 0);
         assert_eq!(branches[1].nesting_at, 1);
+    }
+
+    #[test]
+    fn custom_branch_weights_override_cognitive_scores() {
+        let engine = weighted_engine(BTreeMap::from([(
+            "@branch.if".to_string(),
+            BranchWeights {
+                cyclomatic: 1,
+                cognitive: 3,
+            },
+        )]));
+        let source = "def f():\n    if True:\n        pass\n";
+        let (module, _) = engine.parse(Path::new("test.py"), source).unwrap();
+
+        assert_eq!(crate::metrics::cognitive(&module.units[0]), 3);
     }
 
     // --- Phase 4: Full fixture integration ---

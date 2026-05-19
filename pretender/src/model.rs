@@ -1,4 +1,3 @@
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -144,6 +143,8 @@ pub struct Branch {
     pub span: Span,
     pub nesting_at: u32,
     pub sequence_id: Option<u32>,
+    pub cyclomatic_weight: u32,
+    pub cognitive_weight: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

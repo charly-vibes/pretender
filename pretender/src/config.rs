@@ -1,4 +1,3 @@
-
 use miette::Diagnostic;
 use serde::Deserialize;
 use std::path::Path;

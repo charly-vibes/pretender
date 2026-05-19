@@ -259,10 +259,7 @@ impl Executable for CheckArgs {
         if self.staged || self.diff_only || self.diff_base.is_some() {
             return not_implemented("check --staged/--diff-only/--diff-base", "pretender-a80");
         }
-        if matches!(
-            self.format,
-            ReportFormat::Junit | ReportFormat::Markdown
-        ) {
+        if matches!(self.format, ReportFormat::Junit | ReportFormat::Markdown) {
             return not_implemented(
                 &format!("check --format {:?}", self.format).to_lowercase(),
                 "pretender-t2m",
@@ -406,11 +403,7 @@ fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf
     Ok(files)
 }
 
-fn collect_path(
-    path: &Path,
-    exclude_set: &globset::GlobSet,
-    out: &mut Vec<PathBuf>,
-) -> Result<()> {
+fn collect_path(path: &Path, exclude_set: &globset::GlobSet, out: &mut Vec<PathBuf>) -> Result<()> {
     if exclude_set.is_match(path) {
         return Ok(());
     }
@@ -474,22 +467,27 @@ fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -
         metrics.nesting_max,
         thresholds.nesting_max,
     );
-    push_limit_violation_f64(
-        &mut violations,
-        "abc",
-        metrics.abc,
-        thresholds.abc_max,
-    );
+    push_limit_violation_f64(&mut violations, "abc", metrics.abc, thresholds.abc_max);
 
     if unit.is_exported {
         if let Some(max) = thresholds.exported_cyclomatic_max {
-            push_limit_violation(&mut violations, "exported_cyclomatic", metrics.cyclomatic, max);
+            push_limit_violation(
+                &mut violations,
+                "exported_cyclomatic",
+                metrics.cyclomatic,
+                max,
+            );
         }
         if let Some(max) = thresholds.exported_params_max {
             push_limit_violation(&mut violations, "exported_params", metrics.params, max);
         }
         if let Some(max) = thresholds.exported_lines_max {
-            push_limit_violation(&mut violations, "exported_lines", metrics.function_lines, max);
+            push_limit_violation(
+                &mut violations,
+                "exported_lines",
+                metrics.function_lines,
+                max,
+            );
         }
     }
 
@@ -596,46 +594,47 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
     let mut rules: Vec<sarif::ReportingDescriptor> = Vec::new();
     let mut results: Vec<sarif::Result> = Vec::new();
 
-    let mut push_result =
-        |rules: &mut Vec<sarif::ReportingDescriptor>,
-         rule_index: &mut HashMap<&'static str, i64>,
-         results: &mut Vec<sarif::Result>,
-         violation: &ViolationReport,
-         file_path: &str,
-         start_line: i64,
-         label: &str| {
-            let idx = if let Some(&i) = rule_index.get(violation.metric) {
-                i
-            } else {
-                let i = rules.len() as i64;
-                rules.push(sarif::ReportingDescriptor::builder().id(violation.metric).build());
-                rule_index.insert(violation.metric, i);
-                i
-            };
-            let message_text = format!(
-                "{} in {} exceeds limit: actual={:.0}, limit={:.0}",
-                violation.metric, label, violation.actual, violation.limit
-            );
-            let location = sarif::Location::builder()
-                .physical_location(
-                    sarif::PhysicalLocation::builder()
-                        .artifact_location(
-                            sarif::ArtifactLocation::builder().uri(file_path).build(),
-                        )
-                        .region(sarif::Region::builder().start_line(start_line).build())
-                        .build(),
-                )
-                .build();
-            results.push(
-                sarif::Result::builder()
-                    .rule_id(violation.metric)
-                    .rule_index(idx)
-                    .message(sarif::Message::builder().text(message_text).build())
-                    .locations(vec![location])
-                    .level(sarif::ResultLevel::Warning)
+    let push_result = |rules: &mut Vec<sarif::ReportingDescriptor>,
+                       rule_index: &mut HashMap<&'static str, i64>,
+                       results: &mut Vec<sarif::Result>,
+                       violation: &ViolationReport,
+                       file_path: &str,
+                       start_line: i64,
+                       label: &str| {
+        let idx = if let Some(&i) = rule_index.get(violation.metric) {
+            i
+        } else {
+            let i = rules.len() as i64;
+            rules.push(
+                sarif::ReportingDescriptor::builder()
+                    .id(violation.metric)
                     .build(),
             );
+            rule_index.insert(violation.metric, i);
+            i
         };
+        let message_text = format!(
+            "{} in {} exceeds limit: actual={:.0}, limit={:.0}",
+            violation.metric, label, violation.actual, violation.limit
+        );
+        let location = sarif::Location::builder()
+            .physical_location(
+                sarif::PhysicalLocation::builder()
+                    .artifact_location(sarif::ArtifactLocation::builder().uri(file_path).build())
+                    .region(sarif::Region::builder().start_line(start_line).build())
+                    .build(),
+            )
+            .build();
+        results.push(
+            sarif::Result::builder()
+                .rule_id(violation.metric)
+                .rule_index(idx)
+                .message(sarif::Message::builder().text(message_text).build())
+                .locations(vec![location])
+                .level(sarif::ResultLevel::Warning)
+                .build(),
+        );
+    };
 
     for file in &report.files {
         for violation in &file.file_violations {

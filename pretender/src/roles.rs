@@ -1,4 +1,3 @@
-
 use crate::config::{Config, Thresholds};
 use globset::{Glob, GlobMatcher};
 use std::path::Path;

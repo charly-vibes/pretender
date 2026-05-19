@@ -32,12 +32,36 @@ phase: implement
 
 ## Context
 
+### git_status
+
+```
+ M .wai/.pipeline-run
+ M .wai/pipeline-runs/tdd-ro5u-2026-05-19-run.yml
+ M .wai/resources/pipelines/.last-run
+ M pretender/src/config.rs
+ M pretender/src/engine.rs
+ M pretender/src/javascript.rs
+ M pretender/src/main.rs
+ M pretender/src/metrics.rs
+ M pretender/src/model.rs
+ M pretender/src/python.rs
+ M pretender/src/roles.rs
+ M pretender/src/typescript.rs
+ M pretender/tests/cli_test.rs
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-19-pretender-06i-cognitive-complexity.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-19-green-added-queryengine-new-with-branch-weights.md
+?? .wai/projects/pretender-mvp/designs/2026-05-19-pretender-06i-branch-captures-now-carry-cyclomati.md
+?? .wai/projects/pretender-mvp/plans/2026-05-19-pretender-06i-implement-plugin-driven-cognitive-b.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-red-added-queryengine-override-test-for-branch-i.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-no-blocking-issues-after-review-corrected-o.md
+?? tests/fixtures/python_cognitive.py
+```
+
 ### open_issues
 
 ```
 ○ pretender-hay ● P1 Native pre-commit hook generator
 ○ pretender-rl3 ● P1 CLI: pretender init command
-○ pretender-06i ● P2 Cognitive complexity metric
 ○ pretender-3b5 ● P2 CLI: pretender report command (human/markdown/html)
 ○ pretender-4eh ● P2 ABC scoring with smell weights (pretender complexity)
 ○ pretender-5rk ● P2 Explore feedback loop: track recurring structural violations to surface as constraints
@@ -53,7 +77,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 16 issues (16 open, 0 in progress)
+Total: 15 issues (15 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```

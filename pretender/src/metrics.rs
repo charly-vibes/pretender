@@ -1,4 +1,3 @@
-
 use crate::model::{Block, BranchKind, CodeUnit, Metric, Node};
 use std::collections::HashSet;
 
@@ -67,7 +66,7 @@ fn cognitive_block(
                     seen_logical_sequences,
                 ) =>
             {
-                1 + branch.nesting_at
+                branch.cognitive_weight * (1 + branch.nesting_at)
             }
             Node::Branch(_) => 0,
             Node::NestedBlock(block) => cognitive_block(block, seen_logical_sequences),
@@ -143,11 +142,23 @@ mod tests {
     }
 
     fn branch(kind: BranchKind, nesting_at: u32, sequence_id: Option<u32>) -> Node {
+        weighted_branch(kind, nesting_at, sequence_id, 1, 1)
+    }
+
+    fn weighted_branch(
+        kind: BranchKind,
+        nesting_at: u32,
+        sequence_id: Option<u32>,
+        cyclomatic_weight: u32,
+        cognitive_weight: u32,
+    ) -> Node {
         Node::Branch(Branch {
             kind,
             span: span(1, 1),
             nesting_at,
             sequence_id,
+            cyclomatic_weight,
+            cognitive_weight,
         })
     }
 
@@ -211,6 +222,24 @@ mod tests {
         });
 
         assert_eq!(cognitive(&code_unit), 5);
+    }
+
+    #[test]
+    fn cognitive_uses_branch_specific_weights() {
+        let code_unit = unit(Block {
+            span: span(1, 3),
+            nesting: 0,
+            children: vec![
+                weighted_branch(BranchKind::If, 0, None, 1, 3),
+                Node::NestedBlock(Block {
+                    span: span(2, 3),
+                    nesting: 1,
+                    children: vec![weighted_branch(BranchKind::Loop, 1, None, 1, 2)],
+                }),
+            ],
+        });
+
+        assert_eq!(cognitive(&code_unit), 7);
     }
 
     #[test]
