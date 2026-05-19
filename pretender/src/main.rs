@@ -261,17 +261,11 @@ impl Executable for CheckArgs {
         }
         if matches!(
             self.format,
-            ReportFormat::Sarif | ReportFormat::Junit | ReportFormat::Markdown
+            ReportFormat::Junit | ReportFormat::Markdown
         ) {
-            let tracker = match self.format {
-                ReportFormat::Sarif => "pretender-t2m",
-                ReportFormat::Junit => "pretender-t2m",
-                ReportFormat::Markdown => "pretender-t2m",
-                _ => unreachable!(),
-            };
             return not_implemented(
                 &format!("check --format {:?}", self.format).to_lowercase(),
-                tracker,
+                "pretender-t2m",
             );
         }
 
@@ -297,7 +291,8 @@ impl Executable for CheckArgs {
                 write_human_report(sink.as_mut(), &report, color)?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
-            _ => unreachable!("sarif/junit/markdown handled above"),
+            ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
+            _ => unreachable!("junit/markdown handled above"),
         }
         sink.flush().context("failed to flush report output")?;
 
@@ -501,6 +496,7 @@ fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -
     UnitReport {
         name: unit.name.clone(),
         kind: format!("{:?}", unit.kind),
+        start_line: unit.span.start_line,
         metrics,
         violations,
     }
@@ -592,6 +588,101 @@ fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
     Ok(())
 }
 
+fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
+    use serde_sarif::sarif;
+    use std::collections::HashMap;
+
+    let mut rule_index: HashMap<&'static str, i64> = HashMap::new();
+    let mut rules: Vec<sarif::ReportingDescriptor> = Vec::new();
+    let mut results: Vec<sarif::Result> = Vec::new();
+
+    let mut push_result =
+        |rules: &mut Vec<sarif::ReportingDescriptor>,
+         rule_index: &mut HashMap<&'static str, i64>,
+         results: &mut Vec<sarif::Result>,
+         violation: &ViolationReport,
+         file_path: &str,
+         start_line: i64,
+         label: &str| {
+            let idx = if let Some(&i) = rule_index.get(violation.metric) {
+                i
+            } else {
+                let i = rules.len() as i64;
+                rules.push(sarif::ReportingDescriptor::builder().id(violation.metric).build());
+                rule_index.insert(violation.metric, i);
+                i
+            };
+            let message_text = format!(
+                "{} in {} exceeds limit: actual={:.0}, limit={:.0}",
+                violation.metric, label, violation.actual, violation.limit
+            );
+            let location = sarif::Location::builder()
+                .physical_location(
+                    sarif::PhysicalLocation::builder()
+                        .artifact_location(
+                            sarif::ArtifactLocation::builder().uri(file_path).build(),
+                        )
+                        .region(sarif::Region::builder().start_line(start_line).build())
+                        .build(),
+                )
+                .build();
+            results.push(
+                sarif::Result::builder()
+                    .rule_id(violation.metric)
+                    .rule_index(idx)
+                    .message(sarif::Message::builder().text(message_text).build())
+                    .locations(vec![location])
+                    .level(sarif::ResultLevel::Warning)
+                    .build(),
+            );
+        };
+
+    for file in &report.files {
+        for violation in &file.file_violations {
+            push_result(
+                &mut rules,
+                &mut rule_index,
+                &mut results,
+                violation,
+                &file.path,
+                1,
+                &file.path,
+            );
+        }
+        for unit in &file.units {
+            for violation in &unit.violations {
+                push_result(
+                    &mut rules,
+                    &mut rule_index,
+                    &mut results,
+                    violation,
+                    &file.path,
+                    unit.start_line as i64,
+                    &unit.name,
+                );
+            }
+        }
+    }
+
+    let tool_component = sarif::ToolComponent::builder()
+        .name("pretender")
+        .rules(rules)
+        .build();
+    let run = sarif::Run::builder()
+        .tool(tool_component)
+        .results(results)
+        .build();
+    let sarif_log = sarif::Sarif::builder()
+        .version(sarif::Version::V2_1_0.to_string())
+        .schema(sarif::SCHEMA_URL)
+        .runs(vec![run])
+        .build();
+
+    serde_json::to_writer_pretty(&mut *sink, &sarif_log)?;
+    writeln!(sink)?;
+    Ok(())
+}
+
 fn role_name(role: Role) -> &'static str {
     match role {
         Role::App => "app",
@@ -655,6 +746,7 @@ impl From<model::Diagnostic> for DiagnosticReport {
 struct UnitReport {
     name: String,
     kind: String,
+    start_line: u32,
     metrics: MetricValues,
     violations: Vec<ViolationReport>,
 }

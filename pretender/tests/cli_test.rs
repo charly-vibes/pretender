@@ -247,8 +247,8 @@ fn test_check_gate_mode_fails_on_violation() {
 }
 
 #[test]
-fn test_check_sarif_format_returns_not_implemented() {
-    let (_dir, staged) = stage_fixture("python_simple.py");
+fn test_check_sarif_output_structure() {
+    let (_dir, staged) = stage_fixture("python_violator.py");
 
     let output = check(&staged)
         .arg("--format")
@@ -256,12 +256,47 @@ fn test_check_sarif_format_returns_not_implemented() {
         .output()
         .expect("failed to execute process");
 
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("not yet implemented"),
-        "stderr should describe missing feature; got: {stderr}",
+        output.status.success() || output.status.code() == Some(1),
+        "sarif format should not exit with error 2; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
+
+    let sarif: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid SARIF JSON");
+
+    assert_eq!(sarif["version"].as_str(), Some("2.1.0"), "version must be 2.1.0");
+    assert!(sarif["$schema"].as_str().is_some(), "must have $schema");
+
+    let runs = sarif["runs"].as_array().expect("must have runs array");
+    assert_eq!(runs.len(), 1, "must have exactly one run");
+
+    let run = &runs[0];
+    assert_eq!(
+        run["tool"]["driver"]["name"].as_str(),
+        Some("pretender"),
+        "tool.driver.name must be 'pretender'"
+    );
+
+    let rules = run["tool"]["driver"]["rules"]
+        .as_array()
+        .expect("must have rules array");
+    assert!(!rules.is_empty(), "rules must not be empty when violations exist");
+    for rule in rules {
+        assert!(rule["id"].as_str().is_some(), "each rule must have an id");
+    }
+
+    let results = run["results"].as_array().expect("must have results array");
+    assert!(!results.is_empty(), "results must not be empty for a file with violations");
+    for result in results {
+        assert!(result["ruleId"].as_str().is_some(), "each result must have ruleId");
+        assert!(result["message"]["text"].as_str().is_some(), "each result must have message.text");
+        let locations = result["locations"].as_array().expect("each result must have locations");
+        assert!(!locations.is_empty(), "each result must have at least one location");
+        let phys = &locations[0]["physicalLocation"];
+        assert!(phys["artifactLocation"]["uri"].as_str().is_some(), "must have uri");
+        assert!(phys["region"]["startLine"].as_i64().is_some(), "must have startLine");
+    }
 }
 
 #[test]
