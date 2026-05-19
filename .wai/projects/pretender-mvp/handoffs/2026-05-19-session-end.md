@@ -32,12 +32,6 @@ phase: implement
 
 ## Context
 
-### git_status
-
-```
- M .wai/pipeline-runs/tdd-ro5u-2026-05-19-run.yml
-```
-
 ### open_issues
 
 ```
@@ -52,7 +46,6 @@ phase: implement
 ○ pretender-8n5 ● P2 Rust language plugin (.scm + plugin.toml)
 ○ pretender-fb3 ● P2 GitHub Actions CI generator
 ○ pretender-oyg ● P2 min_assertions metric for test role
-○ pretender-t2m ● P2 SARIF 2.1.0 output format
 ○ pretender-238 ● P3 Mutation testing wrapper (pretender mutation)
 ○ pretender-9hk ● P3 External metric plugin wrappers (eslint, ruff, clippy, staticcheck)
 ○ pretender-a80 ● P3 Diff-only mode: git2 integration for staged files and diff-base
@@ -60,7 +53,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 17 issues (17 open, 0 in progress)
+Total: 16 issues (16 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
