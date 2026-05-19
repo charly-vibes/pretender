@@ -23,11 +23,13 @@ fn manifest() -> Result<&'static PluginManifest> {
 
 impl TypeScriptParser {
     fn engine(&self) -> Result<QueryEngine> {
+        let m = manifest()?;
         QueryEngine::new_with_branch_weights(
             tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Language::TypeScript,
             TS_QUERY,
-            &manifest()?.branches,
+            &m.branches,
+            &m.smell_weights,
         )
     }
 }
@@ -42,11 +44,13 @@ pub struct TypeScriptXParser;
 
 impl TypeScriptXParser {
     fn engine(&self) -> Result<QueryEngine> {
+        let m = manifest()?;
         QueryEngine::new_with_branch_weights(
             tree_sitter_typescript::LANGUAGE_TSX.into(),
             Language::TypeScript,
             TS_QUERY,
-            &manifest()?.branches,
+            &m.branches,
+            &m.smell_weights,
         )
     }
 }

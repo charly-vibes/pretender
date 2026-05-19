@@ -23,11 +23,13 @@ fn manifest() -> Result<&'static PluginManifest> {
 
 impl PythonParser {
     fn engine(&self) -> Result<QueryEngine> {
+        let m = manifest()?;
         QueryEngine::new_with_branch_weights(
             tree_sitter_python::LANGUAGE.into(),
             Language::Python,
             PYTHON_QUERY,
-            &manifest()?.branches,
+            &m.branches,
+            &m.smell_weights,
         )
     }
 }

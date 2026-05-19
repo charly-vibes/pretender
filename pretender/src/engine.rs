@@ -21,6 +21,7 @@ pub struct QueryEngine {
     call_idx: Option<u32>,
     call_callee_idx: Option<u32>,
     assign_idx: Option<u32>,
+    call_weights: BTreeMap<String, f64>,
 }
 
 #[derive(Clone, Copy)]
@@ -37,7 +38,7 @@ impl QueryEngine {
         lang_kind: Language,
         query_source: &str,
     ) -> Result<Self> {
-        Self::new_with_branch_weights(language, lang_kind, query_source, &BTreeMap::new())
+        Self::new_with_branch_weights(language, lang_kind, query_source, &BTreeMap::new(), &BTreeMap::new())
     }
 
     pub fn new_with_branch_weights(
@@ -45,6 +46,7 @@ impl QueryEngine {
         lang_kind: Language,
         query_source: &str,
         branch_weights: &BTreeMap<String, BranchWeights>,
+        call_weights: &BTreeMap<String, f64>,
     ) -> Result<Self> {
         let query = tree_sitter::Query::new(&language, query_source)
             .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))?;
@@ -122,6 +124,7 @@ impl QueryEngine {
             call_idx,
             call_callee_idx,
             assign_idx,
+            call_weights: call_weights.clone(),
         })
     }
 
@@ -282,7 +285,7 @@ impl QueryEngine {
             .map(|p| extract_params(p, source))
             .unwrap_or_default();
 
-        let body = build_block(body_node, source, captures, 0);
+        let body = build_block(body_node, source, captures, 0, &self.call_weights);
 
         Ok(CodeUnit {
             name,
@@ -373,9 +376,10 @@ fn build_block(
     source: &[u8],
     captures: &CaptureMap,
     nesting: u32,
+    call_weights: &BTreeMap<String, f64>,
 ) -> Block {
     let mut children = Vec::new();
-    walk_block(block_node, source, captures, nesting, &mut children);
+    walk_block(block_node, source, captures, nesting, &mut children, call_weights);
     Block {
         span: node_span(block_node),
         nesting,
@@ -390,6 +394,7 @@ fn visit_child(
     captures: &CaptureMap,
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
+    call_weights: &BTreeMap<String, f64>,
 ) -> bool {
     if let Some(&spec) = captures.branches.get(&child.id()) {
         let sequence_id = match spec.kind {
@@ -404,19 +409,20 @@ fn visit_child(
             cyclomatic_weight: spec.cyclomatic_weight,
             cognitive_weight: spec.cognitive_weight,
         }));
-        collect_nested_blocks(child, source, captures, nesting, out);
+        collect_nested_blocks(child, source, captures, nesting, out, call_weights);
         true
     } else if captures.assignments.contains(&child.id()) {
         out.push(crate::model::Node::Assignment(node_span(child)));
-        collect_nested_blocks(child, source, captures, nesting, out);
+        collect_nested_blocks(child, source, captures, nesting, out, call_weights);
         true
     } else if let Some(callee) = captures.calls.get(&child.id()) {
+        let smell_weight = call_weights.get(callee.as_str()).copied().unwrap_or(1.0);
         out.push(crate::model::Node::Call(CallSite {
             callee: callee.clone(),
             span: node_span(child),
-            smell_weight: 1.0,
+            smell_weight,
         }));
-        collect_nested_blocks(child, source, captures, nesting, out);
+        collect_nested_blocks(child, source, captures, nesting, out, call_weights);
         true
     } else {
         false
@@ -429,14 +435,15 @@ fn walk_block(
     captures: &CaptureMap,
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
+    call_weights: &BTreeMap<String, f64>,
 ) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "function_definition" || child.kind() == "class_definition" {
             continue;
         }
-        if !visit_child(node, child, source, captures, nesting, out) {
-            walk_block(child, source, captures, nesting, out);
+        if !visit_child(node, child, source, captures, nesting, out, call_weights) {
+            walk_block(child, source, captures, nesting, out, call_weights);
         }
     }
 }
@@ -447,19 +454,21 @@ fn collect_nested_blocks(
     captures: &CaptureMap,
     nesting: u32,
     out: &mut Vec<crate::model::Node>,
+    call_weights: &BTreeMap<String, f64>,
 ) {
     let mut cursor = branch_node.walk();
     for child in branch_node.children(&mut cursor) {
-        if !visit_child(branch_node, child, source, captures, nesting, out) {
+        if !visit_child(branch_node, child, source, captures, nesting, out, call_weights) {
             if child.kind() == "block" {
                 out.push(crate::model::Node::NestedBlock(build_block(
                     child,
                     source,
                     captures,
                     nesting + 1,
+                    call_weights,
                 )));
             } else {
-                collect_nested_blocks(child, source, captures, nesting, out);
+                collect_nested_blocks(child, source, captures, nesting, out, call_weights);
             }
         }
     }
@@ -572,6 +581,7 @@ mod tests {
             Language::Python,
             python_query_source(),
             &weights,
+            &BTreeMap::new(),
         )
         .unwrap()
     }

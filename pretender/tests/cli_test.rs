@@ -510,3 +510,46 @@ fn test_check_parallel_results_are_deterministic() {
         "json output must be deterministic across runs"
     );
 }
+
+#[test]
+fn test_smell_call_weights_elevate_abc() {
+    let (_dir, path) = stage_fixture("python_smell_calls.py");
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run pretender");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("invalid json: {e}\nstdout: {stdout}"));
+    let units = json["files"][0]["units"].as_array().expect("units array");
+    let abc_for = |name: &str| -> f64 {
+        units
+            .iter()
+            .find(|u| u["name"] == name)
+            .unwrap_or_else(|| panic!("unit {name} not found"))["metrics"]["abc"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("abc metric for {name}"))
+    };
+    // smell_eval: A=1, B=0, C=5 (eval weight=5.0) → sqrt(26) ≈ 5.099
+    let eval_abc = abc_for("smell_eval");
+    assert!(
+        (eval_abc - 5.099).abs() < 0.01,
+        "smell_eval abc={eval_abc}, expected ≈5.099 (sqrt(26))"
+    );
+    // smell_exec: A=0, B=0, C=5 (exec weight=5.0) → 5.0
+    let exec_abc = abc_for("smell_exec");
+    assert!(
+        (exec_abc - 5.0).abs() < 0.01,
+        "smell_exec abc={exec_abc}, expected 5.0"
+    );
+    // smell_compile: A=1, B=0, C=3 (compile weight=3.0) → sqrt(10) ≈ 3.162
+    let compile_abc = abc_for("smell_compile");
+    assert!(
+        (compile_abc - 3.162).abs() < 0.01,
+        "smell_compile abc={compile_abc}, expected ≈3.162 (sqrt(10))"
+    );
+}

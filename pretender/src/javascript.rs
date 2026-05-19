@@ -23,11 +23,13 @@ fn manifest() -> Result<&'static PluginManifest> {
 
 impl JavaScriptParser {
     fn engine(&self) -> Result<QueryEngine> {
+        let m = manifest()?;
         QueryEngine::new_with_branch_weights(
             tree_sitter_javascript::LANGUAGE.into(),
             Language::JavaScript,
             JS_QUERY,
-            &manifest()?.branches,
+            &m.branches,
+            &m.smell_weights,
         )
     }
 }
