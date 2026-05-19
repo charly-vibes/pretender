@@ -32,6 +32,18 @@ phase: implement
 
 ## Context
 
+### git_status
+
+```
+ M .wai/.pipeline-run
+ M .wai/resources/pipelines/.last-run
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-19-pretender-8n5-rust-plugin.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-19-green-tree-sitter-rust-0-23-3-dep-added-language.md
+?? .wai/projects/pretender-mvp/plans/2026-05-19-rust-plugin-pretender-8n5-end-state-pretender.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-red-test-rust-complexity-fails-with-unsupported.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-compound-assignment-expr-is-the-correct-node.md
+```
+
 ### open_issues
 
 ```
@@ -41,7 +53,6 @@ phase: implement
 ○ pretender-5rk ● P2 Explore feedback loop: track recurring structural violations to surface as constraints
 ○ pretender-6aw ● P2 Three operating modes: guidance / tiered / gate
 ○ pretender-8ai ● P2 5 additional languages: Go, Java, Ruby, C, C++
-○ pretender-8n5 ● P2 Rust language plugin (.scm + plugin.toml)
 ○ pretender-fb3 ● P2 GitHub Actions CI generator
 ○ pretender-238 ● P3 Mutation testing wrapper (pretender mutation)
 ○ pretender-9hk ● P3 External metric plugin wrappers (eslint, ruff, clippy, staticcheck)
@@ -50,7 +61,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 13 issues (13 open, 0 in progress)
+Total: 12 issues (12 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
