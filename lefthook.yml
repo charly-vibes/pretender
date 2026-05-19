@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  commands:
+    type-check:
+      run: just type-check
+    lint:
+      run: just lint
+
+pre-push:
+  commands:
+    test:
+      run: just test
