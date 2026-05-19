@@ -36,25 +36,18 @@ phase: implement
 
 ```
  M .wai/.pipeline-run
- M .wai/pipeline-runs/tdd-ro5u-2026-05-19-run.yml
  M .wai/resources/pipelines/.last-run
- M pretender/src/config.rs
+ M languages/python/metrics.scm
  M pretender/src/engine.rs
- M pretender/src/javascript.rs
  M pretender/src/main.rs
  M pretender/src/metrics.rs
  M pretender/src/model.rs
- M pretender/src/python.rs
- M pretender/src/roles.rs
- M pretender/src/typescript.rs
  M pretender/tests/cli_test.rs
-?? .wai/pipeline-runs/tdd-ro5u-2026-05-19-pretender-06i-cognitive-complexity.yml
-?? .wai/projects/pretender-mvp/designs/2026-05-19-green-added-queryengine-new-with-branch-weights.md
-?? .wai/projects/pretender-mvp/designs/2026-05-19-pretender-06i-branch-captures-now-carry-cyclomati.md
-?? .wai/projects/pretender-mvp/plans/2026-05-19-pretender-06i-implement-plugin-driven-cognitive-b.md
-?? .wai/projects/pretender-mvp/research/2026-05-19-red-added-queryengine-override-test-for-branch-i.md
-?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-no-blocking-issues-after-review-corrected-o.md
-?? tests/fixtures/python_cognitive.py
+?? .wai/pipeline-runs/tdd-ro5u-2026-05-19-pretender-oyg-min-assertions.yml
+?? .wai/projects/pretender-mvp/designs/2026-05-19-green-added-per-codeunit-assertion-counts-from-a.md
+?? .wai/projects/pretender-mvp/plans/2026-05-19-pretender-oyg-add-assertion-captures-to-the-unive.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-red-added-cli-regression-for-tests-test-no-assert.md
+?? .wai/projects/pretender-mvp/research/2026-05-19-ro5u-fixed-one-correctness-issue-during-review-r.md
 ```
 
 ### open_issues
@@ -69,7 +62,6 @@ phase: implement
 ○ pretender-8ai ● P2 5 additional languages: Go, Java, Ruby, C, C++
 ○ pretender-8n5 ● P2 Rust language plugin (.scm + plugin.toml)
 ○ pretender-fb3 ● P2 GitHub Actions CI generator
-○ pretender-oyg ● P2 min_assertions metric for test role
 ○ pretender-238 ● P3 Mutation testing wrapper (pretender mutation)
 ○ pretender-9hk ● P3 External metric plugin wrappers (eslint, ruff, clippy, staticcheck)
 ○ pretender-a80 ● P3 Diff-only mode: git2 integration for staged files and diff-base
@@ -77,7 +69,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 15 issues (15 open, 0 in progress)
+Total: 14 issues (14 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```

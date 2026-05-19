@@ -21,6 +21,16 @@ fn stage_fixture(name: &str) -> (PathBuf, PathBuf) {
     (dir, dest)
 }
 
+fn write_temp_file(relative: &str, source: &str) -> (PathBuf, PathBuf) {
+    let dir = tempdir();
+    let dest = dir.join(relative);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).expect("create parent dirs");
+    }
+    std::fs::write(&dest, source).expect("write temp source");
+    (dir, dest)
+}
+
 fn tempdir() -> PathBuf {
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
@@ -220,6 +230,38 @@ fn test_check_human_output_reports_cognitive_violations() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("deeply_nested"), "stdout: {stdout}");
     assert!(stdout.contains("cognitive"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_check_reports_min_assertions_for_test_role() {
+    let (_dir, staged) = write_temp_file(
+        "tests/test_no_assertions.py",
+        "def test_missing_assertion():\n    helper()\n",
+    );
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("test_missing_assertion"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("min_assertions"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_check_accepts_test_role_when_assertion_present() {
+    let (_dir, staged) = write_temp_file(
+        "tests/test_has_assertion.py",
+        "def test_has_assertion():\n    assert True\n",
+    );
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("min_assertions"), "stdout: {stdout}");
 }
 
 #[test]

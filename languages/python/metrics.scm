@@ -29,4 +29,11 @@
 ; Assertions (test role min_assertions)
 (assert_statement) @assert.statement
 (call
-  function: (identifier) @assert.fn (#match? @assert.fn "^assert"))
+  function: (identifier) @assert.fn
+  (#match? @assert.fn "^assert"))
+(call
+  function: (attribute
+    object: (identifier) @meta.assert_obj
+    attribute: (identifier) @meta.assert_attr)
+  (#match? @meta.assert_obj "^(self|pytest)$")
+  (#match? @meta.assert_attr "^(assert[A-Z].*|raises|warns)$")) @assert.call

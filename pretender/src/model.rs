@@ -108,6 +108,7 @@ pub struct CodeUnit {
     pub parameters: Vec<Parameter>,
     pub body: Block,
     pub is_exported: bool,
+    pub assertions: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

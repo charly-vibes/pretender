@@ -179,6 +179,7 @@ mod tests {
             ],
             body,
             is_exported: false,
+            assertions: 0,
         }
     }
 

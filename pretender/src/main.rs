@@ -430,6 +430,7 @@ fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -
     let metrics = MetricValues {
         cyclomatic: metrics::cyclomatic(unit),
         cognitive: metrics::cognitive(unit),
+        assertions: unit.assertions,
         function_lines: metrics::function_lines(unit),
         params: metrics::params(unit),
         nesting_max: metrics::nesting_max(unit),
@@ -468,6 +469,9 @@ fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -
         thresholds.nesting_max,
     );
     push_limit_violation_f64(&mut violations, "abc", metrics.abc, thresholds.abc_max);
+    if let Some(min) = thresholds.min_assertions {
+        push_min_violation(&mut violations, "min_assertions", metrics.assertions, min);
+    }
 
     if unit.is_exported {
         if let Some(max) = thresholds.exported_cyclomatic_max {
@@ -530,6 +534,16 @@ fn push_limit_violation_f64(
     }
 }
 
+fn push_min_violation(out: &mut Vec<ViolationReport>, metric: &'static str, actual: u32, min: u32) {
+    if actual < min {
+        out.push(ViolationReport {
+            metric,
+            actual: actual as f64,
+            limit: min as f64,
+        });
+    }
+}
+
 fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -> Result<()> {
     let (red, reset) = if color {
         ("\u{1b}[31m", "\u{1b}[0m")
@@ -549,10 +563,11 @@ fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -
         for unit in &file.units {
             writeln!(
                 sink,
-                "  {}: cyclomatic={}, cognitive={}, function_lines={}, params={}, nesting_max={}, abc={:.2}",
+                "  {}: cyclomatic={}, cognitive={}, assertions={}, function_lines={}, params={}, nesting_max={}, abc={:.2}",
                 unit.name,
                 unit.metrics.cyclomatic,
                 unit.metrics.cognitive,
+                unit.metrics.assertions,
                 unit.metrics.function_lines,
                 unit.metrics.params,
                 unit.metrics.nesting_max,
@@ -754,6 +769,7 @@ struct UnitReport {
 struct MetricValues {
     cyclomatic: u32,
     cognitive: u32,
+    assertions: u32,
     function_lines: u32,
     params: u32,
     nesting_max: u32,

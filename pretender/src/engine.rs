@@ -17,6 +17,7 @@ pub struct QueryEngine {
     fn_params_idx: u32,
     fn_body_idx: u32,
     branch_captures: Vec<(u32, BranchCaptureSpec)>,
+    assert_capture_indices: Vec<u32>,
     call_idx: Option<u32>,
     call_callee_idx: Option<u32>,
     assign_idx: Option<u32>,
@@ -97,6 +98,13 @@ impl QueryEngine {
             })
             .collect();
 
+        let assert_capture_indices = query
+            .capture_names()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, name)| name.starts_with("assert.").then_some(idx as u32))
+            .collect();
+
         let call_idx = query.capture_index_for_name("call");
         let call_callee_idx = query.capture_index_for_name("call.callee");
         let assign_idx = query.capture_index_for_name("assign");
@@ -110,6 +118,7 @@ impl QueryEngine {
             fn_params_idx,
             fn_body_idx,
             branch_captures,
+            assert_capture_indices,
             call_idx,
             call_callee_idx,
             assign_idx,
@@ -183,6 +192,8 @@ impl QueryEngine {
                 for capture in m.captures {
                     if let Some(spec) = self.branch_capture_for_index(capture.index) {
                         captures.branches.insert(capture.node.id(), spec);
+                    } else if self.assert_capture_indices.contains(&capture.index) {
+                        captures.assertions.insert(capture.node.id());
                     } else if Some(capture.index) == self.assign_idx {
                         captures.assignments.insert(capture.node.id());
                     } else if Some(capture.index) == self.call_idx {
@@ -280,6 +291,7 @@ impl QueryEngine {
             parameters,
             body,
             is_exported,
+            assertions: count_captured_nodes(body_node, &captures.assertions),
         })
     }
 }
@@ -289,6 +301,7 @@ struct CaptureMap {
     branches: HashMap<usize, BranchCaptureSpec>,
     calls: HashMap<usize, String>,
     assignments: std::collections::HashSet<usize>,
+    assertions: std::collections::HashSet<usize>,
 }
 
 #[derive(Default)]
@@ -497,6 +510,34 @@ fn classify_lines(root: tree_sitter::Node, lines_total: u32) -> (u32, u32) {
             }
         }
     }
+}
+
+fn count_captured_nodes(
+    node: tree_sitter::Node,
+    captured_ids: &std::collections::HashSet<usize>,
+) -> u32 {
+    let mut count = u32::from(captured_ids.contains(&node.id()));
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if is_nested_definition(child) {
+            continue;
+        }
+        count += count_captured_nodes(child, captured_ids);
+    }
+    count
+}
+
+fn is_nested_definition(node: tree_sitter::Node) -> bool {
+    matches!(
+        node.kind(),
+        "function_definition"
+            | "class_definition"
+            | "function_declaration"
+            | "method_definition"
+            | "generator_function_declaration"
+            | "arrow_function"
+            | "class"
+    )
 }
 
 fn node_span(node: tree_sitter::Node) -> Span {
@@ -739,6 +780,27 @@ mod tests {
         let (module, _) = engine.parse(Path::new("test.py"), source).unwrap();
 
         assert_eq!(crate::metrics::cognitive(&module.units[0]), 3);
+    }
+
+    #[test]
+    fn counts_assertions_per_code_unit() {
+        let engine = engine();
+        let source = "def test_assertions():\n    assert ok\n    self.assertEqual(a, b)\n    pytest.raises(ValueError)\n";
+        let (module, _) = engine.parse(Path::new("test.py"), source).unwrap();
+
+        assert_eq!(module.units[0].assertions, 3);
+    }
+
+    #[test]
+    fn nested_function_assertions_do_not_count_toward_parent() {
+        let engine = engine();
+        let source = "def test_outer():\n    def helper():\n        assert True\n    helper()\n";
+        let (module, _) = engine.parse(Path::new("test.py"), source).unwrap();
+
+        let outer = module.units.iter().find(|unit| unit.name == "test_outer").unwrap();
+        let inner = module.units.iter().find(|unit| unit.name == "helper").unwrap();
+        assert_eq!(outer.assertions, 0);
+        assert_eq!(inner.assertions, 1);
     }
 
     // --- Phase 4: Full fixture integration ---
