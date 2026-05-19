@@ -2,5 +2,5 @@ run_id: tdd-ro5u-2026-05-19-pretender-oyg-min-assertions
 pipeline: tdd-ro5u
 topic: pretender-oyg min_assertions
 created_at: '2026-05-19T16:30:09.810495793+00:00'
-current_step: 4
+current_step: 5
 approvals: {}
