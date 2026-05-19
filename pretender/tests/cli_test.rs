@@ -308,6 +308,62 @@ fn test_stub_subcommands_exit_two() {
 }
 
 #[test]
+fn test_javascript_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("js_simple.js"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("withBranch: 2"),
+        "expected withBranch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complexFunc: 5"),
+        "expected complexFunc: 5 in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_typescript_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("ts_sample.ts"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("greet: 1"),
+        "expected greet: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("withBranch: 2"),
+        "expected withBranch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complexFunc: 5"),
+        "expected complexFunc: 5 in stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_check_parallel_results_are_deterministic() {
     let dir = tempdir();
     for name in ["python_simple.py", "python_violator.py"] {

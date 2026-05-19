@@ -1,10 +1,12 @@
 mod config;
 mod engine;
+mod javascript;
 mod metrics;
 mod model;
 mod plugin;
 mod python;
 mod roles;
+mod typescript;
 
 use crate::config::{Config, Mode};
 use crate::model::Metric;
@@ -608,7 +610,10 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
 
     match ext {
+        "js" | "jsx" | "mjs" | "cjs" => Ok(Box::new(javascript::JavaScriptParser)),
         "py" => Ok(Box::new(python::PythonParser)),
+        "ts" | "mts" => Ok(Box::new(typescript::TypeScriptParser)),
+        "tsx" | "cts" => Ok(Box::new(typescript::TypeScriptXParser)),
         _ => Err(anyhow!("unsupported file extension '.{}'", ext)),
     }
 }
