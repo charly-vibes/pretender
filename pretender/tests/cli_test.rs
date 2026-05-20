@@ -60,6 +60,16 @@ fn report_in(dir: &Path) -> Command {
     cmd
 }
 
+fn ci_generate_in(dir: &Path, provider: &str) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("ci")
+        .arg("generate")
+        .arg(provider)
+        .current_dir(dir)
+        .env("NO_COLOR", "1");
+    cmd
+}
+
 #[test]
 fn test_complexity_command() {
     let output = Command::new(pretender_bin())
@@ -456,7 +466,6 @@ fn test_stub_subcommands_exit_two() {
         vec!["duplication"],
         vec!["mutation"],
         vec!["hooks", "install"],
-        vec!["ci", "generate", "github"],
         vec!["plugins", "list"],
         vec!["explain", "cyclomatic"],
     ] {
@@ -593,6 +602,65 @@ fn test_check_parallel_results_are_deterministic() {
         first, second,
         "json output must be deterministic across runs"
     );
+}
+
+#[test]
+fn test_ci_generate_github_writes_workflow() {
+    let dir = tempdir();
+
+    let output = ci_generate_in(&dir, "github")
+        .output()
+        .expect("run ci generator");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
+        .expect("workflow exists");
+    assert!(
+        workflow.starts_with(
+            "# Note: pretender-tool/setup@v1 must be published before this workflow is functional."
+        ),
+        "workflow: {workflow}"
+    );
+    assert!(
+        workflow.contains("uses: actions/checkout@v4"),
+        "workflow: {workflow}"
+    );
+    assert!(workflow.contains("fetch-depth: 0"), "workflow: {workflow}");
+    assert!(
+        workflow.contains("uses: pretender-tool/setup@v1"),
+        "workflow: {workflow}"
+    );
+    assert!(
+        workflow.contains(
+            "pretender check --diff-base=origin/main --format=sarif --output=pretender.sarif"
+        ),
+        "workflow: {workflow}"
+    );
+    assert!(
+        workflow.contains("uses: github/codeql-action/upload-sarif@v3"),
+        "workflow: {workflow}"
+    );
+    assert!(
+        workflow.contains("pretender report --format=markdown >> $GITHUB_STEP_SUMMARY"),
+        "workflow: {workflow}"
+    );
+}
+
+#[test]
+fn test_ci_generate_non_github_stays_stubbed() {
+    let dir = tempdir();
+
+    let output = ci_generate_in(&dir, "gitlab")
+        .output()
+        .expect("run ci generator");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not yet implemented"), "stderr: {stderr}");
 }
 
 #[test]

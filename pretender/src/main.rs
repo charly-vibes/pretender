@@ -220,7 +220,7 @@ impl Executable for Commands {
             Commands::Duplication(_) => not_implemented("duplication", "pretender-xgn"),
             Commands::Mutation(_) => not_implemented("mutation", "pretender-238"),
             Commands::Hooks(_) => not_implemented("hooks", "pretender-hay"),
-            Commands::Ci(_) => not_implemented("ci generate", "pretender-fb3"),
+            Commands::Ci(args) => args.run(),
             Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
             Commands::Explain(_) => not_implemented("explain", "pretender-vuc"),
         }
@@ -333,6 +333,20 @@ impl Executable for ReportArgs {
     }
 }
 
+impl Executable for CiCommand {
+    fn run(&self) -> Result<ExitCode> {
+        match self {
+            CiCommand::Generate {
+                provider: CiProvider::Github,
+            } => {
+                write_github_ci_workflow()?;
+                Ok(ExitCode::SUCCESS)
+            }
+            CiCommand::Generate { .. } => not_implemented("ci generate", "pretender-fb3"),
+        }
+    }
+}
+
 fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
     let has_skipped = report
         .files
@@ -354,6 +368,59 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
             }
         }
     }
+}
+
+fn github_ci_workflow_path() -> PathBuf {
+    PathBuf::from(".github/workflows/pretender.yml")
+}
+
+fn write_github_ci_workflow() -> Result<()> {
+    let path = github_ci_workflow_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create workflow dir: {}", parent.display()))?;
+    }
+    fs::write(&path, github_ci_workflow_contents())
+        .with_context(|| format!("failed to write workflow: {}", path.display()))?;
+    Ok(())
+}
+
+fn github_ci_workflow_contents() -> &'static str {
+    r#"# Note: pretender-tool/setup@v1 must be published before this workflow is functional.
+name: Pretender
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  pretender:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pretender-tool/setup@v1
+      - name: Run Pretender
+        id: pretender
+        continue-on-error: true
+        run: pretender check --diff-base=origin/main --format=sarif --output=pretender.sarif
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pretender.sarif
+      - name: Append markdown report
+        if: steps.pretender.outcome == 'failure'
+        run: pretender report --format=markdown >> $GITHUB_STEP_SUMMARY
+      - name: Fail on Pretender findings
+        if: steps.pretender.outcome == 'failure'
+        run: exit 1
+"#
 }
 
 fn last_check_report_path() -> PathBuf {
