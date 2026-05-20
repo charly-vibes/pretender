@@ -14,7 +14,7 @@ mod ruby;
 mod rust;
 mod typescript;
 
-use crate::config::{Config, Mode};
+use crate::config::{Band, Bands, Config, Mode};
 use crate::model::Metric;
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
@@ -291,7 +291,7 @@ impl Executable for CheckArgs {
         match self.format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color)?;
+                write_human_report(sink.as_mut(), &report, color, &config.bands)?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
@@ -315,13 +315,7 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
 
     match mode {
         Mode::Guidance => ExitCode::SUCCESS,
-        Mode::Tiered => {
-            if has_violation {
-                ExitCode::FAILURE
-            } else {
-                ExitCode::SUCCESS
-            }
-        }
+        Mode::Tiered => ExitCode::SUCCESS,
         Mode::Gate => {
             if has_violation || has_skipped {
                 ExitCode::FAILURE
@@ -550,15 +544,44 @@ fn push_min_violation(out: &mut Vec<ViolationReport>, metric: &'static str, actu
     }
 }
 
-fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -> Result<()> {
-    let (red, reset) = if color {
-        ("\u{1b}[31m", "\u{1b}[0m")
-    } else {
-        ("", "")
-    };
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Severity {
+    Green,
+    Yellow,
+    Red,
+}
+
+struct FileSummary {
+    severity: Severity,
+    message: String,
+}
+
+fn write_human_report(
+    sink: &mut dyn Write,
+    report: &CheckReport,
+    color: bool,
+    bands: &Bands,
+) -> Result<()> {
+    let red = if color { "\u{1b}[31m" } else { "" };
+    let yellow = if color { "\u{1b}[33m" } else { "" };
+    let green = if color { "\u{1b}[32m" } else { "" };
+    let reset = if color { "\u{1b}[0m" } else { "" };
 
     for file in &report.files {
-        writeln!(sink, "{} [{}]", file.path, file.role)?;
+        let summary = summarize_file(file, bands);
+        let (icon, accent) = match summary.severity {
+            Severity::Green => ("✓", green),
+            Severity::Yellow => ("⚠", yellow),
+            Severity::Red => ("✗", red),
+        };
+
+        writeln!(
+            sink,
+            "{accent}{icon}{reset} {} — {}",
+            file.path, summary.message
+        )?;
+        writeln!(sink, "  role: {}", file.role)?;
+
         for violation in &file.file_violations {
             writeln!(
                 sink,
@@ -592,6 +615,115 @@ fn write_human_report(sink: &mut dyn Write, report: &CheckReport, color: bool) -
         }
     }
     Ok(())
+}
+
+fn summarize_file(file: &FileReport, bands: &Bands) -> FileSummary {
+    let mut summary = FileSummary {
+        severity: Severity::Green,
+        message: "all green".to_string(),
+    };
+
+    for diagnostic in &file.diagnostics {
+        if diagnostic.severity == "Error" {
+            consider_summary(
+                &mut summary,
+                Severity::Red,
+                format!("parse error: {}", diagnostic.message),
+            );
+        }
+    }
+
+    for violation in &file.file_violations {
+        consider_summary(
+            &mut summary,
+            Severity::Red,
+            format!(
+                "{} {:.0} > {:.0}",
+                violation.metric, violation.actual, violation.limit
+            ),
+        );
+    }
+
+    for unit in &file.units {
+        consider_banded_metric(
+            &mut summary,
+            &unit.name,
+            "cyclomatic",
+            unit.metrics.cyclomatic,
+            bands.cyclomatic,
+        );
+        consider_banded_metric(
+            &mut summary,
+            &unit.name,
+            "cognitive",
+            unit.metrics.cognitive,
+            bands.cognitive,
+        );
+
+        for violation in &unit.violations {
+            if matches!(violation.metric, "cyclomatic" | "cognitive") {
+                continue;
+            }
+            consider_summary(
+                &mut summary,
+                Severity::Red,
+                format!(
+                    "{}(): {} {:.0} > {:.0}",
+                    unit.name, violation.metric, violation.actual, violation.limit
+                ),
+            );
+        }
+    }
+
+    summary
+}
+
+fn consider_banded_metric(
+    summary: &mut FileSummary,
+    unit_name: &str,
+    metric: &'static str,
+    actual: u32,
+    band: Option<Band>,
+) {
+    let severity = band_severity(actual, band);
+    if severity == Severity::Green {
+        return;
+    }
+
+    consider_summary(
+        summary,
+        severity,
+        format!(
+            "{}(): {} {} ({})",
+            unit_name,
+            metric,
+            actual,
+            severity_label(severity)
+        ),
+    );
+}
+
+fn consider_summary(summary: &mut FileSummary, severity: Severity, message: String) {
+    if severity > summary.severity {
+        summary.severity = severity;
+        summary.message = message;
+    }
+}
+
+fn band_severity(actual: u32, band: Option<Band>) -> Severity {
+    match band {
+        Some(band) if actual > band.yellow => Severity::Red,
+        Some(band) if actual > band.green => Severity::Yellow,
+        _ => Severity::Green,
+    }
+}
+
+fn severity_label(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Green => "green",
+        Severity::Yellow => "yellow",
+        Severity::Red => "red",
+    }
 }
 
 fn color_enabled() -> bool {

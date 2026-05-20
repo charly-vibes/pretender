@@ -38,7 +38,13 @@ impl QueryEngine {
         lang_kind: Language,
         query_source: &str,
     ) -> Result<Self> {
-        Self::new_with_branch_weights(language, lang_kind, query_source, &BTreeMap::new(), &BTreeMap::new())
+        Self::new_with_branch_weights(
+            language,
+            lang_kind,
+            query_source,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
     }
 
     pub fn new_with_branch_weights(
@@ -379,7 +385,14 @@ fn build_block(
     call_weights: &BTreeMap<String, f64>,
 ) -> Block {
     let mut children = Vec::new();
-    walk_block(block_node, source, captures, nesting, &mut children, call_weights);
+    walk_block(
+        block_node,
+        source,
+        captures,
+        nesting,
+        &mut children,
+        call_weights,
+    );
     Block {
         span: node_span(block_node),
         nesting,
@@ -458,7 +471,15 @@ fn collect_nested_blocks(
 ) {
     let mut cursor = branch_node.walk();
     for child in branch_node.children(&mut cursor) {
-        if !visit_child(branch_node, child, source, captures, nesting, out, call_weights) {
+        if !visit_child(
+            branch_node,
+            child,
+            source,
+            captures,
+            nesting,
+            out,
+            call_weights,
+        ) {
             if child.kind() == "block" {
                 out.push(crate::model::Node::NestedBlock(build_block(
                     child,
@@ -807,8 +828,16 @@ mod tests {
         let source = "def test_outer():\n    def helper():\n        assert True\n    helper()\n";
         let (module, _) = engine.parse(Path::new("test.py"), source).unwrap();
 
-        let outer = module.units.iter().find(|unit| unit.name == "test_outer").unwrap();
-        let inner = module.units.iter().find(|unit| unit.name == "helper").unwrap();
+        let outer = module
+            .units
+            .iter()
+            .find(|unit| unit.name == "test_outer")
+            .unwrap();
+        let inner = module
+            .units
+            .iter()
+            .find(|unit| unit.name == "helper")
+            .unwrap();
         assert_eq!(outer.assertions, 0);
         assert_eq!(inner.assertions, 1);
     }

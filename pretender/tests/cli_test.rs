@@ -48,6 +48,12 @@ fn check(path: &Path) -> Command {
     cmd
 }
 
+fn check_in(dir: &Path, path: &Path) -> Command {
+    let mut cmd = check(path);
+    cmd.current_dir(dir);
+    cmd
+}
+
 #[test]
 fn test_complexity_command() {
     let output = Command::new(pretender_bin())
@@ -132,15 +138,15 @@ fn test_check_exits_zero_when_clean() {
 }
 
 #[test]
-fn test_check_exits_nonzero_on_violation() {
+fn test_check_tiered_mode_exits_zero_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
     let output = check(&staged).output().expect("failed to execute process");
 
     assert_eq!(
         output.status.code(),
-        Some(1),
-        "expected exit 1 when violations exist; stdout: {} stderr: {}",
+        Some(0),
+        "expected exit 0 in default tiered mode; stdout: {} stderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -206,9 +212,11 @@ fn test_check_human_output_surfaces_violations() {
     let output = check(&staged).output().expect("failed to execute process");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("✗"), "stdout: {stdout}");
+    assert!(stdout.contains("python_violator.py"), "stdout: {stdout}");
     assert!(
         stdout.contains("VIOLATION"),
-        "human output should mark violations; got: {stdout}"
+        "human output should mark threshold violations; got: {stdout}"
     );
     assert!(
         stdout.contains("params"),
@@ -226,7 +234,7 @@ fn test_check_human_output_reports_cognitive_violations() {
 
     let output = check(&staged).output().expect("failed to execute process");
 
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("deeply_nested"), "stdout: {stdout}");
     assert!(stdout.contains("cognitive"), "stdout: {stdout}");
@@ -241,7 +249,7 @@ fn test_check_reports_min_assertions_for_test_role() {
 
     let output = check(&staged).output().expect("failed to execute process");
 
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("test_missing_assertion"),
@@ -284,6 +292,49 @@ fn test_check_guidance_mode_exits_zero_on_violation() {
     assert!(
         stdout.contains("VIOLATION"),
         "guidance mode still surfaces violations as annotations; got: {stdout}",
+    );
+}
+
+#[test]
+fn test_check_gate_mode_from_config_fails_on_violation() {
+    let dir = tempdir();
+    let staged = dir.join("python_violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &staged).expect("copy fixture");
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\nmode = \"gate\"\n")
+        .expect("write config");
+
+    let output = check_in(&dir, &staged)
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn test_check_tiered_human_output_highlights_yellow_band() {
+    let dir = tempdir();
+    let staged = dir.join("yellow.py");
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[thresholds]\ncyclomatic_max = 99\ncognitive_max = 99\n",
+    )
+    .expect("write config");
+    std::fs::write(
+        &staged,
+        "def yellow_band(value):\n    if value > 0:\n        pass\n    if value > 1:\n        pass\n    if value > 2:\n        pass\n    if value > 3:\n        pass\n    if value > 4:\n        pass\n    if value > 5:\n        pass\n    if value > 6:\n        pass\n    if value > 7:\n        pass\n    if value > 8:\n        pass\n    if value > 9:\n        pass\n    if value > 10:\n        pass\n    return value\n",
+    )
+    .expect("write source");
+
+    let output = check_in(&dir, &staged)
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("⚠"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("yellow_band(): cyclomatic 12 (yellow)"),
+        "stdout: {stdout}"
     );
 }
 
@@ -596,9 +647,18 @@ fn test_go_complexity() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
-    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
-    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with_branch: 2"),
+        "expected with_branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex_func: 5"),
+        "expected complex_func: 5 in stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -615,9 +675,18 @@ fn test_java_complexity() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
-    assert!(stdout.contains("withBranch: 2"), "expected withBranch: 2 in stdout: {stdout}");
-    assert!(stdout.contains("complexFunc: 5"), "expected complexFunc: 5 in stdout: {stdout}");
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("withBranch: 2"),
+        "expected withBranch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complexFunc: 5"),
+        "expected complexFunc: 5 in stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -634,9 +703,18 @@ fn test_ruby_complexity() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
-    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
-    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with_branch: 2"),
+        "expected with_branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex_func: 5"),
+        "expected complex_func: 5 in stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -653,9 +731,18 @@ fn test_c_complexity() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
-    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
-    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with_branch: 2"),
+        "expected with_branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex_func: 5"),
+        "expected complex_func: 5 in stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -672,7 +759,16 @@ fn test_cpp_complexity() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
-    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
-    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with_branch: 2"),
+        "expected with_branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex_func: 5"),
+        "expected complex_func: 5 in stdout: {stdout}"
+    );
 }

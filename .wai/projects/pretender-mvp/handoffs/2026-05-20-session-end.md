@@ -32,6 +32,15 @@ phase: implement
 
 ## Context
 
+### git_status
+
+```
+ M pretender/src/engine.rs
+ M pretender/src/main.rs
+ M pretender/tests/cli_test.rs
+?? .wai/projects/pretender-mvp/plans/2026-05-20-implement-pretender-6aw-by-separating-advisory-ban.md
+```
+
 ### open_issues
 
 ```
@@ -39,8 +48,6 @@ phase: implement
 ○ pretender-rl3 ● P1 CLI: pretender init command
 ○ pretender-3b5 ● P2 CLI: pretender report command (human/markdown/html)
 ○ pretender-5rk ● P2 Explore feedback loop: track recurring structural violations to surface as constraints
-○ pretender-6aw ● P2 Three operating modes: guidance / tiered / gate
-○ pretender-8ai ● P2 5 additional languages: Go, Java, Ruby, C, C++
 ○ pretender-fb3 ● P2 GitHub Actions CI generator
 ○ pretender-238 ● P3 Mutation testing wrapper (pretender mutation)
 ○ pretender-9hk ● P3 External metric plugin wrappers (eslint, ruff, clippy, staticcheck)
@@ -49,7 +56,7 @@ phase: implement
 ○ pretender-vuc ● P4 CLI: pretender explain <metric>
 
 --------------------------------------------------------------------------------
-Total: 12 issues (12 open, 0 in progress)
+Total: 10 issues (10 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 ```
