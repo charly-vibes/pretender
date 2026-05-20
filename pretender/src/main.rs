@@ -23,7 +23,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -213,7 +213,7 @@ trait Executable {
 impl Executable for Commands {
     fn run(&self) -> Result<ExitCode> {
         match self {
-            Commands::Init(_) => not_implemented("init", "pretender-rl3"),
+            Commands::Init(args) => args.run(),
             Commands::Check(args) => args.run(),
             Commands::Complexity(args) => args.run(),
             Commands::Report(args) => args.run(),
@@ -230,6 +230,33 @@ impl Executable for Commands {
 fn not_implemented(name: &str, tracker: &str) -> Result<ExitCode> {
     eprintln!("pretender {name}: not yet implemented (tracked: {tracker})");
     Ok(ExitCode::from(NOT_IMPLEMENTED_EXIT))
+}
+
+impl Executable for InitArgs {
+    fn run(&self) -> Result<ExitCode> {
+        let options = if self.defaults || self.non_interactive {
+            InitOptions {
+                mode: self.mode.unwrap_or(ModeArg::Tiered),
+                languages: vec!["auto".to_string()],
+                install_hook: false,
+                generate_github_actions: false,
+            }
+        } else {
+            prompt_init_options(self.mode)?
+        };
+
+        fs::write("pretender.toml", render_init_config(&options))
+            .context("failed to write pretender.toml")?;
+
+        if options.install_hook {
+            install_pre_commit_hook()?;
+        }
+        if options.generate_github_actions {
+            write_github_ci_workflow()?;
+        }
+
+        Ok(ExitCode::SUCCESS)
+    }
 }
 
 impl Executable for ComplexityArgs {
@@ -368,6 +395,155 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
             }
         }
     }
+}
+
+struct InitOptions {
+    mode: ModeArg,
+    languages: Vec<String>,
+    install_hook: bool,
+    generate_github_actions: bool,
+}
+
+fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
+    let mut stdin = io::stdin().lock();
+    let mut stdout = io::stdout().lock();
+
+    let mode = match mode_override {
+        Some(mode) => mode,
+        None => match prompt(
+            &mut stdin,
+            &mut stdout,
+            "Mode (guidance/tiered/gate) [tiered]: ",
+        )?
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+        {
+            "" | "tiered" => ModeArg::Tiered,
+            "guidance" => ModeArg::Guidance,
+            "gate" => ModeArg::Gate,
+            other => return Err(anyhow!("invalid mode: {other}")),
+        },
+    };
+
+    let languages_input = prompt(
+        &mut stdin,
+        &mut stdout,
+        "Languages (auto or comma-separated list) [auto]: ",
+    )?;
+    let languages = parse_languages(&languages_input);
+
+    let install_hook = parse_yes_no(&prompt(
+        &mut stdin,
+        &mut stdout,
+        "Install pre-commit hook? [y/N]: ",
+    )?);
+    let generate_github_actions = parse_yes_no(&prompt(
+        &mut stdin,
+        &mut stdout,
+        "Generate GitHub Actions workflow? [y/N]: ",
+    )?);
+
+    Ok(InitOptions {
+        mode,
+        languages,
+        install_hook,
+        generate_github_actions,
+    })
+}
+
+fn prompt(stdin: &mut dyn Read, stdout: &mut dyn Write, message: &str) -> Result<String> {
+    write!(stdout, "{message}")?;
+    stdout.flush()?;
+
+    let mut buf = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        match stdin.read(&mut byte)? {
+            0 => break,
+            _ if byte[0] == b'\n' => break,
+            _ => buf.push(byte[0]),
+        }
+    }
+
+    Ok(String::from_utf8_lossy(&buf).trim().to_string())
+}
+
+fn parse_languages(input: &str) -> Vec<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+        return vec!["auto".to_string()];
+    }
+
+    let mut languages: Vec<String> = trimmed
+        .split(',')
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect();
+    if languages.is_empty() {
+        languages.push("auto".to_string());
+    }
+    languages
+}
+
+fn parse_yes_no(input: &str) -> bool {
+    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+fn render_init_config(options: &InitOptions) -> String {
+    let mode = match options.mode {
+        ModeArg::Guidance => "guidance",
+        ModeArg::Tiered => "tiered",
+        ModeArg::Gate => "gate",
+    };
+    let languages = options
+        .languages
+        .iter()
+        .map(|language| format!("\"{language}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        concat!(
+            "[pretender]\n",
+            "mode = \"{mode}\"\n",
+            "languages = [{languages}]\n",
+            "exclude = [\"vendor/**\", \"node_modules/**\", \"**/*_generated.*\"]\n\n",
+            "[roles.test]\n",
+            "paths = [\"tests/**\", \"**/*_test.*\", \"spec/**\"]\n\n",
+            "[roles.library]\n",
+            "paths = [\"pkg/**\", \"lib/**\"]\n\n",
+            "[roles.script]\n",
+            "paths = [\"scripts/**\", \"examples/**\"]\n\n",
+            "[roles.generated]\n",
+            "paths = [\"**/*.pb.go\", \"**/*_generated.*\"]\n\n",
+            "[roles.vendor]\n",
+            "paths = [\"vendor/**\", \"node_modules/**\"]\n"
+        ),
+        mode = mode,
+        languages = languages,
+    )
+}
+
+fn install_pre_commit_hook() -> Result<()> {
+    let path = PathBuf::from(".git/hooks/pre-commit");
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("invalid hook path: {}", path.display()))?;
+    fs::create_dir_all(parent)
+        .with_context(|| format!("failed to create hook dir: {}", parent.display()))?;
+    fs::write(&path, "#!/bin/sh\npretender check --staged --diff-only\n")
+        .with_context(|| format!("failed to write hook: {}", path.display()))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&path)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms)?;
+    }
+
+    Ok(())
 }
 
 fn github_ci_workflow_path() -> PathBuf {

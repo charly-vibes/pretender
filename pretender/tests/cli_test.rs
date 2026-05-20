@@ -70,6 +70,12 @@ fn ci_generate_in(dir: &Path, provider: &str) -> Command {
     cmd
 }
 
+fn init_in(dir: &Path) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("init").current_dir(dir).env("NO_COLOR", "1");
+    cmd
+}
+
 #[test]
 fn test_complexity_command() {
     let output = Command::new(pretender_bin())
@@ -462,7 +468,6 @@ fn test_check_staged_flag_returns_not_implemented() {
 #[test]
 fn test_stub_subcommands_exit_two() {
     for cmd in [
-        vec!["init"],
         vec!["duplication"],
         vec!["mutation"],
         vec!["hooks", "install"],
@@ -601,6 +606,78 @@ fn test_check_parallel_results_are_deterministic() {
     assert_eq!(
         first, second,
         "json output must be deterministic across runs"
+    );
+}
+
+#[test]
+fn test_init_defaults_writes_config_with_mode_override() {
+    let dir = tempdir();
+
+    let output = init_in(&dir)
+        .arg("--defaults")
+        .arg("--mode")
+        .arg("gate")
+        .output()
+        .expect("run init");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let config = std::fs::read_to_string(dir.join("pretender.toml")).expect("config exists");
+    assert!(config.contains("mode = \"gate\""), "config: {config}");
+    assert!(
+        config.contains("languages = [\"auto\"]"),
+        "config: {config}"
+    );
+    assert!(config.contains("[roles.test]"), "config: {config}");
+}
+
+#[test]
+fn test_init_interactive_can_install_hook_and_ci() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+
+    let output = init_in(&dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write as _;
+            child
+                .stdin
+                .as_mut()
+                .expect("stdin")
+                .write_all(b"guidance\npython,rust\ny\ny\n")?;
+            child.wait_with_output()
+        })
+        .expect("run init interactively");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let config = std::fs::read_to_string(dir.join("pretender.toml")).expect("config exists");
+    assert!(config.contains("mode = \"guidance\""), "config: {config}");
+    assert!(
+        config.contains("languages = [\"python\", \"rust\"]"),
+        "config: {config}"
+    );
+
+    let hook = std::fs::read_to_string(dir.join(".git/hooks/pre-commit")).expect("hook exists");
+    assert!(
+        hook.contains("pretender check --staged --diff-only"),
+        "hook: {hook}"
+    );
+
+    let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
+        .expect("workflow exists");
+    assert!(
+        workflow.contains("pretender-tool/setup@v1"),
+        "workflow: {workflow}"
     );
 }
 
