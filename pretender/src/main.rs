@@ -20,7 +20,7 @@ use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
@@ -109,6 +109,9 @@ struct ReportArgs {
     /// Output format
     #[arg(long, value_enum, default_value_t = LongReportFormat::Human)]
     format: LongReportFormat,
+    /// Write report to this path instead of stdout
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 #[derive(Parser)]
@@ -182,6 +185,7 @@ enum ReportFormat {
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum LongReportFormat {
     Human,
+    Markdown,
     Html,
 }
 
@@ -212,7 +216,7 @@ impl Executable for Commands {
             Commands::Init(_) => not_implemented("init", "pretender-rl3"),
             Commands::Check(args) => args.run(),
             Commands::Complexity(args) => args.run(),
-            Commands::Report(_) => not_implemented("report", "pretender-3b5"),
+            Commands::Report(args) => args.run(),
             Commands::Duplication(_) => not_implemented("duplication", "pretender-xgn"),
             Commands::Mutation(_) => not_implemented("mutation", "pretender-238"),
             Commands::Hooks(_) => not_implemented("hooks", "pretender-hay"),
@@ -293,13 +297,39 @@ impl Executable for CheckArgs {
                 let color = writing_to_stdout && color_enabled();
                 write_human_report(sink.as_mut(), &report, color, &config.bands)?;
             }
-            ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
+            ReportFormat::Json => {
+                write_json_report(sink.as_mut(), &report)?;
+                persist_last_check_report(&report)?;
+            }
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
             _ => unreachable!("junit/markdown handled above"),
         }
         sink.flush().context("failed to flush report output")?;
 
         Ok(decide_exit_code(&report, config.pretender.mode))
+    }
+}
+
+impl Executable for ReportArgs {
+    fn run(&self) -> Result<ExitCode> {
+        let report = load_last_check_report()?;
+        let config = load_config().unwrap_or_default();
+        let writing_to_stdout = self.output.is_none();
+        let mut sink = open_report_sink(self.output.as_deref())?;
+
+        match self.format {
+            LongReportFormat::Human => {
+                let color = writing_to_stdout && color_enabled();
+                write_human_report(sink.as_mut(), &report, color, &config.bands)?;
+            }
+            LongReportFormat::Markdown => {
+                write_markdown_report(sink.as_mut(), &report, &config.bands)?
+            }
+            LongReportFormat::Html => write_html_report(sink.as_mut(), &report, &config.bands)?,
+        }
+
+        sink.flush().context("failed to flush report output")?;
+        Ok(ExitCode::SUCCESS)
     }
 }
 
@@ -324,6 +354,29 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
             }
         }
     }
+}
+
+fn last_check_report_path() -> PathBuf {
+    PathBuf::from(".pretender/last-check.json")
+}
+
+fn persist_last_check_report(report: &CheckReport) -> Result<()> {
+    let path = last_check_report_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create report cache dir: {}", parent.display()))?;
+    }
+    let bytes = serde_json::to_vec_pretty(report)?;
+    fs::write(&path, bytes)
+        .with_context(|| format!("failed to write last check report: {}", path.display()))?;
+    Ok(())
+}
+
+fn load_last_check_report() -> Result<CheckReport> {
+    let path = last_check_report_path();
+    let source = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read last check report: {}", path.display()))?;
+    serde_json::from_str(&source).context("failed to parse last check report JSON")
 }
 
 fn open_report_sink(path: Option<&Path>) -> Result<Box<dyn Write>> {
@@ -369,7 +422,7 @@ fn analyze_path(
 
     Ok(Some(FileReport {
         path: path.display().to_string(),
-        role: role_name(role),
+        role: role_name(role).to_string(),
         diagnostics: diagnostics.into_iter().map(Into::into).collect(),
         file_violations,
         units,
@@ -512,7 +565,7 @@ fn push_limit_violation(
 ) {
     if actual > max {
         out.push(ViolationReport {
-            metric,
+            metric: metric.to_string(),
             actual: actual as f64,
             limit: max as f64,
         });
@@ -527,7 +580,7 @@ fn push_limit_violation_f64(
 ) {
     if actual > max as f64 {
         out.push(ViolationReport {
-            metric,
+            metric: metric.to_string(),
             actual,
             limit: max as f64,
         });
@@ -537,7 +590,7 @@ fn push_limit_violation_f64(
 fn push_min_violation(out: &mut Vec<ViolationReport>, metric: &'static str, actual: u32, min: u32) {
     if actual < min {
         out.push(ViolationReport {
-            metric,
+            metric: metric.to_string(),
             actual: actual as f64,
             limit: min as f64,
         });
@@ -661,7 +714,7 @@ fn summarize_file(file: &FileReport, bands: &Bands) -> FileSummary {
         );
 
         for violation in &unit.violations {
-            if matches!(violation.metric, "cyclomatic" | "cognitive") {
+            if violation.metric == "cyclomatic" || violation.metric == "cognitive" {
                 continue;
             }
             consider_summary(
@@ -733,6 +786,158 @@ fn color_enabled() -> bool {
     io::stdout().is_terminal()
 }
 
+fn write_markdown_report(sink: &mut dyn Write, report: &CheckReport, bands: &Bands) -> Result<()> {
+    writeln!(sink, "# Pretender report")?;
+    writeln!(sink)?;
+
+    for file in &report.files {
+        let summary = summarize_file(file, bands);
+        let icon = match summary.severity {
+            Severity::Green => "✓",
+            Severity::Yellow => "⚠",
+            Severity::Red => "✗",
+        };
+        writeln!(sink, "## `{}` {} {}", file.path, icon, summary.message)?;
+        writeln!(sink)?;
+        writeln!(sink, "- Role: `{}`", file.role)?;
+
+        for violation in &file.file_violations {
+            writeln!(
+                sink,
+                "- File violation: `{}` actual `{:.0}` > limit `{:.0}`",
+                violation.metric, violation.actual, violation.limit
+            )?;
+        }
+
+        for unit in &file.units {
+            writeln!(
+                sink,
+                "- `{}`: cyclomatic `{}`, cognitive `{}`, assertions `{}`, function_lines `{}`, params `{}`, nesting_max `{}`, abc `{:.2}`",
+                unit.name,
+                unit.metrics.cyclomatic,
+                unit.metrics.cognitive,
+                unit.metrics.assertions,
+                unit.metrics.function_lines,
+                unit.metrics.params,
+                unit.metrics.nesting_max,
+                unit.metrics.abc,
+            )?;
+            for violation in &unit.violations {
+                writeln!(
+                    sink,
+                    "  - violation: `{}` actual `{:.0}` > limit `{:.0}`",
+                    violation.metric, violation.actual, violation.limit
+                )?;
+            }
+        }
+
+        if !file.diagnostics.is_empty() {
+            writeln!(sink)?;
+            writeln!(sink, "### Diagnostics")?;
+            for diagnostic in &file.diagnostics {
+                writeln!(sink, "- {}: {}", diagnostic.severity, diagnostic.message)?;
+            }
+        }
+
+        writeln!(sink)?;
+    }
+
+    Ok(())
+}
+
+fn write_html_report(sink: &mut dyn Write, report: &CheckReport, bands: &Bands) -> Result<()> {
+    writeln!(sink, "<!doctype html>")?;
+    writeln!(sink, "<html><head><meta charset=\"utf-8\"><title>Pretender report</title><style>body{{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem}} .green{{color:#18794e}} .yellow{{color:#9a6700}} .red{{color:#cf222e}} code{{background:#f6f8fa;padding:.1rem .3rem;border-radius:4px}} ul{{line-height:1.5}}</style></head><body>")?;
+    writeln!(sink, "<h1>Pretender report</h1>")?;
+
+    for file in &report.files {
+        let summary = summarize_file(file, bands);
+        let (icon, class_name) = match summary.severity {
+            Severity::Green => ("✓", "green"),
+            Severity::Yellow => ("⚠", "yellow"),
+            Severity::Red => ("✗", "red"),
+        };
+        writeln!(
+            sink,
+            "<section><h2><code>{}</code> <span class=\"{}\">{} {}</span></h2>",
+            html_escape(&file.path),
+            class_name,
+            icon,
+            html_escape(&summary.message)
+        )?;
+        writeln!(
+            sink,
+            "<p>Role: <code>{}</code></p><ul>",
+            html_escape(&file.role)
+        )?;
+
+        for violation in &file.file_violations {
+            writeln!(
+                sink,
+                "<li>File violation: <code>{}</code> actual <code>{:.0}</code> &gt; limit <code>{:.0}</code></li>",
+                html_escape(&violation.metric),
+                violation.actual,
+                violation.limit
+            )?;
+        }
+
+        for unit in &file.units {
+            writeln!(
+                sink,
+                "<li><code>{}</code>: cyclomatic <code>{}</code>, cognitive <code>{}</code>, assertions <code>{}</code>, function_lines <code>{}</code>, params <code>{}</code>, nesting_max <code>{}</code>, abc <code>{:.2}</code>",
+                html_escape(&unit.name),
+                unit.metrics.cyclomatic,
+                unit.metrics.cognitive,
+                unit.metrics.assertions,
+                unit.metrics.function_lines,
+                unit.metrics.params,
+                unit.metrics.nesting_max,
+                unit.metrics.abc,
+            )?;
+            if !unit.violations.is_empty() {
+                writeln!(sink, "<ul>")?;
+                for violation in &unit.violations {
+                    writeln!(
+                        sink,
+                        "<li>violation: <code>{}</code> actual <code>{:.0}</code> &gt; limit <code>{:.0}</code></li>",
+                        html_escape(&violation.metric),
+                        violation.actual,
+                        violation.limit
+                    )?;
+                }
+                writeln!(sink, "</ul>")?;
+            }
+            writeln!(sink, "</li>")?;
+        }
+
+        writeln!(sink, "</ul>")?;
+        if !file.diagnostics.is_empty() {
+            writeln!(sink, "<h3>Diagnostics</h3><ul>")?;
+            for diagnostic in &file.diagnostics {
+                writeln!(
+                    sink,
+                    "<li>{}: {}</li>",
+                    html_escape(&diagnostic.severity),
+                    html_escape(&diagnostic.message)
+                )?;
+            }
+            writeln!(sink, "</ul>")?;
+        }
+        writeln!(sink, "</section>")?;
+    }
+
+    writeln!(sink, "</body></html>")?;
+    Ok(())
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
     serde_json::to_writer_pretty(&mut *sink, report)?;
     writeln!(sink)?;
@@ -743,27 +948,27 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
     use serde_sarif::sarif;
     use std::collections::HashMap;
 
-    let mut rule_index: HashMap<&'static str, i64> = HashMap::new();
+    let mut rule_index: HashMap<String, i64> = HashMap::new();
     let mut rules: Vec<sarif::ReportingDescriptor> = Vec::new();
     let mut results: Vec<sarif::Result> = Vec::new();
 
     let push_result = |rules: &mut Vec<sarif::ReportingDescriptor>,
-                       rule_index: &mut HashMap<&'static str, i64>,
+                       rule_index: &mut HashMap<String, i64>,
                        results: &mut Vec<sarif::Result>,
                        violation: &ViolationReport,
                        file_path: &str,
                        start_line: i64,
                        label: &str| {
-        let idx = if let Some(&i) = rule_index.get(violation.metric) {
+        let idx = if let Some(&i) = rule_index.get(&violation.metric) {
             i
         } else {
             let i = rules.len() as i64;
             rules.push(
                 sarif::ReportingDescriptor::builder()
-                    .id(violation.metric)
+                    .id(&violation.metric)
                     .build(),
             );
-            rule_index.insert(violation.metric, i);
+            rule_index.insert(violation.metric.clone(), i);
             i
         };
         let message_text = format!(
@@ -780,7 +985,7 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
             .build();
         results.push(
             sarif::Result::builder()
-                .rule_id(violation.metric)
+                .rule_id(&violation.metric)
                 .rule_index(idx)
                 .message(sarif::Message::builder().text(message_text).build())
                 .locations(vec![location])
@@ -867,21 +1072,21 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct CheckReport {
     files: Vec<FileReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct FileReport {
     path: String,
-    role: &'static str,
+    role: String,
     diagnostics: Vec<DiagnosticReport>,
     file_violations: Vec<ViolationReport>,
     units: Vec<UnitReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct DiagnosticReport {
     severity: String,
     message: String,
@@ -900,7 +1105,7 @@ impl From<model::Diagnostic> for DiagnosticReport {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct UnitReport {
     name: String,
     kind: String,
@@ -909,7 +1114,7 @@ struct UnitReport {
     violations: Vec<ViolationReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct MetricValues {
     cyclomatic: u32,
     cognitive: u32,
@@ -920,9 +1125,9 @@ struct MetricValues {
     abc: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ViolationReport {
-    metric: &'static str,
+    metric: String,
     actual: f64,
     limit: f64,
 }

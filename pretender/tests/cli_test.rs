@@ -54,6 +54,12 @@ fn check_in(dir: &Path, path: &Path) -> Command {
     cmd
 }
 
+fn report_in(dir: &Path) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("report").current_dir(dir).env("NO_COLOR", "1");
+    cmd
+}
+
 #[test]
 fn test_complexity_command() {
     let output = Command::new(pretender_bin())
@@ -447,7 +453,6 @@ fn test_check_staged_flag_returns_not_implemented() {
 fn test_stub_subcommands_exit_two() {
     for cmd in [
         vec!["init"],
-        vec!["report"],
         vec!["duplication"],
         vec!["mutation"],
         vec!["hooks", "install"],
@@ -587,6 +592,103 @@ fn test_check_parallel_results_are_deterministic() {
     assert_eq!(
         first, second,
         "json output must be deterministic across runs"
+    );
+}
+
+#[test]
+fn test_report_markdown_reads_last_json_check() {
+    let dir = tempdir();
+    let staged = dir.join("python_violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &staged).expect("copy fixture");
+
+    let check_output = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run json check");
+    assert!(
+        check_output.status.success(),
+        "json check failed: {}",
+        String::from_utf8_lossy(&check_output.stderr)
+    );
+
+    let output = report_in(&dir)
+        .arg("--format")
+        .arg("markdown")
+        .output()
+        .expect("run report");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# Pretender report"), "stdout: {stdout}");
+    assert!(stdout.contains("python_violator.py"), "stdout: {stdout}");
+    assert!(stdout.contains("too_many_params"), "stdout: {stdout}");
+    assert!(stdout.contains("cyclomatic"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_report_html_writes_output_file() {
+    let dir = tempdir();
+    let staged = dir.join("python_violator.py");
+    let out_path = dir.join("pretender-report.html");
+    std::fs::copy(source_fixture("python_violator.py"), &staged).expect("copy fixture");
+
+    let check_output = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("run json check");
+    assert!(
+        check_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&check_output.stderr)
+    );
+
+    let output = report_in(&dir)
+        .arg("--format")
+        .arg("html")
+        .arg("--output")
+        .arg(&out_path)
+        .output()
+        .expect("run report");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let html = std::fs::read_to_string(&out_path).expect("html report exists");
+    assert!(html.contains("<!doctype html>"), "html: {html}");
+    assert!(html.contains("python_violator.py"), "html: {html}");
+    assert!(html.contains("too_many_params"), "html: {html}");
+}
+
+#[test]
+fn test_report_fails_without_cached_json() {
+    let dir = tempdir();
+
+    let output = report_in(&dir).output().expect("run report");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to read last check report"),
+        "stderr: {stderr}"
     );
 }
 
