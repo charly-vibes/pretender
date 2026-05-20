@@ -1,11 +1,16 @@
+mod c;
 mod config;
+mod cpp;
 mod engine;
+mod go;
+mod java;
 mod javascript;
 mod metrics;
 mod model;
 mod plugin;
 mod python;
 mod roles;
+mod ruby;
 mod rust;
 mod typescript;
 
@@ -716,8 +721,13 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
 
     match ext {
+        "c" | "h" => Ok(Box::new(c::CParser)),
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Ok(Box::new(cpp::CppParser)),
+        "go" => Ok(Box::new(go::GoParser)),
+        "java" => Ok(Box::new(java::JavaParser)),
         "js" | "jsx" | "mjs" | "cjs" => Ok(Box::new(javascript::JavaScriptParser)),
         "py" => Ok(Box::new(python::PythonParser)),
+        "rb" => Ok(Box::new(ruby::RubyParser)),
         "rs" => Ok(Box::new(rust::RustParser)),
         "ts" | "mts" => Ok(Box::new(typescript::TypeScriptParser)),
         "tsx" | "cts" => Ok(Box::new(typescript::TypeScriptXParser)),

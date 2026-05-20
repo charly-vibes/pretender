@@ -581,3 +581,98 @@ fn test_smell_call_weights_elevate_abc() {
         "smell_compile abc={compile_abc}, expected ≈3.162 (sqrt(10))"
     );
 }
+
+#[test]
+fn test_go_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("go_sample.go"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
+    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
+    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+}
+
+#[test]
+fn test_java_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("java_sample.java"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
+    assert!(stdout.contains("withBranch: 2"), "expected withBranch: 2 in stdout: {stdout}");
+    assert!(stdout.contains("complexFunc: 5"), "expected complexFunc: 5 in stdout: {stdout}");
+}
+
+#[test]
+fn test_ruby_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("ruby_sample.rb"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
+    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
+    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+}
+
+#[test]
+fn test_c_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("c_sample.c"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
+    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
+    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+}
+
+#[test]
+fn test_cpp_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("cpp_sample.cpp"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("simple: 1"), "expected simple: 1 in stdout: {stdout}");
+    assert!(stdout.contains("with_branch: 2"), "expected with_branch: 2 in stdout: {stdout}");
+    assert!(stdout.contains("complex_func: 5"), "expected complex_func: 5 in stdout: {stdout}");
+}

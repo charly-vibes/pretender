@@ -1,0 +1,28 @@
+name         = "ruby"
+display_name = "Ruby"
+extensions   = [".rb"]
+shebangs     = ["ruby"]
+tree_sitter  = { source = "builtin:tree-sitter-ruby", rev = "0.23" }
+query        = "metrics.scm"
+
+[branches]
+"@branch.if"           = { cyclomatic = 1, cognitive = 1 }
+"@branch.loop"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.rescue"       = { cyclomatic = 1, cognitive = 1 }
+"@branch.case"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
+
+[assertions]
+patterns = [
+  "^assert",
+  "^expect",
+  "^should",
+  "^raise_error",
+]
+
+[smell_weights]
+"eval"         = 5.0
+"instance_eval"= 4.0
+"send"         = 2.0
+"method_missing"= 3.0
