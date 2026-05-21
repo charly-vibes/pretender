@@ -219,7 +219,7 @@ impl Executable for Commands {
             Commands::Report(args) => args.run(),
             Commands::Duplication(_) => not_implemented("duplication", "pretender-xgn"),
             Commands::Mutation(_) => not_implemented("mutation", "pretender-238"),
-            Commands::Hooks(_) => not_implemented("hooks", "pretender-hay"),
+            Commands::Hooks(args) => args.run(),
             Commands::Ci(args) => args.run(),
             Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
             Commands::Explain(_) => not_implemented("explain", "pretender-vuc"),
@@ -324,13 +324,11 @@ impl Executable for CheckArgs {
                 let color = writing_to_stdout && color_enabled();
                 write_human_report(sink.as_mut(), &report, color, &config.bands)?;
             }
-            ReportFormat::Json => {
-                write_json_report(sink.as_mut(), &report)?;
-                persist_last_check_report(&report)?;
-            }
+            ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
             _ => unreachable!("junit/markdown handled above"),
         }
+        persist_last_check_report(&report)?;
         sink.flush().context("failed to flush report output")?;
 
         Ok(decide_exit_code(&report, config.pretender.mode))
@@ -357,6 +355,21 @@ impl Executable for ReportArgs {
 
         sink.flush().context("failed to flush report output")?;
         Ok(ExitCode::SUCCESS)
+    }
+}
+
+impl Executable for HooksCommand {
+    fn run(&self) -> Result<ExitCode> {
+        match self {
+            HooksCommand::Install => {
+                install_pre_commit_hook()?;
+                Ok(ExitCode::SUCCESS)
+            }
+            HooksCommand::Uninstall => {
+                uninstall_pre_commit_hook()?;
+                Ok(ExitCode::SUCCESS)
+            }
+        }
     }
 }
 
@@ -525,6 +538,8 @@ fn render_init_config(options: &InitOptions) -> String {
     )
 }
 
+const PRE_COMMIT_HOOK_MARKER: &str = "# Installed by Pretender.";
+
 fn install_pre_commit_hook() -> Result<()> {
     let path = PathBuf::from(".git/hooks/pre-commit");
     let parent = path
@@ -532,7 +547,7 @@ fn install_pre_commit_hook() -> Result<()> {
         .ok_or_else(|| anyhow!("invalid hook path: {}", path.display()))?;
     fs::create_dir_all(parent)
         .with_context(|| format!("failed to create hook dir: {}", parent.display()))?;
-    fs::write(&path, "#!/bin/sh\npretender check --staged --diff-only\n")
+    fs::write(&path, pre_commit_hook_contents())
         .with_context(|| format!("failed to write hook: {}", path.display()))?;
 
     #[cfg(unix)]
@@ -544,6 +559,28 @@ fn install_pre_commit_hook() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn uninstall_pre_commit_hook() -> Result<()> {
+    let path = PathBuf::from(".git/hooks/pre-commit");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let source = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read hook: {}", path.display()))?;
+    if !source.contains(PRE_COMMIT_HOOK_MARKER) {
+        return Err(anyhow!(
+            "refusing to remove hook not installed by Pretender: {}",
+            path.display()
+        ));
+    }
+
+    fs::remove_file(&path).with_context(|| format!("failed to remove hook: {}", path.display()))
+}
+
+fn pre_commit_hook_contents() -> &'static str {
+    "#!/bin/sh\n# Installed by Pretender.\n# TODO(pretender-a80): switch to --staged --diff-only when diff-only support lands.\nexec pretender check .\n"
 }
 
 fn github_ci_workflow_path() -> PathBuf {
@@ -562,8 +599,7 @@ fn write_github_ci_workflow() -> Result<()> {
 }
 
 fn github_ci_workflow_contents() -> &'static str {
-    r#"# Note: pretender-tool/setup@v1 must be published before this workflow is functional.
-name: Pretender
+    r#"name: Pretender
 
 on:
   pull_request:
@@ -579,13 +615,13 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: pretender-tool/setup@v1
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Pretender
+        run: cargo install --git https://github.com/charly/pretender --locked pretender
       - name: Run Pretender
         id: pretender
         continue-on-error: true
-        run: pretender check --diff-base=origin/main --format=sarif --output=pretender.sarif
+        run: pretender check . --format=sarif --output=pretender.sarif
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:

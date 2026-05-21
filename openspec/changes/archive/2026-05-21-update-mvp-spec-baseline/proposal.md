@@ -9,7 +9,7 @@ The published OpenSpec baseline currently describes a much larger Pretender surf
 - Narrow the CLI baseline to the implemented MVP: `check` and `complexity`
 - Record the current behavior of reserved subcommands and flags that exit with "not yet implemented"
 - Align mode semantics, output formats, and role detection with current code
-- Align the universal-code-model spec with the current parser/engine behavior, including Python-only support and parse-error handling
+- Align the universal-code-model spec with the current parser/engine behavior, including built-in multi-language support and parse-error handling
 - Remove or defer unsupported plugin/runtime/versioning claims from the baseline specs
 
 ## Impact

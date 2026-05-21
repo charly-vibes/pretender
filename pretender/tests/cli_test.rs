@@ -70,6 +70,15 @@ fn ci_generate_in(dir: &Path, provider: &str) -> Command {
     cmd
 }
 
+fn hooks_in(dir: &Path, action: &str) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("hooks")
+        .arg(action)
+        .current_dir(dir)
+        .env("NO_COLOR", "1");
+    cmd
+}
+
 fn init_in(dir: &Path) -> Command {
     let mut cmd = Command::new(pretender_bin());
     cmd.arg("init").current_dir(dir).env("NO_COLOR", "1");
@@ -470,7 +479,6 @@ fn test_stub_subcommands_exit_two() {
     for cmd in [
         vec!["duplication"],
         vec!["mutation"],
-        vec!["hooks", "install"],
         vec!["plugins", "list"],
         vec!["explain", "cyclomatic"],
     ] {
@@ -668,15 +676,14 @@ fn test_init_interactive_can_install_hook_and_ci() {
     );
 
     let hook = std::fs::read_to_string(dir.join(".git/hooks/pre-commit")).expect("hook exists");
-    assert!(
-        hook.contains("pretender check --staged --diff-only"),
-        "hook: {hook}"
-    );
+    assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
+    assert!(hook.contains("exec pretender check ."), "hook: {hook}");
 
     let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
         .expect("workflow exists");
     assert!(
-        workflow.contains("pretender-tool/setup@v1"),
+        workflow
+            .contains("cargo install --git https://github.com/charly/pretender --locked pretender"),
         "workflow: {workflow}"
     );
 }
@@ -697,24 +704,24 @@ fn test_ci_generate_github_writes_workflow() {
     let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
         .expect("workflow exists");
     assert!(
-        workflow.starts_with(
-            "# Note: pretender-tool/setup@v1 must be published before this workflow is functional."
-        ),
+        workflow.starts_with("name: Pretender"),
         "workflow: {workflow}"
     );
     assert!(
         workflow.contains("uses: actions/checkout@v4"),
         "workflow: {workflow}"
     );
-    assert!(workflow.contains("fetch-depth: 0"), "workflow: {workflow}");
     assert!(
-        workflow.contains("uses: pretender-tool/setup@v1"),
+        workflow.contains("uses: dtolnay/rust-toolchain@stable"),
         "workflow: {workflow}"
     );
     assert!(
-        workflow.contains(
-            "pretender check --diff-base=origin/main --format=sarif --output=pretender.sarif"
-        ),
+        workflow
+            .contains("cargo install --git https://github.com/charly/pretender --locked pretender"),
+        "workflow: {workflow}"
+    );
+    assert!(
+        workflow.contains("pretender check . --format=sarif --output=pretender.sarif"),
         "workflow: {workflow}"
     );
     assert!(
@@ -738,6 +745,36 @@ fn test_ci_generate_non_github_stays_stubbed() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("not yet implemented"), "stderr: {stderr}");
+}
+
+#[test]
+fn test_hooks_install_and_uninstall_manage_pretender_shim() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+
+    let install = hooks_in(&dir, "install")
+        .output()
+        .expect("run hooks install");
+    assert!(
+        install.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+
+    let hook_path = dir.join(".git/hooks/pre-commit");
+    let hook = std::fs::read_to_string(&hook_path).expect("hook exists");
+    assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
+    assert!(hook.contains("exec pretender check ."), "hook: {hook}");
+
+    let uninstall = hooks_in(&dir, "uninstall")
+        .output()
+        .expect("run hooks uninstall");
+    assert!(
+        uninstall.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&uninstall.stderr)
+    );
+    assert!(!hook_path.exists(), "hook should be removed");
 }
 
 #[test]
@@ -818,7 +855,36 @@ fn test_report_html_writes_output_file() {
 }
 
 #[test]
-fn test_report_fails_without_cached_json() {
+fn test_report_markdown_reads_last_human_check() {
+    let dir = tempdir();
+    let staged = dir.join("python_violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &staged).expect("copy fixture");
+
+    let check_output = check_in(&dir, &staged).output().expect("run human check");
+    assert!(
+        check_output.status.success(),
+        "human check failed: {}",
+        String::from_utf8_lossy(&check_output.stderr)
+    );
+
+    let output = report_in(&dir)
+        .arg("--format")
+        .arg("markdown")
+        .output()
+        .expect("run report");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# Pretender report"), "stdout: {stdout}");
+    assert!(stdout.contains("python_violator.py"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_report_fails_without_cached_report() {
     let dir = tempdir();
 
     let output = report_in(&dir).output().expect("run report");

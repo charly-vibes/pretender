@@ -1,9 +1,5 @@
-# CLI and Configuration
+## MODIFIED Requirements
 
-## Purpose
-
-Defines Pretender's command-line interface, configuration file schema, output formats, role detection, and plugin manifest contracts.
-## Requirements
 ### Requirement: Init Command
 
 The system SHALL provide `pretender init` to create `pretender.toml`, optionally install a pre-commit hook, and optionally generate GitHub Actions configuration. The command SHALL support `--non-interactive`, `--defaults`, and `--mode <mode>`.
@@ -147,6 +143,8 @@ The system SHALL parse data-only plugin manifests made of `.scm` query files and
 - **WHEN** the built-in Python `plugin.toml` is loaded by the manifest parser
 - **THEN** the manifest is parsed successfully and exposes its query and assertion metadata
 
+## ADDED Requirements
+
 ### Requirement: Reserved Commands
 
 The current MVP CLI SHALL expose the following reserved commands, which currently exit with code `2` and a `not yet implemented` message: `duplication`, `mutation`, `plugins`, and `explain`.
@@ -167,3 +165,20 @@ The current MVP SHALL register built-in parsers for C, C++, Go, Java, JavaScript
 - **WHEN** `pretender complexity example.txt` is run
 - **THEN** the command exits non-zero because no parser is registered for `.txt`
 
+## REMOVED Requirements
+
+### Requirement: Duplication Command
+**Reason**: The command is present only as a reserved stub in the current MVP.
+**Migration**: Restore via a future implementation change.
+
+### Requirement: Mutation Command
+**Reason**: The command is present only as a reserved stub in the current MVP.
+**Migration**: Restore via a future implementation change.
+
+### Requirement: Plugins Command
+**Reason**: The command is present only as a reserved stub in the current MVP.
+**Migration**: Restore via a future implementation change.
+
+### Requirement: Explain Command
+**Reason**: The command is present only as a reserved stub in the current MVP.
+**Migration**: Restore via a future implementation change.

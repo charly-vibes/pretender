@@ -1,16 +1,4 @@
-# Universal Code Model
-
-## Purpose
-
-Defines the language-neutral model that all Pretender metrics operate on, plus the tree-sitter query contract, model invariants, metric formulas, and compatibility rules.
-## Requirements
-### Requirement: Supporting Types
-
-The system SHALL represent source spans, parameters, call sites, and languages in a language-neutral form. `Span.lines()` SHALL be inclusive and SHALL require `end_line >= start_line`. `CallSite` SHALL include a callee name, span, and default ABC smell weight of `1.0`.
-
-#### Scenario: Span line count is inclusive
-- **WHEN** a span has `start_line = 3` and `end_line = 5`
-- **THEN** `Span.lines()` returns 3
+## MODIFIED Requirements
 
 ### Requirement: Module Model
 
@@ -19,30 +7,6 @@ The system SHALL represent each successfully parsed source file as one `Module` 
 #### Scenario: One file maps to one module
 - **WHEN** a supported source file is parsed successfully
 - **THEN** the engine emits one `Module` for that file
-
-### Requirement: Code Unit Model
-
-The system SHALL represent each function, method, lambda with block body, constructor, or initializer as a `CodeUnit` with name, kind, span, parameters, body block, and exported flag.
-
-#### Scenario: Function maps to code unit
-- **WHEN** a language adapter captures a function definition
-- **THEN** the universal model contains a `CodeUnit` for that function
-
-### Requirement: Block and Node Model
-
-The system SHALL represent nested scopes as `Block` values with zero-based nesting depth from the enclosing `CodeUnit` body root. `Node` SHALL represent statements, branches, nested blocks, and calls.
-
-#### Scenario: Root body nesting is zero
-- **WHEN** a `CodeUnit` body is created
-- **THEN** its root block has `nesting = 0`
-
-### Requirement: Branch Model
-
-The system SHALL represent control-flow points as `Branch` values with kind, span, nesting depth at capture time, and optional logical sequence ID. Branch kinds SHALL include if, else-if, switch case, loop, catch, ternary, logical-and, and logical-or.
-
-#### Scenario: Logical sequence IDs are scoped to code unit
-- **WHEN** logical operators are captured in two different code units
-- **THEN** their sequence IDs are unique only within each enclosing code unit
 
 ### Requirement: Tree-Sitter Query Contract
 
@@ -74,6 +38,8 @@ In the current MVP, parsed `CallSite` values are assigned a default `smell_weigh
 - **WHEN** a code unit has 4 branch nodes
 - **THEN** cyclomatic complexity is 5
 
+## ADDED Requirements
+
 ### Requirement: Current Adapter Surface
 
 The current MVP SHALL register built-in adapters for C, C++, Go, Java, JavaScript, Python, Ruby, Rust, and TypeScript-family source files.
@@ -82,3 +48,8 @@ The current MVP SHALL register built-in adapters for C, C++, Go, Java, JavaScrip
 - **WHEN** a `.ts` file is analysed
 - **THEN** the parser registry resolves the TypeScript adapter for that file extension
 
+## REMOVED Requirements
+
+### Requirement: Model Versioning and Compatibility
+**Reason**: Runtime enforcement of model-version compatibility and plugin minimum-version negotiation is not implemented in the current MVP.
+**Migration**: Restore when plugin loading and compatibility checks exist.
