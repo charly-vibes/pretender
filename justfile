@@ -47,6 +47,11 @@ clean:
 # Full CI gate: fmt + type-check + lint + test
 ci: fmt-check type-check lint test
 
+# Project-local preflight gate.
+# Prefer this over `bd preflight` for now; the current beads preflight is
+# Go-specific upstream and does not reflect this Rust workspace.
+preflight: ci
+
 # Show project status
 status:
     wai status

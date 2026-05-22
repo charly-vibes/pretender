@@ -45,4 +45,9 @@ just build
 just test
 just lint
 just ci
+just preflight
 ```
+
+`just preflight` is the project-local verification entrypoint.
+Prefer it over `bd preflight` for now: the current beads preflight is
+Go-oriented upstream and does not yet reflect this Rust workspace.
