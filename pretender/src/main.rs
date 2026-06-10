@@ -3,6 +3,7 @@ mod config;
 mod cpp;
 mod engine;
 mod go;
+mod git;
 mod history;
 mod java;
 mod javascript;
@@ -23,6 +24,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -91,8 +93,8 @@ struct CheckArgs {
     /// Write report to this path instead of stdout
     #[arg(long)]
     output: Option<PathBuf>,
-    /// Only check git-staged files
-    #[arg(long)]
+    /// Only check git-staged files (mutually exclusive with --diff-only)
+    #[arg(long, conflicts_with = "diff_only")]
     staged: bool,
     /// Only check files changed relative to `diff_base`
     #[arg(long)]
@@ -294,9 +296,6 @@ impl Executable for ComplexityArgs {
 
 impl Executable for CheckArgs {
     fn run(&self) -> Result<ExitCode> {
-        if self.staged || self.diff_only || self.diff_base.is_some() {
-            return not_implemented("check --staged/--diff-only/--diff-base", "pretender-a80");
-        }
         if matches!(self.format, ReportFormat::Junit | ReportFormat::Markdown) {
             return not_implemented(
                 &format!("check --format {:?}", self.format).to_lowercase(),
@@ -308,8 +307,26 @@ impl Executable for CheckArgs {
         if let Some(mode) = self.mode {
             config.pretender.mode = mode.into();
         }
+
         let detector = RoleDetector::new(&config).context("failed to initialize role detector")?;
-        let files = collect_input_files(&self.paths, &config)?;
+
+        let files = if self.staged || self.diff_only || self.diff_base.is_some() {
+            let cwd = std::env::current_dir().context("failed to get current directory")?;
+            let allowed = if self.staged {
+                git::staged_files(&cwd)?
+            } else {
+                let base = self.diff_base.as_deref().unwrap_or(&config.scope.diff_base);
+                git::diff_base_files(&cwd, base)?
+            };
+            // Short-circuit: skip the full directory walk when nothing is staged/changed.
+            if allowed.is_empty() {
+                return Ok(decide_exit_code(&CheckReport { files: vec![] }, config.pretender.mode));
+            }
+            let all = collect_input_files(&self.paths, &config)?;
+            apply_file_filter(all, Some(&allowed), &cwd)
+        } else {
+            collect_input_files(&self.paths, &config)?
+        };
 
         let mut reports: Vec<FileReport> = files
             .par_iter()
@@ -582,7 +599,7 @@ fn uninstall_pre_commit_hook() -> Result<()> {
 }
 
 fn pre_commit_hook_contents() -> &'static str {
-    "#!/bin/sh\n# Installed by Pretender.\n# TODO(pretender-a80): switch to --staged --diff-only when diff-only support lands.\nexec pretender check .\n"
+    "#!/bin/sh\n# Installed by Pretender.\nexec pretender check . --staged\n"
 }
 
 fn github_ci_workflow_path() -> PathBuf {
@@ -717,6 +734,28 @@ fn load_config() -> Result<Config> {
     } else {
         Ok(Config::default())
     }
+}
+
+fn apply_file_filter(
+    files: Vec<PathBuf>,
+    allowed: Option<&HashSet<PathBuf>>,
+    cwd: &Path,
+) -> Vec<PathBuf> {
+    let Some(allowed) = allowed else {
+        return files;
+    };
+    files
+        .into_iter()
+        .filter(|f| {
+            let abs = if f.is_absolute() {
+                f.clone()
+            } else {
+                cwd.join(f)
+            };
+            let canonical = std::fs::canonicalize(&abs).unwrap_or(abs);
+            allowed.contains(&canonical)
+        })
+        .collect()
 }
 
 fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf>> {

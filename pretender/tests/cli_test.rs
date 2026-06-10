@@ -1,6 +1,47 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn git_init(dir: &Path) {
+    assert!(Command::new("git")
+        .args(["init"])
+        .current_dir(dir)
+        .output()
+        .expect("git init")
+        .status
+        .success());
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(dir)
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(dir)
+        .output()
+        .expect("git config name");
+}
+
+fn git_add(dir: &Path, path: &Path) {
+    assert!(Command::new("git")
+        .arg("add")
+        .arg(path)
+        .current_dir(dir)
+        .output()
+        .expect("git add")
+        .status
+        .success());
+}
+
+fn git_commit(dir: &Path, message: &str) {
+    assert!(Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(dir)
+        .output()
+        .expect("git commit")
+        .status
+        .success());
+}
+
 fn pretender_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/pretender")
 }
@@ -462,17 +503,6 @@ fn test_check_sarif_output_structure() {
     }
 }
 
-#[test]
-fn test_check_staged_flag_returns_not_implemented() {
-    let (_dir, staged) = stage_fixture("python_simple.py");
-
-    let output = check(&staged)
-        .arg("--staged")
-        .output()
-        .expect("failed to execute process");
-
-    assert_eq!(output.status.code(), Some(2));
-}
 
 #[test]
 fn test_stub_subcommands_exit_two() {
@@ -1055,6 +1085,145 @@ fn test_c_complexity() {
     assert!(
         stdout.contains("complex_func: 5"),
         "expected complex_func: 5 in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_staged_only_scans_staged_files() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    // Commit a baseline file so HEAD exists
+    let baseline = dir.join("baseline.py");
+    std::fs::write(&baseline, "def baseline(): pass\n").unwrap();
+    git_add(&dir, &baseline);
+    git_commit(&dir, "baseline");
+
+    // Stage file_a.py
+    let file_a = dir.join("file_a.py");
+    std::fs::write(&file_a, "def func_a(): pass\n").unwrap();
+    git_add(&dir, &file_a);
+
+    // Write file_b.py but do NOT stage it
+    let file_b = dir.join("file_b.py");
+    std::fs::write(&file_b, "def func_b(): pass\n").unwrap();
+
+    let output = Command::new(pretender_bin())
+        .args(["check", ".", "--staged"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("file_a.py"),
+        "expected file_a.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("file_b.py"),
+        "unexpected file_b.py in stdout (not staged): {stdout}"
+    );
+}
+
+#[test]
+fn test_check_staged_empty_staging_area_exits_success() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    // Commit a file so HEAD exists
+    let f = dir.join("committed.py");
+    std::fs::write(&f, "def f(): pass\n").unwrap();
+    git_add(&dir, &f);
+    git_commit(&dir, "init");
+
+    // Nothing staged — check should succeed with no file output
+    let output = Command::new(pretender_bin())
+        .args(["check", ".", "--staged"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_check_staged_first_commit_no_head() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    // No prior commits — stage one file
+    let f = dir.join("first.py");
+    std::fs::write(&f, "def first(): pass\n").unwrap();
+    git_add(&dir, &f);
+
+    let output = Command::new(pretender_bin())
+        .args(["check", ".", "--staged"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("first.py"),
+        "expected first.py in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_diff_only_filters_to_changed_files() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    // First commit: file_old.py
+    let file_old = dir.join("file_old.py");
+    std::fs::write(&file_old, "def old(): pass\n").unwrap();
+    git_add(&dir, &file_old);
+    git_commit(&dir, "first commit");
+
+    // Second commit (HEAD): add file_new.py
+    let file_new = dir.join("file_new.py");
+    std::fs::write(&file_new, "def new_func(): pass\n").unwrap();
+    git_add(&dir, &file_new);
+    git_commit(&dir, "second commit");
+
+    // --diff-only --diff-base=HEAD~1 should only show file_new.py
+    let output = Command::new(pretender_bin())
+        .args(["check", ".", "--diff-only", "--diff-base=HEAD~1"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("file_new.py"),
+        "expected file_new.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("file_old.py"),
+        "unexpected file_old.py in stdout (unchanged): {stdout}"
     );
 }
 
