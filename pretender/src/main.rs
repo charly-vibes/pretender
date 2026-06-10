@@ -3,6 +3,7 @@ mod config;
 mod cpp;
 mod engine;
 mod go;
+mod history;
 mod java;
 mod javascript;
 mod metrics;
@@ -329,6 +330,7 @@ impl Executable for CheckArgs {
             _ => unreachable!("junit/markdown handled above"),
         }
         persist_last_check_report(&report)?;
+        emit_history_events(&report, &config, self.format, writing_to_stdout, sink.as_mut());
         sink.flush().context("failed to flush report output")?;
 
         Ok(decide_exit_code(&report, config.pretender.mode))
@@ -1409,6 +1411,109 @@ struct ViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
+}
+
+fn emit_history_events(
+    report: &CheckReport,
+    config: &config::Config,
+    format: ReportFormat,
+    writing_to_stdout: bool,
+    sink: &mut dyn Write,
+) {
+    let timestamp = history::now_iso8601();
+    let run_id = history::make_run_id();
+    let mode_str = format!("{:?}", config.pretender.mode).to_ascii_lowercase();
+    let new_events = cognitive_max_events(report, &run_id, &timestamp, &mode_str);
+    if new_events.is_empty() {
+        return;
+    }
+    let store = history::EventStore::new(Path::new(".pretender"));
+    let all_events = match store.append_and_prune(&new_events) {
+        Ok(events) => events,
+        Err(err) => {
+            eprintln!("pretender: history write failed: {err}");
+            return;
+        }
+    };
+    let summary = history::compute_summary(&all_events);
+    let _ = store.persist_summary(&summary);
+    if matches!(format, ReportFormat::Human)
+        && (!summary.top_hotspots.is_empty() || !summary.top_patterns.is_empty())
+    {
+        let color = writing_to_stdout && color_enabled();
+        let _ = write_recurrence_hints(sink, &summary, color);
+    }
+}
+
+fn cognitive_max_events(
+    report: &CheckReport,
+    run_id: &str,
+    timestamp: &str,
+    mode: &str,
+) -> Vec<history::ViolationEvent> {
+    // TODO(Phase 2): extend to cyclomatic_max, params_max, nesting_max,
+    // function_lines_max, abc_max — see feedback-loop-design.md §Phase 2.
+    let mut events = Vec::new();
+    for file in &report.files {
+        // Normalize away leading "./" so fingerprints are stable regardless of
+        // how the CLI path was spelled (e.g. "src/foo.rs" vs "./src/foo.rs").
+        let path = file.path.strip_prefix("./").unwrap_or(&file.path).to_string();
+        for unit in &file.units {
+            for violation in &unit.violations {
+                if violation.metric != "cognitive" {
+                    continue;
+                }
+                events.push(history::ViolationEvent {
+                    schema_version: 1,
+                    timestamp: timestamp.to_string(),
+                    run_id: run_id.to_string(),
+                    mode: mode.to_string(),
+                    path: path.clone(),
+                    unit_name: Some(unit.name.clone()),
+                    role: file.role.clone(),
+                    rule_key: "cognitive_max".to_string(),
+                    metric_family: "complexity".to_string(),
+                    scope: "unit".to_string(),
+                    // Phase 1: only threshold violations (red); yellow-band and
+                    // gate-fail severity levels will be added in Phase 2.
+                    severity: "red".to_string(),
+                    actual: violation.actual,
+                    limit: violation.limit,
+                    delta: violation.actual - violation.limit,
+                    fingerprint: format!("{}::{}::cognitive_max", path, unit.name),
+                });
+            }
+        }
+    }
+    events
+}
+
+fn write_recurrence_hints(
+    sink: &mut dyn Write,
+    summary: &history::HistorySummary,
+    color: bool,
+) -> Result<()> {
+    let cyan = if color { "\u{1b}[36m" } else { "" };
+    let bold = if color { "\u{1b}[1m" } else { "" };
+    let reset = if color { "\u{1b}[0m" } else { "" };
+
+    writeln!(sink)?;
+    writeln!(sink, "{bold}Recurring violations{reset}")?;
+    for h in &summary.top_hotspots {
+        writeln!(
+            sink,
+            "  {cyan}hotspot{reset} {} — {} occurrences across {} days",
+            h.fingerprint, h.count, h.distinct_days
+        )?;
+    }
+    for p in &summary.top_patterns {
+        writeln!(
+            sink,
+            "  {cyan}pattern{reset} {} in {} ({}) — {} occurrences across {} files",
+            p.rule_key, p.area, p.role, p.count, p.distinct_files
+        )?;
+    }
+    Ok(())
 }
 
 fn main() -> Result<ExitCode> {
