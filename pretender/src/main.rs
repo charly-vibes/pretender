@@ -561,6 +561,16 @@ const PRE_COMMIT_HOOK_MARKER: &str = "# Installed by Pretender.";
 
 fn install_pre_commit_hook() -> Result<()> {
     let path = PathBuf::from(".git/hooks/pre-commit");
+    if path.exists() {
+        let existing = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read hook: {}", path.display()))?;
+        if !existing.contains(PRE_COMMIT_HOOK_MARKER) {
+            return Err(anyhow!(
+                "refusing to overwrite hook not installed by Pretender: {}",
+                path.display()
+            ));
+        }
+    }
     let parent = path
         .parent()
         .ok_or_else(|| anyhow!("invalid hook path: {}", path.display()))?;
@@ -598,8 +608,8 @@ fn uninstall_pre_commit_hook() -> Result<()> {
     fs::remove_file(&path).with_context(|| format!("failed to remove hook: {}", path.display()))
 }
 
-fn pre_commit_hook_contents() -> &'static str {
-    "#!/bin/sh\n# Installed by Pretender.\nexec pretender check . --staged\n"
+fn pre_commit_hook_contents() -> String {
+    format!("#!/usr/bin/env sh\n{PRE_COMMIT_HOOK_MARKER}\nexec pretender check . --staged\n")
 }
 
 fn github_ci_workflow_path() -> PathBuf {

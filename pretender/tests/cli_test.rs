@@ -707,7 +707,7 @@ fn test_init_interactive_can_install_hook_and_ci() {
 
     let hook = std::fs::read_to_string(dir.join(".git/hooks/pre-commit")).expect("hook exists");
     assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
-    assert!(hook.contains("exec pretender check ."), "hook: {hook}");
+    assert!(hook.contains("exec pretender check . --staged"), "hook: {hook}");
 
     let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
         .expect("workflow exists");
@@ -794,7 +794,7 @@ fn test_hooks_install_and_uninstall_manage_pretender_shim() {
     let hook_path = dir.join(".git/hooks/pre-commit");
     let hook = std::fs::read_to_string(&hook_path).expect("hook exists");
     assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
-    assert!(hook.contains("exec pretender check ."), "hook: {hook}");
+    assert!(hook.contains("exec pretender check . --staged"), "hook: {hook}");
 
     let uninstall = hooks_in(&dir, "uninstall")
         .output()
@@ -805,6 +805,124 @@ fn test_hooks_install_and_uninstall_manage_pretender_shim() {
         String::from_utf8_lossy(&uninstall.stderr)
     );
     assert!(!hook_path.exists(), "hook should be removed");
+}
+
+#[test]
+fn test_hooks_install_creates_hooks_dir_when_absent() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git")).expect("git dir");
+    // .git/hooks does NOT exist
+
+    let install = hooks_in(&dir, "install")
+        .output()
+        .expect("run hooks install");
+    assert!(
+        install.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+    assert!(
+        dir.join(".git/hooks/pre-commit").exists(),
+        "hook should exist even when .git/hooks was absent"
+    );
+}
+
+#[test]
+fn test_hooks_uninstall_is_noop_when_no_hook() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+    // no hook file present
+
+    let uninstall = hooks_in(&dir, "uninstall")
+        .output()
+        .expect("run hooks uninstall");
+    assert!(
+        uninstall.status.success(),
+        "uninstall with no hook should succeed silently; stderr: {}",
+        String::from_utf8_lossy(&uninstall.stderr)
+    );
+}
+
+#[test]
+fn test_hooks_uninstall_refuses_foreign_hook() {
+    let dir = tempdir();
+    let hooks_dir = dir.join(".git/hooks");
+    std::fs::create_dir_all(&hooks_dir).expect("git hooks dir");
+    std::fs::write(
+        hooks_dir.join("pre-commit"),
+        "#!/bin/sh\necho 'custom hook'\n",
+    )
+    .expect("write foreign hook");
+
+    let uninstall = hooks_in(&dir, "uninstall")
+        .output()
+        .expect("run hooks uninstall");
+    assert!(
+        !uninstall.status.success(),
+        "should refuse to remove a hook not installed by Pretender"
+    );
+    let stderr = String::from_utf8_lossy(&uninstall.stderr);
+    assert!(
+        stderr.contains("refusing to remove hook not installed by Pretender"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        hooks_dir.join("pre-commit").exists(),
+        "foreign hook should be left intact"
+    );
+}
+
+#[test]
+fn test_hooks_install_refuses_foreign_hook() {
+    let dir = tempdir();
+    let hooks_dir = dir.join(".git/hooks");
+    std::fs::create_dir_all(&hooks_dir).expect("git hooks dir");
+    std::fs::write(
+        hooks_dir.join("pre-commit"),
+        "#!/bin/sh\necho 'custom hook'\n",
+    )
+    .expect("write foreign hook");
+
+    let install = hooks_in(&dir, "install")
+        .output()
+        .expect("run hooks install");
+    assert!(
+        !install.status.success(),
+        "should refuse to overwrite a hook not installed by Pretender"
+    );
+    let stderr = String::from_utf8_lossy(&install.stderr);
+    assert!(
+        stderr.contains("refusing to overwrite hook not installed by Pretender"),
+        "stderr: {stderr}"
+    );
+    let hook = std::fs::read_to_string(hooks_dir.join("pre-commit")).expect("hook still exists");
+    assert!(
+        hook.contains("custom hook"),
+        "foreign hook should be left intact: {hook}"
+    );
+}
+
+#[test]
+fn test_hooks_install_is_idempotent() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+
+    let first = hooks_in(&dir, "install").output().expect("first install");
+    assert!(
+        first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = hooks_in(&dir, "install").output().expect("second install");
+    assert!(
+        second.status.success(),
+        "reinstall over Pretender-owned hook should succeed; stderr: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    let hook = std::fs::read_to_string(dir.join(".git/hooks/pre-commit")).expect("hook exists");
+    assert!(hook.contains("exec pretender check . --staged"), "hook: {hook}");
 }
 
 #[test]
