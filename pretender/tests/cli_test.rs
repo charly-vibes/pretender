@@ -1372,3 +1372,71 @@ fn test_cpp_complexity() {
         "expected complex_func: 5 in stdout: {stdout}"
     );
 }
+
+const RUFF_PLUGIN_TOML: &str = r#"
+name = "ruff"
+extensions = [".py"]
+command = ["ruff", "check", "--output-format=json", "--select=E501", "{files}"]
+parser = "json"
+
+[mapping]
+path = "filename"
+line = "location.row"
+message = "message"
+code = "code"
+"#;
+
+/// The python_simple.py fixture has a 112-char comment on line 1, which triggers
+/// E501 (line too long > 79) when ruff is run with --select=E501.
+#[test]
+fn test_external_plugin_ruff_json_findings() {
+    if std::process::Command::new("ruff")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipping: ruff not in PATH");
+        return;
+    }
+
+    let metrics_dir = tempdir();
+    std::fs::write(metrics_dir.join("ruff.toml"), RUFF_PLUGIN_TOML).expect("write ruff.toml");
+
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--format")
+        .arg("json")
+        .env("PRETENDER_METRICS_DIR", &metrics_dir)
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid json output");
+
+    let files = json["files"].as_array().expect("files array");
+    assert_eq!(files.len(), 1);
+    let external = files[0]["external_findings"]
+        .as_array()
+        .expect("external_findings present when ruff fires");
+    assert!(
+        !external.is_empty(),
+        "expected at least one ruff finding; full output: {json}"
+    );
+    assert_eq!(
+        external[0]["source"].as_str(),
+        Some("ruff"),
+        "finding source should be 'ruff'"
+    );
+    assert_eq!(
+        external[0]["code"].as_str(),
+        Some("E501"),
+        "finding code should be 'E501'"
+    );
+}

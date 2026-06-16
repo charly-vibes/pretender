@@ -1,0 +1,10 @@
+name = "ruff"
+extensions = [".py"]
+command = ["ruff", "check", "--output-format=json", "{files}"]
+parser = "json"
+
+[mapping]
+path = "filename"
+line = "location.row"
+message = "message"
+code = "code"

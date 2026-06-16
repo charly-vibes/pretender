@@ -2,6 +2,7 @@ mod c;
 mod config;
 mod cpp;
 mod engine;
+mod external_plugin;
 mod go;
 mod git;
 mod history;
@@ -333,6 +334,16 @@ impl Executable for CheckArgs {
             .filter_map(|path| analyze_path(path, &detector, &config).transpose())
             .collect::<Result<_>>()?;
         reports.sort_by(|a, b| a.path.cmp(&b.path));
+
+        let plugins = external_plugin::load_plugins(&external_plugin::default_metrics_dir());
+        if !plugins.is_empty() {
+            let mut external = external_plugin::run_plugins(&plugins, &files);
+            for file_report in &mut reports {
+                if let Some(findings) = external.remove(&file_report.path) {
+                    file_report.external_findings = findings;
+                }
+            }
+        }
 
         let report = CheckReport { files: reports };
         let writing_to_stdout = self.output.is_none();
@@ -734,6 +745,7 @@ fn analyze_path(
         diagnostics: diagnostics.into_iter().map(Into::into).collect(),
         file_violations,
         units,
+        external_findings: vec![],
     }))
 }
 
@@ -995,6 +1007,14 @@ fn write_human_report(
         }
         for diagnostic in &file.diagnostics {
             eprintln!("  {:?}: {}", diagnostic.severity, diagnostic.message);
+        }
+        for finding in &file.external_findings {
+            let code = finding.code.as_deref().unwrap_or("-");
+            writeln!(
+                sink,
+                "  {red}EXTERNAL{reset} {} {} line {}: {}",
+                finding.source, code, finding.line, finding.message
+            )?;
         }
     }
     Ok(())
@@ -1414,6 +1434,8 @@ struct FileReport {
     diagnostics: Vec<DiagnosticReport>,
     file_violations: Vec<ViolationReport>,
     units: Vec<UnitReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    external_findings: Vec<external_plugin::ExternalFinding>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
