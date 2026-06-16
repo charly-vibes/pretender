@@ -1,6 +1,7 @@
 mod c;
 mod config;
 mod cpp;
+mod duplication;
 mod engine;
 mod external_plugin;
 mod go;
@@ -221,7 +222,7 @@ impl Executable for Commands {
             Commands::Check(args) => args.run(),
             Commands::Complexity(args) => args.run(),
             Commands::Report(args) => args.run(),
-            Commands::Duplication(_) => not_implemented("duplication", "pretender-xgn"),
+            Commands::Duplication(args) => args.run(),
             Commands::Mutation(_) => not_implemented("mutation", "pretender-238"),
             Commands::Hooks(args) => args.run(),
             Commands::Ci(args) => args.run(),
@@ -362,6 +363,53 @@ impl Executable for CheckArgs {
         sink.flush().context("failed to flush report output")?;
 
         Ok(decide_exit_code(&report, config.pretender.mode))
+    }
+}
+
+impl Executable for DuplicationArgs {
+    fn run(&self) -> Result<ExitCode> {
+        let config = load_config()?;
+        let file_paths = collect_input_files(&self.paths, &config)?;
+        let min_nodes = self.min_nodes.unwrap_or(10) as usize;
+
+        let mut files: Vec<(PathBuf, String)> = Vec::new();
+        for path in &file_paths {
+            if duplication::ts_language_for_path(path).is_none() {
+                continue;
+            }
+            match fs::read_to_string(path) {
+                Ok(source) => files.push((path.clone(), source)),
+                Err(e) => eprintln!("warning: skipping {}: {e}", path.display()),
+            }
+        }
+
+        let groups = duplication::detect_clones(&files, min_nodes, self.cross_file)?;
+
+        if groups.is_empty() {
+            println!("No structural clones detected.");
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        println!("Found {} clone group(s):\n", groups.len());
+        for (i, group) in groups.iter().enumerate() {
+            println!(
+                "Clone {} ({} nodes, similarity: {}%):",
+                i + 1,
+                group.node_count,
+                group.similarity
+            );
+            for loc in &group.locations {
+                println!(
+                    "  {}:{}-{}",
+                    loc.file.display(),
+                    loc.start_line,
+                    loc.end_line
+                );
+            }
+            println!();
+        }
+
+        Ok(ExitCode::SUCCESS)
     }
 }
 

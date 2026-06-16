@@ -507,7 +507,6 @@ fn test_check_sarif_output_structure() {
 #[test]
 fn test_stub_subcommands_exit_two() {
     for cmd in [
-        vec!["duplication"],
         vec!["mutation"],
         vec!["plugins", "list"],
         vec!["explain", "cyclomatic"],
