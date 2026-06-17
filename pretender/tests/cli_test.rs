@@ -529,10 +529,7 @@ fn test_mutation_dry_run_python() {
 
 #[test]
 fn test_stub_subcommands_exit_two() {
-    for cmd in [
-        vec!["plugins", "list"],
-        vec!["explain", "cyclomatic"],
-    ] {
+    for cmd in [vec!["plugins", "list"]] {
         let output = Command::new(pretender_bin())
             .args(&cmd)
             .output()
@@ -550,6 +547,35 @@ fn test_stub_subcommands_exit_two() {
             "{cmd:?} stderr should explain status; got: {stderr}",
         );
     }
+}
+
+#[test]
+fn test_explain_known_metric_prints_doc() {
+    let output = Command::new(pretender_bin())
+        .args(["explain", "cyclomatic"])
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0), "explain cyclomatic should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("cyclomatic"), "output should include metric name");
+    assert!(stdout.contains("McCabe"), "output should cite McCabe");
+    assert!(stdout.contains("10"), "output should mention default threshold");
+}
+
+#[test]
+fn test_explain_unknown_metric_exits_nonzero() {
+    let output = Command::new(pretender_bin())
+        .args(["explain", "not_a_real_metric"])
+        .output()
+        .expect("failed to execute process");
+
+    assert_ne!(output.status.code(), Some(0), "unknown metric should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown metric") || stderr.contains("cyclomatic"),
+        "stderr should name the error and list available metrics; got: {stderr}",
+    );
 }
 
 #[test]

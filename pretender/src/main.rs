@@ -3,6 +3,7 @@ mod config;
 mod cpp;
 mod duplication;
 mod engine;
+mod explain;
 mod external_plugin;
 mod go;
 mod git;
@@ -232,8 +233,15 @@ impl Executable for Commands {
             Commands::Hooks(args) => args.run(),
             Commands::Ci(args) => args.run(),
             Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
-            Commands::Explain(_) => not_implemented("explain", "pretender-vuc"),
+            Commands::Explain(args) => args.run(),
         }
+    }
+}
+
+impl Executable for ExplainArgs {
+    fn run(&self) -> Result<ExitCode> {
+        explain::run(&self.metric)?;
+        Ok(ExitCode::SUCCESS)
     }
 }
 
