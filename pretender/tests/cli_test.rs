@@ -505,9 +505,31 @@ fn test_check_sarif_output_structure() {
 
 
 #[test]
+fn test_mutation_dry_run_python() {
+    let output = Command::new(pretender_bin())
+        .args(["mutation", "--dry-run", source_fixture("python_simple.py").to_str().unwrap()])
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "dry-run should exit 0; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mutmut"),
+        "dry-run should name the tool; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Planned mutants") || stdout.contains("No mutation sites"),
+        "dry-run should list planned mutants; got: {stdout}"
+    );
+}
+
+#[test]
 fn test_stub_subcommands_exit_two() {
     for cmd in [
-        vec!["mutation"],
         vec!["plugins", "list"],
         vec!["explain", "cyclomatic"],
     ] {

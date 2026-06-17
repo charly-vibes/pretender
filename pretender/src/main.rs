@@ -11,6 +11,7 @@ mod java;
 mod javascript;
 mod metrics;
 mod model;
+mod mutation;
 mod plugin;
 mod python;
 mod roles;
@@ -131,8 +132,12 @@ struct DuplicationArgs {
 #[derive(Parser)]
 struct MutationArgs {
     paths: Vec<PathBuf>,
+    /// Minimum mutation score (0–100); exit non-zero if below threshold
+    #[arg(long, default_value_t = 60)]
+    score_min: u32,
+    /// List planned mutants without running tests
     #[arg(long)]
-    score_min: Option<u32>,
+    dry_run: bool,
     #[arg(long, value_enum, default_value_t = ReportFormat::Human)]
     format: ReportFormat,
 }
@@ -223,7 +228,7 @@ impl Executable for Commands {
             Commands::Complexity(args) => args.run(),
             Commands::Report(args) => args.run(),
             Commands::Duplication(args) => args.run(),
-            Commands::Mutation(_) => not_implemented("mutation", "pretender-238"),
+            Commands::Mutation(args) => args.run(),
             Commands::Hooks(args) => args.run(),
             Commands::Ci(args) => args.run(),
             Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
@@ -410,6 +415,80 @@ impl Executable for DuplicationArgs {
         }
 
         Ok(ExitCode::SUCCESS)
+    }
+}
+
+impl Executable for MutationArgs {
+    fn run(&self) -> Result<ExitCode> {
+        let lang = mutation::primary_lang(&self.paths).ok_or_else(|| {
+            anyhow!("no supported source files found in provided paths")
+        })?;
+
+        if self.dry_run {
+            return run_mutation_dry_run(&lang, &self.paths);
+        }
+
+        let report = mutation::run_mutation(&lang, &self.paths)?;
+
+        match self.format {
+            ReportFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            _ => print_mutation_report(&report),
+        }
+
+        if report.passes_threshold(self.score_min) {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Ok(ExitCode::FAILURE)
+        }
+    }
+}
+
+fn run_mutation_dry_run(lang: &mutation::MutationLang, paths: &[PathBuf]) -> Result<ExitCode> {
+    println!(
+        "Dry run: would use {} on {} file(s)",
+        lang.tool_name(),
+        paths.len()
+    );
+    let mutants = mutation::list_mutants(lang, paths)?;
+    if mutants.is_empty() {
+        println!("No mutation sites found.");
+        return Ok(ExitCode::SUCCESS);
+    }
+    println!("Planned mutants ({}):", mutants.len());
+    for m in &mutants {
+        if m.line > 0 {
+            println!("  {}:{}: {}", m.file, m.line, m.description);
+        } else {
+            println!("  {}: {}", m.file, m.description);
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn print_mutation_report(report: &mutation::MutationReport) {
+    let pass = if report.score_pct >= 60.0 { "✓" } else { "✗" };
+    println!(
+        "Mutation score: {:.1}% ({}/{} killed) {}",
+        report.score_pct, report.killed, report.total, pass
+    );
+    println!("Tool: {}", report.tool);
+    if report.survivors.is_empty() {
+        println!("\nAll mutants killed — perfect score!");
+        return;
+    }
+    println!("\nSurviving mutants ({}):", report.survived);
+    for m in &report.survivors {
+        if m.line > 0 {
+            print!("  {}:{}", m.file, m.line);
+        } else {
+            print!("  {}", m.file);
+        }
+        println!("  {}", m.description);
+        for test in &m.missed_tests {
+            println!("    missed by: {test}");
+        }
     }
 }
 
