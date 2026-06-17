@@ -19,3 +19,7 @@ A two-layer content-addressed cache (CST + metrics) eliminates redundant work an
 - Affected specs: `cache` (new), `cli-and-config` (new commands + config table)
 - Affected code: `src/engine/`, `src/cache/` (new), `src/cli/`
 - Cross-cutting: adds a new first-party dependency on content hashing; see `design.md`
+
+## Outcome
+
+Not implemented — deferred to V2. Project archived 2026-06-17.

@@ -25,3 +25,7 @@ Additionally, the V0 within-file-only default is no longer justified now that cr
 - Affected code: `src/duplication/`, `src/cli/`, `src/output/sarif.rs`
 - Dependencies: `update-mvp-spec-baseline` must be applied first; the reserved `duplication` command and SARIF output must be restored before this refactor can be implemented
 - Migration: any `duplication_pct_max` thresholds remain valid numerically; the denominator changes from a heuristic percentage to `duplication_ratio`; CI pipelines parsing JSON output must update field names
+
+## Outcome
+
+Not implemented — deferred to V2. Project archived 2026-06-17.

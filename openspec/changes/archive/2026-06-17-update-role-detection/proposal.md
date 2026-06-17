@@ -25,3 +25,7 @@ This proposal modifies the corrected MVP baseline introduced by `update-mvp-spec
 - Affected code: `src/roles.rs` (or equivalent), `src/cli/check.rs`
 - Dependencies: `update-mvp-spec-baseline` must be applied first so this change modifies the corrected MVP role detector
 - Migration: files that currently rely on heuristic role assignment will fall back to `app`; users who want non-`app` roles for those files must add explicit path globs or pragmas to `pretender.toml`
+
+## Outcome
+
+Not implemented — deferred to V2. Project archived 2026-06-17.

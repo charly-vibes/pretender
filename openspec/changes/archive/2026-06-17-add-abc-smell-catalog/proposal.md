@@ -24,3 +24,7 @@ This is a breaking change because publishing the catalog pins weight values: fut
 - Affected code: `src/abc/`, `src/cli/explain.rs`, `src/config/`, language adapter `.scm` + `plugin.toml` files
 - Dependencies: requires `update-mvp-spec-baseline` to be applied first; the `pretender explain abc --language` CLI surface also requires the reserved `explain` command to be restored
 - Migration: existing ABC scores may change when catalog weights differ from previously implicit values; teams should re-baseline thresholds after upgrading
+
+## Outcome
+
+Not implemented — deferred to V2. Project archived 2026-06-17.

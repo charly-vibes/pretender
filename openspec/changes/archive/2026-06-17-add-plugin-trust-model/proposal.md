@@ -21,3 +21,7 @@ Pretender plugins are loaded from arbitrary URLs (git remotes, local paths), cre
 - Affected code: plugin loader, `pretender plugins` subcommand, `pretender check` entrypoint
 - Dependencies: `update-mvp-spec-baseline` must be applied first; the reserved `plugins` command must be restored before this trust model can be implemented
 - **BREAKING**: `pretender plugins add <url>` now requires `--i-trust-this` flag in non-interactive environments
+
+## Outcome
+
+Not implemented — deferred to V2. Project archived 2026-06-17.

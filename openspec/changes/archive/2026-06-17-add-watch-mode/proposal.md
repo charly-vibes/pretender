@@ -20,3 +20,7 @@ Pretender provides fast feedback in CI and at commit time, but developers writin
 - Affected code: new `watch` subcommand, filesystem watcher integration, optional JSON-RPC push socket
 - Dependencies: `update-mvp-spec-baseline` must be applied first; SARIF output must be restored before watch mode can write `pretender.sarif`; `add-incremental-cache` is required for the <100ms warm-cache guarantee
 - No breaking changes
+
+## Outcome
+
+Not implemented — deferred to V2. Project archived 2026-06-17.
