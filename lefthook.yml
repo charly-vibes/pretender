@@ -1,6 +1,8 @@
 pre-commit:
   parallel: true
   commands:
+    fmt:
+      run: just fmt-check
     type-check:
       run: just type-check
     lint:
