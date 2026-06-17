@@ -2,6 +2,14 @@
 
 Pretender is a Rust CLI for structural code-quality checks across multiple languages.
 
+## Documentation
+
+- [Getting started](docs/getting-started.md)
+- [Configuration reference](docs/configuration.md)
+- [Mutation testing](docs/mutation.md)
+- [Writing plugins](docs/plugins.md)
+- [Language support](languages/)
+
 ## Commands
 
 | Command | Description |

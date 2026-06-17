@@ -129,7 +129,7 @@ Controls which files are analysed during `pretender check`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `diff_only` | boolean | `true` | When true, only files changed relative to `diff_base` are checked. Set to `false` to scan the entire repository. The default can appear to do nothing on a fresh clone where no files differ from `origin/main` |
+| `diff_only` | boolean | `true` | Stored for reference; does not enable diff filtering by itself. Pass `--diff-only` on the CLI to activate scope filtering. When active, only files changed relative to `diff_base` are checked |
 | `diff_base` | string | `"origin/main"` | Git ref used as the comparison base for `--diff-only` |
 
 ---
