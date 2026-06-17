@@ -6,3 +6,6 @@
 
 # Pretender runtime cache
 pretender/.pretender/
+
+# mdBook build output
+/book

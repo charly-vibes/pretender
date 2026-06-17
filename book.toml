@@ -1,0 +1,12 @@
+[book]
+title = "pretender"
+description = "Language-agnostic code quality CLI"
+src = "docs"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/charly/pretender"
+edit-url-template = "https://github.com/charly/pretender/edit/main/{path}"
