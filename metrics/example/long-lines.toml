@@ -1,0 +1,10 @@
+name       = "long-lines"
+extensions = [".py", ".js", ".ts", ".rs"]
+command    = ["metrics/example/long-lines.sh", "{files}"]
+parser     = "json-lines"
+
+[mapping]
+path    = "file"
+line    = "line"
+message = "message"
+code    = "code"
