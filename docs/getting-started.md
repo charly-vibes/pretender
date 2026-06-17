@@ -3,6 +3,12 @@
 This guide walks you from a fresh install to a passing `pretender check` in
 a real repository. It covers the six steps most teams need on day one.
 
+## Prerequisites
+
+- **Rust toolchain** (stable) — install via [rustup.rs](https://rustup.rs/)
+- **Git** ≥ 2.x — required for `--diff-only` and hook installation
+- Internet access for the initial `cargo install`
+
 ---
 
 ## 1. Install
@@ -88,9 +94,10 @@ Severity is determined by the `[bands]` thresholds in `pretender.toml`. In
 ## 4. Fix a violation
 
 Suppose `parse_token()` scores `cyclomatic=14` against a threshold of 10.
-The most direct fix is to extract branches into helper functions:
+Extract the per-branch logic into helpers to bring each function under the
+threshold:
 
-**Before** (cyclomatic=14):
+**Before** — one function with 14 branches:
 
 ```python
 def parse_token(token, context, strict):
@@ -103,10 +110,10 @@ def parse_token(token, context, strict):
             return int(token.value)
         except ValueError:
             return float(token.value)
-    # … six more branches
+    # … six more branches omitted for brevity
 ```
 
-**After** (cyclomatic≈3 each):
+**After** — each helper is cyclomatic ≤ 3:
 
 ```python
 def _parse_string(token, strict):
@@ -167,7 +174,9 @@ This writes `.github/workflows/pretender.yml`. The workflow runs
 configured, gates merges on the mutation score defined by
 `thresholds.mutation_min` in your `pretender.toml`.
 
-For mutation testing details, see [Mutation testing](mutation.md).
+For mutation testing details, see [Mutation testing](mutation.md). To gate
+on mutation score in CI, set `thresholds.mutation_min` in `pretender.toml`
+— the generated workflow picks it up automatically.
 
 ---
 

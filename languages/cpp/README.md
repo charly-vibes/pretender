@@ -1,5 +1,9 @@
 # C++
 
+Reference for which tree-sitter nodes pretender tracks for C++ files, how
+each contributes to `pretender check` metrics, and known measurement gaps.
+Consult this page when tuning thresholds or diagnosing unexpected scores.
+
 ## Overview
 
 Analyses `.cpp`, `.cc`, `.cxx`, `.hpp`, and `.hxx` files using a tree-sitter

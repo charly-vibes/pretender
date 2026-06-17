@@ -59,23 +59,12 @@ Each finding pretender emits from a plugin has these fields:
 
 ---
 
-## How findings are merged
-
-After each `pretender check` run, pretender runs every applicable plugin
-against the files being checked. Findings from plugins are merged with built-in
-metric findings and displayed in the same output stream. The `source` field
-identifies which plugin produced each finding.
-
-Plugins are always loaded from the metrics directory in addition to any
-built-in metric tools listed in `[plugins].metrics` in `pretender.toml`.
-
----
-
 ## Worked example
 
 The `metrics/example/` directory in this repository contains a minimal,
-runnable plugin: a shell script that emits one JSON finding per invocation,
-and a TOML manifest wiring it to pretender.
+runnable plugin — a shell script that emits one JSON finding per violation
+and a TOML manifest wiring it to pretender. Copy the files and edit the
+path to install it locally.
 
 ### Manifest — `metrics/example/long-lines.toml`
 
@@ -109,16 +98,17 @@ done
 
 ### Installing the example
 
-The manifest's `command` must be resolvable from wherever `pretender check`
-is run. Absolute paths are safest — copy both files to the metrics directory:
+Use absolute paths in `command` — relative paths are resolved from wherever
+`pretender check` is run, which can vary. Copy both files to the metrics
+directory:
 
 ```sh
 mkdir -p ~/.config/pretender/metrics
-cp metrics/example/long-lines.sh   ~/.config/pretender/metrics/
+cp metrics/example/long-lines.sh ~/.config/pretender/metrics/
 chmod +x ~/.config/pretender/metrics/long-lines.sh
 
-# Edit the command path in the manifest before copying
-sed 's|metrics/example/long-lines.sh|~/.config/pretender/metrics/long-lines.sh|' \
+# Update the command path in the manifest before copying
+sed 's|metrics/example/long-lines.sh|/home/you/.config/pretender/metrics/long-lines.sh|' \
   metrics/example/long-lines.toml \
   > ~/.config/pretender/metrics/long-lines.toml
 
@@ -131,6 +121,20 @@ The finding will appear in human output as:
 ```
 src/lib.rs:87  [long-lines] line exceeds 100 chars (112)  LL001
 ```
+
+---
+
+## How findings are merged
+
+After each `pretender check` run, pretender runs every applicable plugin
+against the files being checked. Findings from plugins are merged with built-in
+metric findings and displayed in the same output stream. The `source` field
+identifies which plugin produced each finding.
+
+Plugins are always loaded from the metrics directory in addition to any
+built-in metric tools listed in `[plugins].metrics` in `pretender.toml`.
+See the [Configuration reference](configuration.md#plugins) for the
+`[plugins]` section.
 
 ---
 
@@ -155,7 +159,10 @@ code    = "code"
 
 ESLint's JSON output nests messages inside per-file objects — one array entry
 per file, not per finding. pretender's dot-path mapping does not support array
-indexing, so a thin wrapper script is required to flatten the output:
+indexing, so a thin wrapper script is required to flatten the output.
+
+**Requires:** [`jq`](https://jqlang.github.io/jq/) — install with your system
+package manager (`brew install jq`, `apt install jq`, etc.).
 
 ```sh
 #!/usr/bin/env sh

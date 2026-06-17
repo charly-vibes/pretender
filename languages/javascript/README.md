@@ -1,5 +1,9 @@
 # JavaScript
 
+Reference for which tree-sitter nodes pretender tracks for JavaScript files,
+how each contributes to `pretender check` metrics, and known measurement gaps.
+Consult this page when tuning thresholds or diagnosing unexpected scores.
+
 ## Overview
 
 Analyses `.js`, `.jsx`, `.mjs`, and `.cjs` files using a tree-sitter grammar.

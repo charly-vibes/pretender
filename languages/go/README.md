@@ -1,5 +1,9 @@
 # Go
 
+Reference for which tree-sitter nodes pretender tracks for Go files, how
+each contributes to `pretender check` metrics, and known measurement gaps.
+Consult this page when tuning thresholds or diagnosing unexpected scores.
+
 ## Overview
 
 Analyses `.go` files using a tree-sitter grammar. Tracks both top-level

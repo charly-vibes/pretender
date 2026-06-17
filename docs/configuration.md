@@ -129,7 +129,7 @@ Controls which files are analysed during `pretender check`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `diff_only` | boolean | `true` | Stored for reference; does not enable diff filtering by itself. Pass `--diff-only` on the CLI to activate scope filtering. When active, only files changed relative to `diff_base` are checked |
+| `diff_only` | boolean | `true` | Written by `pretender init` to record your project preference. Setting this to `true` does **not** automatically enable diff filtering — you must pass `--diff-only` on the CLI (or CI step) to activate it. When active, only files changed relative to `diff_base` are checked |
 | `diff_base` | string | `"origin/main"` | Git ref used as the comparison base for `--diff-only` |
 
 ---
@@ -215,6 +215,10 @@ pretender assigns the first role that matches, checked in this priority order:
 ---
 
 ## History and feedback loop
+
+pretender maintains a local event log that surfaces recurring problem areas
+across runs — useful for calibrating thresholds and identifying structural
+debt before it compounds.
 
 pretender tracks every violation it reports in `.pretender/history/events.jsonl`
 at the root of your repository. Each line is a JSON object (a `ViolationEvent`)

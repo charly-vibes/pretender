@@ -1,5 +1,9 @@
 # TypeScript
 
+Reference for which tree-sitter nodes pretender tracks for TypeScript files,
+how each contributes to `pretender check` metrics, and known measurement gaps.
+Consult this page when tuning thresholds or diagnosing unexpected scores.
+
 ## Overview
 
 Analyses `.ts`, `.tsx`, `.mts`, and `.cts` files using a tree-sitter grammar.

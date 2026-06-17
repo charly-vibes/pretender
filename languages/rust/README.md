@@ -1,5 +1,9 @@
 # Rust
 
+Reference for which tree-sitter nodes pretender tracks for Rust files, how
+each contributes to `pretender check` metrics, and known measurement gaps.
+Consult this page when tuning thresholds or diagnosing unexpected scores.
+
 ## Overview
 
 Analyses `.rs` files using a tree-sitter grammar. Tracks `fn` items (free
