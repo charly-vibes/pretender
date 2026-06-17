@@ -5,8 +5,8 @@ mod duplication;
 mod engine;
 mod explain;
 mod external_plugin;
-mod go;
 mod git;
+mod go;
 mod history;
 mod java;
 mod javascript;
@@ -335,7 +335,10 @@ impl Executable for CheckArgs {
             };
             // Short-circuit: skip the full directory walk when nothing is staged/changed.
             if allowed.is_empty() {
-                return Ok(decide_exit_code(&CheckReport { files: vec![] }, config.pretender.mode));
+                return Ok(decide_exit_code(
+                    &CheckReport { files: vec![] },
+                    config.pretender.mode,
+                ));
             }
             let all = collect_input_files(&self.paths, &config)?;
             apply_file_filter(all, Some(&allowed), &cwd)
@@ -372,7 +375,13 @@ impl Executable for CheckArgs {
             _ => unreachable!("junit/markdown handled above"),
         }
         persist_last_check_report(&report)?;
-        emit_history_events(&report, &config, self.format, writing_to_stdout, sink.as_mut());
+        emit_history_events(
+            &report,
+            &config,
+            self.format,
+            writing_to_stdout,
+            sink.as_mut(),
+        );
         sink.flush().context("failed to flush report output")?;
 
         Ok(decide_exit_code(&report, config.pretender.mode))
@@ -428,9 +437,8 @@ impl Executable for DuplicationArgs {
 
 impl Executable for MutationArgs {
     fn run(&self) -> Result<ExitCode> {
-        let lang = mutation::primary_lang(&self.paths).ok_or_else(|| {
-            anyhow!("no supported source files found in provided paths")
-        })?;
+        let lang = mutation::primary_lang(&self.paths)
+            .ok_or_else(|| anyhow!("no supported source files found in provided paths"))?;
 
         if self.dry_run {
             return run_mutation_dry_run(&lang, &self.paths);
@@ -476,7 +484,11 @@ fn run_mutation_dry_run(lang: &mutation::MutationLang, paths: &[PathBuf]) -> Res
 }
 
 fn print_mutation_report(report: &mutation::MutationReport) {
-    let pass = if report.score_pct >= 60.0 { "✓" } else { "✗" };
+    let pass = if report.score_pct >= 60.0 {
+        "✓"
+    } else {
+        "✗"
+    };
     println!(
         "Mutation score: {:.1}% ({}/{} killed) {}",
         report.score_pct, report.killed, report.total, pass
@@ -1663,7 +1675,11 @@ fn cognitive_max_events(
     for file in &report.files {
         // Normalize away leading "./" so fingerprints are stable regardless of
         // how the CLI path was spelled (e.g. "src/foo.rs" vs "./src/foo.rs").
-        let path = file.path.strip_prefix("./").unwrap_or(&file.path).to_string();
+        let path = file
+            .path
+            .strip_prefix("./")
+            .unwrap_or(&file.path)
+            .to_string();
         for unit in &file.units {
             for violation in &unit.violations {
                 if violation.metric != "cognitive" {

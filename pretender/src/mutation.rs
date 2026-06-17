@@ -281,7 +281,11 @@ fn parse_mutmut_surviving_tests(text: &str, survived_count: u32) -> Vec<Survivin
             }
             in_block = true;
             current_tests.clear();
-        } else if in_block && !trimmed.is_empty() && !trimmed.starts_with("To ") && !trimmed.starts_with("mutmut") {
+        } else if in_block
+            && !trimmed.is_empty()
+            && !trimmed.starts_with("To ")
+            && !trimmed.starts_with("mutmut")
+        {
             current_tests.push(trimmed.to_string());
         }
     }
@@ -438,8 +442,11 @@ fn collect_mutation_sites(
 
     match kind {
         // Binary arithmetic / comparison / boolean operators
-        "binary_operator" | "comparison_operator" | "boolean_operator"
-        | "binary_expression" | "augmented_assignment" => {
+        "binary_operator"
+        | "comparison_operator"
+        | "boolean_operator"
+        | "binary_expression"
+        | "augmented_assignment" => {
             // Find the operator child (usually a single-char or keyword node)
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
@@ -475,11 +482,31 @@ fn collect_mutation_sites(
 fn is_mutation_operator(kind: &str) -> bool {
     matches!(
         kind,
-        "+" | "-" | "*" | "/" | "%" | "**"
-        | "==" | "!=" | "<" | ">" | "<=" | ">="
-        | "and" | "or" | "&&" | "||" | "not"
-        | "<<" | ">>" | "&" | "|" | "^"
-        | "+=" | "-=" | "*=" | "/="
+        "+" | "-"
+            | "*"
+            | "/"
+            | "%"
+            | "**"
+            | "=="
+            | "!="
+            | "<"
+            | ">"
+            | "<="
+            | ">="
+            | "and"
+            | "or"
+            | "&&"
+            | "||"
+            | "not"
+            | "<<"
+            | ">>"
+            | "&"
+            | "|"
+            | "^"
+            | "+="
+            | "-="
+            | "*="
+            | "/="
     )
 }
 
@@ -494,8 +521,12 @@ pub fn list_mutants(lang: &MutationLang, paths: &[PathBuf]) -> Result<Vec<Planne
             for p in paths {
                 cmd.args(["--file", &p.to_string_lossy()]);
             }
-            let output = cmd.output().context("failed to launch `cargo mutants`; is cargo-mutants installed?")?;
-            Ok(parse_cargo_mutants_list(&String::from_utf8_lossy(&output.stdout)))
+            let output = cmd
+                .output()
+                .context("failed to launch `cargo mutants`; is cargo-mutants installed?")?;
+            Ok(parse_cargo_mutants_list(&String::from_utf8_lossy(
+                &output.stdout,
+            )))
         }
         _ => {
             // Use tree-sitter enumeration for all other languages
@@ -530,7 +561,8 @@ fn run_cargo_mutants(paths: &[PathBuf]) -> Result<MutationReport> {
     for p in paths {
         cmd.args(["--file", &p.to_string_lossy()]);
     }
-    cmd.output().context("failed to launch `cargo mutants`; is cargo-mutants installed?")?;
+    cmd.output()
+        .context("failed to launch `cargo mutants`; is cargo-mutants installed?")?;
 
     let outcomes = PathBuf::from("mutants.out").join("outcomes.json");
     let json = std::fs::read_to_string(&outcomes)
@@ -573,7 +605,9 @@ fn run_stryker(paths: &[PathBuf]) -> Result<MutationReport> {
     cmd.output()
         .context("failed to launch `npx stryker`; is @stryker-mutator/core installed?")?;
 
-    let report_path = PathBuf::from("reports").join("mutation").join("mutation.json");
+    let report_path = PathBuf::from("reports")
+        .join("mutation")
+        .join("mutation.json");
     let json = std::fs::read_to_string(&report_path)
         .context("reports/mutation/mutation.json not found after stryker run")?;
     parse_stryker_report(&json)
@@ -590,29 +624,50 @@ mod tests {
 
     #[test]
     fn detect_python() {
-        assert_eq!(detect_language(Path::new("foo.py")), Some(MutationLang::Python));
+        assert_eq!(
+            detect_language(Path::new("foo.py")),
+            Some(MutationLang::Python)
+        );
     }
 
     #[test]
     fn detect_rust() {
-        assert_eq!(detect_language(Path::new("src/lib.rs")), Some(MutationLang::Rust));
+        assert_eq!(
+            detect_language(Path::new("src/lib.rs")),
+            Some(MutationLang::Rust)
+        );
     }
 
     #[test]
     fn detect_javascript() {
-        assert_eq!(detect_language(Path::new("app.js")), Some(MutationLang::JavaScript));
-        assert_eq!(detect_language(Path::new("index.mjs")), Some(MutationLang::JavaScript));
+        assert_eq!(
+            detect_language(Path::new("app.js")),
+            Some(MutationLang::JavaScript)
+        );
+        assert_eq!(
+            detect_language(Path::new("index.mjs")),
+            Some(MutationLang::JavaScript)
+        );
     }
 
     #[test]
     fn detect_typescript() {
-        assert_eq!(detect_language(Path::new("foo.ts")), Some(MutationLang::TypeScript));
-        assert_eq!(detect_language(Path::new("bar.tsx")), Some(MutationLang::TypeScript));
+        assert_eq!(
+            detect_language(Path::new("foo.ts")),
+            Some(MutationLang::TypeScript)
+        );
+        assert_eq!(
+            detect_language(Path::new("bar.tsx")),
+            Some(MutationLang::TypeScript)
+        );
     }
 
     #[test]
     fn detect_java() {
-        assert_eq!(detect_language(Path::new("Foo.java")), Some(MutationLang::Java));
+        assert_eq!(
+            detect_language(Path::new("Foo.java")),
+            Some(MutationLang::Java)
+        );
     }
 
     #[test]
@@ -807,7 +862,10 @@ mod tests {
         assert_eq!(report.killed, 8);
         assert!((report.score_pct - 80.0).abs() < 0.01);
         assert_eq!(report.survivors.len(), 2);
-        assert!(report.survivors[0].missed_tests.iter().any(|t| t.contains("test_a")));
+        assert!(report.survivors[0]
+            .missed_tests
+            .iter()
+            .any(|t| t.contains("test_a")));
     }
 
     // ── stryker report parser ───────────────────────────────────────────────

@@ -161,7 +161,11 @@ mod tests {
             assert!(!doc.name.is_empty(), "name empty");
             assert!(!doc.measures.is_empty(), "{}: measures empty", doc.name);
             assert!(!doc.formula.is_empty(), "{}: formula empty", doc.name);
-            assert!(!doc.default_threshold.is_empty(), "{}: threshold empty", doc.name);
+            assert!(
+                !doc.default_threshold.is_empty(),
+                "{}: threshold empty",
+                doc.name
+            );
             assert!(!doc.citation.is_empty(), "{}: citation empty", doc.name);
             assert!(!doc.improve.is_empty(), "{}: improve empty", doc.name);
         }

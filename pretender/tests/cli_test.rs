@@ -503,11 +503,14 @@ fn test_check_sarif_output_structure() {
     }
 }
 
-
 #[test]
 fn test_mutation_dry_run_python() {
     let output = Command::new(pretender_bin())
-        .args(["mutation", "--dry-run", source_fixture("python_simple.py").to_str().unwrap()])
+        .args([
+            "mutation",
+            "--dry-run",
+            source_fixture("python_simple.py").to_str().unwrap(),
+        ])
         .output()
         .expect("failed to execute process");
 
@@ -556,11 +559,21 @@ fn test_explain_known_metric_prints_doc() {
         .output()
         .expect("failed to execute process");
 
-    assert_eq!(output.status.code(), Some(0), "explain cyclomatic should succeed");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "explain cyclomatic should succeed"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("cyclomatic"), "output should include metric name");
+    assert!(
+        stdout.contains("cyclomatic"),
+        "output should include metric name"
+    );
     assert!(stdout.contains("McCabe"), "output should cite McCabe");
-    assert!(stdout.contains("10"), "output should mention default threshold");
+    assert!(
+        stdout.contains("10"),
+        "output should mention default threshold"
+    );
 }
 
 #[test]
@@ -754,7 +767,10 @@ fn test_init_interactive_can_install_hook_and_ci() {
 
     let hook = std::fs::read_to_string(dir.join(".git/hooks/pre-commit")).expect("hook exists");
     assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
-    assert!(hook.contains("exec pretender check . --staged"), "hook: {hook}");
+    assert!(
+        hook.contains("exec pretender check . --staged"),
+        "hook: {hook}"
+    );
 
     let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
         .expect("workflow exists");
@@ -841,7 +857,10 @@ fn test_hooks_install_and_uninstall_manage_pretender_shim() {
     let hook_path = dir.join(".git/hooks/pre-commit");
     let hook = std::fs::read_to_string(&hook_path).expect("hook exists");
     assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
-    assert!(hook.contains("exec pretender check . --staged"), "hook: {hook}");
+    assert!(
+        hook.contains("exec pretender check . --staged"),
+        "hook: {hook}"
+    );
 
     let uninstall = hooks_in(&dir, "uninstall")
         .output()
@@ -969,7 +988,10 @@ fn test_hooks_install_is_idempotent() {
     );
 
     let hook = std::fs::read_to_string(dir.join(".git/hooks/pre-commit")).expect("hook exists");
-    assert!(hook.contains("exec pretender check . --staged"), "hook: {hook}");
+    assert!(
+        hook.contains("exec pretender check . --staged"),
+        "hook: {hook}"
+    );
 }
 
 #[test]

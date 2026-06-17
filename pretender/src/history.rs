@@ -76,9 +76,8 @@ impl EventStore {
     /// writer wins. Acceptable for V1 pre-commit / CI best-effort use.
     pub fn append_and_prune(&self, new_events: &[ViolationEvent]) -> Result<Vec<ViolationEvent>> {
         if let Some(parent) = self.events_path.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create history dir: {}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create history dir: {}", parent.display()))?;
         }
 
         let mut events = self.load_events()?;
@@ -113,9 +112,8 @@ impl EventStore {
         if !self.events_path.exists() {
             return Ok(Vec::new());
         }
-        let file = fs::File::open(&self.events_path).with_context(|| {
-            format!("failed to open events: {}", self.events_path.display())
-        })?;
+        let file = fs::File::open(&self.events_path)
+            .with_context(|| format!("failed to open events: {}", self.events_path.display()))?;
         let mut events = Vec::new();
         for line in BufReader::new(file).lines() {
             let line = line?;
@@ -137,9 +135,8 @@ impl EventStore {
         let tmp_path = PathBuf::from(tmp_name);
 
         let result = (|| -> Result<()> {
-            let file = fs::File::create(&tmp_path).with_context(|| {
-                format!("failed to create temp events: {}", tmp_path.display())
-            })?;
+            let file = fs::File::create(&tmp_path)
+                .with_context(|| format!("failed to create temp events: {}", tmp_path.display()))?;
             let mut writer = BufWriter::new(file);
             for event in events {
                 writeln!(writer, "{}", serde_json::to_string(event)?)?;
@@ -208,14 +205,16 @@ pub fn compute_summary(events: &[ViolationEvent]) -> HistorySummary {
         .filter(|(_, (count, files, _))| {
             *count >= PATTERN_MIN_COUNT && files.len() >= PATTERN_MIN_FILES
         })
-        .map(|((rule_key, role, area), (count, files, days))| PatternSummary {
-            rule_key,
-            role,
-            area,
-            count,
-            distinct_files: files.len(),
-            distinct_days: days.len(),
-        })
+        .map(
+            |((rule_key, role, area), (count, files, days))| PatternSummary {
+                rule_key,
+                role,
+                area,
+                count,
+                distinct_files: files.len(),
+                distinct_days: days.len(),
+            },
+        )
         .collect();
     patterns.sort_by(|a, b| b.count.cmp(&a.count));
     patterns.truncate(10);
@@ -365,9 +364,27 @@ mod tests {
     #[test]
     fn test_hotspot_meets_threshold() {
         let events = vec![
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", "2026-01-01T00:00:00Z"),
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", "2026-01-02T00:00:00Z"),
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", "2026-01-03T00:00:00Z"),
+            make_event(
+                "a::func::cog",
+                "a.rs",
+                "cognitive_max",
+                "app",
+                "2026-01-01T00:00:00Z",
+            ),
+            make_event(
+                "a::func::cog",
+                "a.rs",
+                "cognitive_max",
+                "app",
+                "2026-01-02T00:00:00Z",
+            ),
+            make_event(
+                "a::func::cog",
+                "a.rs",
+                "cognitive_max",
+                "app",
+                "2026-01-03T00:00:00Z",
+            ),
         ];
         let summary = compute_summary(&events);
         assert_eq!(summary.top_hotspots.len(), 1);
@@ -390,8 +407,20 @@ mod tests {
     #[test]
     fn test_hotspot_below_count_not_flagged() {
         let events = vec![
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", "2026-01-01T00:00:00Z"),
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", "2026-01-02T00:00:00Z"),
+            make_event(
+                "a::func::cog",
+                "a.rs",
+                "cognitive_max",
+                "app",
+                "2026-01-01T00:00:00Z",
+            ),
+            make_event(
+                "a::func::cog",
+                "a.rs",
+                "cognitive_max",
+                "app",
+                "2026-01-02T00:00:00Z",
+            ),
         ];
         let summary = compute_summary(&events);
         assert_eq!(summary.top_hotspots.len(), 0);
@@ -433,7 +462,13 @@ mod tests {
         fs::create_dir_all(&tmp).unwrap();
         let store = EventStore::new(&tmp);
 
-        let old = make_event("fp1", "a.rs", "cognitive_max", "app", "1970-01-01T00:00:01Z");
+        let old = make_event(
+            "fp1",
+            "a.rs",
+            "cognitive_max",
+            "app",
+            "1970-01-01T00:00:01Z",
+        );
         let recent_ts = unix_to_iso8601(now_unix_secs() - 3600);
         let recent = make_event("fp2", "b.rs", "cognitive_max", "app", &recent_ts);
 

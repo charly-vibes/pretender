@@ -185,8 +185,8 @@ mod tests {
 
     fn load_fixture(name: &str) -> (PathBuf, String) {
         let path = fixture_path(name);
-        let source = std::fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("fixture not found: {name}"));
+        let source =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("fixture not found: {name}"));
         (path, source)
     }
 
