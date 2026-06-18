@@ -4,6 +4,10 @@
 default:
     @just --list
 
+# Install pretender binary to ~/.cargo/bin
+install:
+    cargo install --path pretender --locked
+
 # Build (debug)
 build:
     cargo build
