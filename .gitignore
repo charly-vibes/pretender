@@ -9,3 +9,6 @@ pretender/.pretender/
 
 # mdBook build output
 /book
+
+# Vale downloaded styles (run `vale sync` to populate)
+.vale/styles/

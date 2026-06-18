@@ -36,9 +36,17 @@ fmt:
 fmt-check:
     cargo fmt -- --check
 
-# Generate docs
+# Generate Rust API docs
 doc:
     cargo doc --no-deps --open
+
+# Build user-facing docs (requires: cargo install mdbook)
+book:
+    mdbook build
+
+# Serve docs locally with live reload (requires: cargo install mdbook)
+book-serve:
+    mdbook serve --open
 
 # Clean build output
 clean:

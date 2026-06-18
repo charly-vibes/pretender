@@ -4,6 +4,7 @@
 - [Configuration Reference](configuration.md)
 - [Mutation Testing](mutation.md)
 - [Writing Plugins](plugins.md)
+- [Implementation Status](status.md)
 
 # Language Support
 
@@ -16,3 +17,8 @@
 - [Ruby](../languages/ruby/README.md)
 - [Rust](../languages/rust/README.md)
 - [TypeScript](../languages/typescript/README.md)
+
+# Design Specs
+
+- [CLI and Configuration](../openspec/specs/cli-and-config/spec.md)
+- [Universal Code Model](../openspec/specs/universal-code-model/spec.md)

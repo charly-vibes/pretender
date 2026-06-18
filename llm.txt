@@ -1,0 +1,58 @@
+# pretender
+
+> Language-agnostic code quality CLI for structural complexity checks,
+> mutation testing, and external metric plugins.
+
+pretender is a Rust CLI that runs `pretender check` on source files, computes
+cyclomatic complexity, cognitive complexity, ABC score, nesting depth,
+parameter count, and duplication percentage per function, then compares them
+against configurable thresholds. It supports Python, Rust, Go, JavaScript,
+TypeScript, Java, Ruby, C, and C++ via tree-sitter grammars.
+
+## Key commands
+
+- `pretender check <paths...>` — scan files against thresholds; exits non-zero on violation in gate mode
+- `pretender complexity <path>` — show cyclomatic complexity per function, worst first
+- `pretender mutation <paths...>` — wrap mutmut / cargo-mutants / Stryker and report mutation score
+- `pretender report` — render last check as human / markdown / HTML
+- `pretender duplication <paths...>` — detect structural clones via AST subtree hashing
+- `pretender hooks install` — install pre-commit shim
+- `pretender ci generate github` — emit `.github/workflows/pretender.yml`
+- `pretender explain <metric>` — print metric definition and citation
+
+## Configuration
+
+All configuration lives in `pretender.toml` at the repository root. Key sections:
+
+- `[pretender]` — mode (`guidance` | `tiered` | `gate`), languages, excludes
+- `[thresholds]` — per-metric limits for the `app` role
+- `[thresholds.test]` / `[thresholds.library]` — role-specific overrides
+- `[bands]` — green/yellow/red severity bands for tiered mode
+- `[roles.*]` — path glob → role assignment
+- `[plugins]` — built-in and external metric plugin control
+
+## Documentation
+
+- [Getting started](docs/getting-started.md)
+- [Configuration reference](docs/configuration.md)
+- [Mutation testing](docs/mutation.md)
+- [Writing plugins](docs/plugins.md)
+- [Implementation status](docs/status.md)
+- Language support: [Python](languages/python/README.md), [Rust](languages/rust/README.md), [Go](languages/go/README.md), [JavaScript](languages/javascript/README.md), [TypeScript](languages/typescript/README.md), [Java](languages/java/README.md), [Ruby](languages/ruby/README.md), [C](languages/c/README.md), [C++](languages/cpp/README.md)
+
+## Source layout
+
+```
+pretender/src/
+  main.rs          CLI entry-point and subcommand dispatch
+  config.rs        pretender.toml parsing
+  engine.rs        tree-sitter query runner
+  metrics.rs       metric formulas (cyclomatic, cognitive, ABC, …)
+  roles.rs         role detection (pragma → glob → heuristic → app)
+  model.rs         language-neutral Module / CodeUnit types
+  mutation.rs      mutation testing wrapper
+  duplication.rs   AST clone detection
+  explain.rs       metric catalog
+  external_plugin.rs  plugin manifest loader and subprocess runner
+  history.rs       violation event log and hotspot/pattern computation
+```
