@@ -11,5 +11,7 @@ pre-push:
   commands:
     fmt:
       run: just fmt-check
+    lint:
+      run: just lint
     test:
       run: just test
