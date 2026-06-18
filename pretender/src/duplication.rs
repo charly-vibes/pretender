@@ -166,7 +166,7 @@ pub fn detect_clones(
         })
         .collect();
 
-    groups.sort_by(|a, b| b.node_count.cmp(&a.node_count));
+    groups.sort_by_key(|b| std::cmp::Reverse(b.node_count));
     Ok(groups)
 }
 

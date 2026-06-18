@@ -183,7 +183,7 @@ pub fn compute_summary(events: &[ViolationEvent]) -> HistorySummary {
             distinct_days: days.len(),
         })
         .collect();
-    hotspots.sort_by(|a, b| b.count.cmp(&a.count));
+    hotspots.sort_by_key(|b| std::cmp::Reverse(b.count));
     hotspots.truncate(10);
 
     // Patterns: same (rule_key, role, area), 5+ occurrences across 3+ distinct files
@@ -216,7 +216,7 @@ pub fn compute_summary(events: &[ViolationEvent]) -> HistorySummary {
             },
         )
         .collect();
-    patterns.sort_by(|a, b| b.count.cmp(&a.count));
+    patterns.sort_by_key(|b| std::cmp::Reverse(b.count));
     patterns.truncate(10);
 
     HistorySummary {
