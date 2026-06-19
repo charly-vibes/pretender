@@ -1,0 +1,339 @@
+{
+  "files": [
+    {
+      "path": "pretender/src/config.rs",
+      "role": "app",
+      "diagnostics": [],
+      "file_violations": [
+        {
+          "metric": "file_lines",
+          "actual": 570.0,
+          "limit": 400.0
+        }
+      ],
+      "units": [
+        {
+          "name": "load_from_path",
+          "kind": "Function",
+          "start_line": 39,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 8,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 6.324555320336759
+          },
+          "violations": []
+        },
+        {
+          "name": "load_from_str",
+          "kind": "Function",
+          "start_line": 48,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 5,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 3.1622776601683795
+          },
+          "violations": []
+        },
+        {
+          "name": "validate",
+          "kind": "Function",
+          "start_line": 54,
+          "metrics": {
+            "cyclomatic": 2,
+            "cognitive": 1,
+            "assertions": 0,
+            "function_lines": 11,
+            "params": 0,
+            "nesting_max": 1,
+            "abc": 6.082762530298219
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 76,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 11,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "validate",
+          "kind": "Function",
+          "start_line": 108,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 17,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 6.0
+          },
+          "violations": []
+        },
+        {
+          "name": "validate_percent",
+          "kind": "Function",
+          "start_line": 127,
+          "metrics": {
+            "cyclomatic": 2,
+            "cognitive": 1,
+            "assertions": 0,
+            "function_lines": 10,
+            "params": 0,
+            "nesting_max": 1,
+            "abc": 3.1622776601683795
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 156,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 16,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 187,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 11,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 1.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 210,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 8,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 228,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 6,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "validate",
+          "kind": "Function",
+          "start_line": 244,
+          "metrics": {
+            "cyclomatic": 2,
+            "cognitive": 1,
+            "assertions": 0,
+            "function_lines": 10,
+            "params": 0,
+            "nesting_max": 1,
+            "abc": 3.1622776601683795
+          },
+          "violations": []
+        },
+        {
+          "name": "validate",
+          "kind": "Function",
+          "start_line": 264,
+          "metrics": {
+            "cyclomatic": 3,
+            "cognitive": 2,
+            "assertions": 0,
+            "function_lines": 9,
+            "params": 0,
+            "nesting_max": 1,
+            "abc": 3.605551275463989
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 276,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 14,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 2.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 300,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 6,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 1.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 324,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 16,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 350,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 6,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 1.0
+          },
+          "violations": []
+        },
+        {
+          "name": "default",
+          "kind": "Function",
+          "start_line": 379,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 23,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "parses_full_config_schema_and_ignores_unknown_keys",
+          "kind": "Function",
+          "start_line": 415,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 89,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 2.23606797749979
+          },
+          "violations": [
+            {
+              "metric": "function_lines",
+              "actual": 89.0,
+              "limit": 40.0
+            }
+          ]
+        },
+        {
+          "name": "default_config_matches_documented_conventions",
+          "kind": "Function",
+          "start_line": 506,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 37,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 1.4142135623730951
+          },
+          "violations": []
+        },
+        {
+          "name": "validation_rejects_inverted_bands_with_miette_diagnostic",
+          "kind": "Function",
+          "start_line": 545,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 12,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 2.8284271247461903
+          },
+          "violations": []
+        },
+        {
+          "name": "validation_rejects_impossible_percentages",
+          "kind": "Function",
+          "start_line": 559,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 11,
+            "params": 0,
+            "nesting_max": 0,
+            "abc": 2.23606797749979
+          },
+          "violations": []
+        }
+      ]
+    }
+  ]
+}
