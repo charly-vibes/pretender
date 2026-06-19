@@ -338,6 +338,11 @@ impl Executable for CheckArgs {
             };
             // Short-circuit: skip the full directory walk when nothing is staged/changed.
             if allowed.is_empty() {
+                if self.staged {
+                    println!("No staged files to check.");
+                } else {
+                    println!("No changed files to check.");
+                }
                 return Ok(decide_exit_code(
                     &CheckReport { files: vec![] },
                     config.pretender.mode,

@@ -1610,6 +1610,31 @@ fn test_external_plugin_ruff_json_findings() {
 }
 
 #[test]
+fn test_check_staged_no_files_prints_message() {
+    let dir = tempdir();
+    git_init(&dir);
+    // No staged files — just an empty git repo with a source file not added
+    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n").expect("write file");
+
+    let output = check_in(&dir, &dir)
+        .arg("--staged")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "should exit 0 with no staged files; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No staged files to check"),
+        "should print message when no staged files; stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_check_default_hides_clean_functions() {
     // python_simple has passing functions — default output should not list them
     let (_dir, staged) = stage_fixture("python_simple.py");
