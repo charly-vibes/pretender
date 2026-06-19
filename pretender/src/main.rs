@@ -192,8 +192,6 @@ enum ReportFormat {
     Human,
     Json,
     Sarif,
-    Junit,
-    Markdown,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -329,13 +327,6 @@ impl Executable for ComplexityArgs {
 
 impl Executable for CheckArgs {
     fn run(&self) -> Result<ExitCode> {
-        if matches!(self.format, ReportFormat::Junit | ReportFormat::Markdown) {
-            return not_implemented(
-                &format!("check --format {:?}", self.format).to_lowercase(),
-                "pretender-t2m",
-            );
-        }
-
         warn_if_no_config();
         let mut config = load_config()?;
         if let Some(mode) = self.mode {
@@ -396,7 +387,6 @@ impl Executable for CheckArgs {
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
-            _ => unreachable!("junit/markdown handled above"),
         }
         persist_last_check_report(&report)?;
         emit_history_events(

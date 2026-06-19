@@ -22,7 +22,7 @@ In the current MVP, hook installation writes a repository-wide fallback shim tha
 
 The system SHALL provide `pretender check [paths...]` as the implemented MVP scan command for explicit file and directory inputs. The command SHALL require at least one path, SHALL recursively scan directories, and SHALL support `--format human|json|sarif`, `--output <path>`, and `--mode guidance|tiered|gate`.
 
-For the current MVP, `--staged`, `--diff-only`, and `--diff-base <ref>` are reserved CLI flags and SHALL exit with code `2` and a `not yet implemented` message when used. Likewise, `--format junit|markdown` is reserved and SHALL exit with code `2` and a `not yet implemented` message.
+For the current MVP, `--staged`, `--diff-only`, and `--diff-base <ref>` are reserved CLI flags and SHALL exit with code `2` and a `not yet implemented` message when used.
 
 Mode behavior in the current MVP is:
 - `guidance`: always exits `0`
@@ -129,7 +129,7 @@ The system SHALL not require a config version key. Unknown config keys SHALL be 
 
 ### Requirement: Output Formats
 
-The current MVP SHALL emit `human`, `json`, and `sarif` output for `pretender check`, and `human`, `markdown`, and `html` output for `pretender report`. The configuration schema MAY parse the wider output-format enum values `junit` and `markdown` for `check`, but those `check` report formats are not yet implemented by the CLI.
+The current MVP SHALL emit `human`, `json`, and `sarif` output for `pretender check`, and `human`, `markdown`, and `html` output for `pretender report`. The `junit` and `markdown` formats for `check` are not implemented and are not accepted by the CLI (tracked under pretender-t2m).
 
 #### Scenario: JSON report is emitted
 - **WHEN** `pretender check path/to/file.py --format json` is run

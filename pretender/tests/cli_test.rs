@@ -1677,6 +1677,22 @@ fn test_external_plugin_ruff_json_findings() {
 }
 
 #[test]
+fn test_check_format_junit_is_rejected() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--format")
+        .arg("junit")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        !output.status.success(),
+        "junit format should be rejected (removed until implemented)"
+    );
+}
+
+#[test]
 fn test_check_staged_no_files_prints_message() {
     let dir = tempdir();
     git_init(&dir);
