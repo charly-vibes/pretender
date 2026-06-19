@@ -121,8 +121,10 @@ struct ReportArgs {
 #[derive(Parser)]
 struct DuplicationArgs {
     paths: Vec<PathBuf>,
+    /// Minimum AST node count to consider a clone (default: 10)
     #[arg(long)]
     min_nodes: Option<u32>,
+    /// Detect clones that span multiple files
     #[arg(long)]
     cross_file: bool,
 }
