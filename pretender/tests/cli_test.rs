@@ -366,11 +366,12 @@ fn test_check_human_output_surfaces_violations() {
     let output = check(&staged).output().expect("failed to execute process");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("✗"), "stdout: {stdout}");
+    // Default mode is tiered → ⚠ ADVISORY (not ✗ VIOLATION)
+    assert!(stdout.contains("⚠"), "stdout: {stdout}");
     assert!(stdout.contains("python_violator.py"), "stdout: {stdout}");
     assert!(
-        stdout.contains("VIOLATION"),
-        "human output should mark threshold violations; got: {stdout}"
+        stdout.contains("ADVISORY"),
+        "tiered mode should mark violations as advisory; got: {stdout}"
     );
     assert!(
         stdout.contains("params"),
@@ -443,9 +444,10 @@ fn test_check_guidance_mode_exits_zero_on_violation() {
         String::from_utf8_lossy(&output.stdout),
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // guidance mode uses ⚠ ADVISORY, not ✗ VIOLATION
     assert!(
-        stdout.contains("VIOLATION"),
-        "guidance mode still surfaces violations as annotations; got: {stdout}",
+        stdout.contains("ADVISORY"),
+        "guidance mode should surface violations as advisories; got: {stdout}",
     );
 }
 
@@ -1604,6 +1606,80 @@ fn test_external_plugin_ruff_json_findings() {
         external[0]["code"].as_str(),
         Some("E501"),
         "finding code should be 'E501'"
+    );
+}
+
+#[test]
+fn test_check_human_output_rounds_violation_values() {
+    // python_violator triggers integer violations; ensure they display without decimals
+    let (_dir, staged) = stage_fixture("python_violator.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Integer violations should display without trailing .00 (default app params_max = 4)
+    assert!(
+        stdout.contains("params 6 > 4"),
+        "integer violation should display without decimals; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_human_output_abc_rounds_to_two_decimal_places() {
+    // Write a fixture that reliably triggers a fractional ABC violation
+    // A function with assignments + branches + calls produces a non-integer ABC score
+    let (dir, path) = write_temp_file(
+        "abc_fixture.py",
+        r#"
+def complex_function(x, y, z):
+    a = x + 1
+    b = y * 2
+    c = z - 1
+    if a > 0:
+        result = some_call(a, b)
+        result2 = other_call(b, c)
+        result3 = third_call(a, c)
+        return result + result2 + result3
+    elif b > 0:
+        return another_call(a, b, c)
+    else:
+        return fallback(x, y, z)
+"#,
+    );
+    // Write a config that sets a very low abc threshold to force a violation
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[thresholds]\nabc_max = 1\n",
+    )
+    .expect("write config");
+
+    let output = check_in(&dir, &path)
+        .arg("--mode")
+        .arg("gate")
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Violation line must exist and must not contain a long float
+    let abc_violation = stdout
+        .lines()
+        .find(|l| l.contains("VIOLATION") && l.contains("abc"));
+    assert!(abc_violation.is_some(), "expected abc violation; stdout: {stdout}");
+    let line = abc_violation.unwrap();
+    let has_long_float = line.split_whitespace().any(|tok| {
+        if let Some(idx) = tok.find('.') {
+            tok[idx + 1..].len() > 2
+        } else {
+            false
+        }
+    });
+    assert!(
+        !has_long_float,
+        "abc violation line has excessive decimal places: {line}"
     );
 }
 

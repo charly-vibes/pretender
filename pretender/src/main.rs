@@ -1149,7 +1149,9 @@ fn write_human_report(
             writeln!(
                 sink,
                 "  {violation_color}{violation_label}{reset} {} {} > {}",
-                violation.metric, violation.actual, violation.limit,
+                violation.metric,
+                fmt_metric(violation.actual),
+                fmt_metric(violation.limit),
             )?;
         }
         for unit in &file.units {
@@ -1169,7 +1171,9 @@ fn write_human_report(
                 writeln!(
                     sink,
                     "    {violation_color}{violation_label}{reset} {} {} > {}",
-                    violation.metric, violation.actual, violation.limit,
+                    violation.metric,
+                    fmt_metric(violation.actual),
+                    fmt_metric(violation.limit),
                 )?;
             }
         }
@@ -1294,6 +1298,14 @@ fn severity_label(severity: Severity) -> &'static str {
         Severity::Green => "green",
         Severity::Yellow => "yellow",
         Severity::Red => "red",
+    }
+}
+
+fn fmt_metric(v: f64) -> String {
+    if v == v.floor() {
+        format!("{:.0}", v)
+    } else {
+        format!("{:.2}", v)
     }
 }
 
