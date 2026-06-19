@@ -51,7 +51,7 @@ enum Commands {
     Check(CheckArgs),
     /// Show cyclomatic complexity for each function, sorted worst-first
     Complexity(ComplexityArgs),
-    /// Pretty TUI or HTML report from the last `check` run
+    /// Human-readable, markdown, or HTML report from the last `check` run
     Report(ReportArgs),
     /// Structural clone detection via normalised AST subtree hashing
     Duplication(DuplicationArgs),
