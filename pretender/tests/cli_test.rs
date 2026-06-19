@@ -158,8 +158,8 @@ fn test_check_command_human_output() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("python_simple.py"), "stdout: {stdout}");
-    assert!(stdout.contains("complex_func"), "stdout: {stdout}");
-    assert!(stdout.contains("cyclomatic"), "stdout: {stdout}");
+    // Default mode hides clean functions; --verbose would show them
+    assert!(!stdout.contains("cyclomatic="), "default should not show per-function metrics for clean files; stdout: {stdout}");
 }
 
 #[test]
@@ -1606,6 +1606,43 @@ fn test_external_plugin_ruff_json_findings() {
         external[0]["code"].as_str(),
         Some("E501"),
         "finding code should be 'E501'"
+    );
+}
+
+#[test]
+fn test_check_default_hides_clean_functions() {
+    // python_simple has passing functions — default output should not list them
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // No per-function metric lines should appear for a clean file
+    assert!(
+        !stdout.lines().any(|l| l.starts_with("  ") && l.contains("cyclomatic=")),
+        "clean functions should be hidden by default; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_verbose_shows_all_functions() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .arg("--verbose")
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.lines().any(|l| l.contains("cyclomatic=")),
+        "--verbose should show per-function metrics; stdout: {stdout}"
     );
 }
 

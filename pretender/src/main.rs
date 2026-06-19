@@ -106,6 +106,9 @@ struct CheckArgs {
     /// Override config `pretender.mode`
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
+    /// Show all functions with metrics, not just violating ones
+    #[arg(long)]
+    verbose: bool,
 }
 
 #[derive(Parser)]
@@ -368,7 +371,7 @@ impl Executable for CheckArgs {
         match self.format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode)?;
+                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode, self.verbose)?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
@@ -523,7 +526,7 @@ impl Executable for ReportArgs {
         match self.format {
             LongReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode)?;
+                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode, true)?;
             }
             LongReportFormat::Markdown => {
                 write_markdown_report(sink.as_mut(), &report, &config.bands)?
@@ -1119,6 +1122,7 @@ fn write_human_report(
     color: bool,
     bands: &Bands,
     mode: Mode,
+    verbose: bool,
 ) -> Result<()> {
     let red = if color { "\u{1b}[31m" } else { "" };
     let yellow = if color { "\u{1b}[33m" } else { "" };
@@ -1157,26 +1161,29 @@ fn write_human_report(
             )?;
         }
         for unit in &file.units {
-            writeln!(
-                sink,
-                "  {}: cyclomatic={}, cognitive={}, assertions={}, function_lines={}, params={}, nesting_max={}, abc={:.2}",
-                unit.name,
-                unit.metrics.cyclomatic,
-                unit.metrics.cognitive,
-                unit.metrics.assertions,
-                unit.metrics.function_lines,
-                unit.metrics.params,
-                unit.metrics.nesting_max,
-                unit.metrics.abc,
-            )?;
-            for violation in &unit.violations {
+            let has_violations = !unit.violations.is_empty();
+            if verbose || has_violations {
                 writeln!(
                     sink,
-                    "    {violation_color}{violation_label}{reset} {} {} > {}",
-                    violation.metric,
-                    fmt_metric(violation.actual),
-                    fmt_metric(violation.limit),
+                    "  {}: cyclomatic={}, cognitive={}, assertions={}, function_lines={}, params={}, nesting_max={}, abc={:.2}",
+                    unit.name,
+                    unit.metrics.cyclomatic,
+                    unit.metrics.cognitive,
+                    unit.metrics.assertions,
+                    unit.metrics.function_lines,
+                    unit.metrics.params,
+                    unit.metrics.nesting_max,
+                    unit.metrics.abc,
                 )?;
+                for violation in &unit.violations {
+                    writeln!(
+                        sink,
+                        "    {violation_color}{violation_label}{reset} {} {} > {}",
+                        violation.metric,
+                        fmt_metric(violation.actual),
+                        fmt_metric(violation.limit),
+                    )?;
+                }
             }
         }
         for diagnostic in &file.diagnostics {
