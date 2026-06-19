@@ -82,7 +82,8 @@ struct InitArgs {
 
 #[derive(Parser)]
 struct ComplexityArgs {
-    path: PathBuf,
+    #[arg(required = true)]
+    paths: Vec<PathBuf>,
 }
 
 #[derive(Parser)]
@@ -281,31 +282,46 @@ impl Executable for InitArgs {
 
 impl Executable for ComplexityArgs {
     fn run(&self) -> Result<ExitCode> {
-        let source = std::fs::read_to_string(&self.path)
-            .with_context(|| format!("failed to read source file: {}", self.path.display()))?;
-        let parser = get_parser(&self.path)?;
-        let (module, diagnostics) = parser.parse(&self.path, &source)?;
+        let config = load_config().unwrap_or_default();
+        let threshold = config.thresholds.app.cyclomatic_max;
+        let multi = self.paths.len() > 1;
 
-        if !diagnostics.is_empty() {
-            for diag in &diagnostics {
-                eprintln!("{:?}: {}", diag.severity, diag.message);
-                if let Some(span) = &diag.span {
-                    eprintln!("  at lines {}-{}", span.start_line, span.end_line);
+        for path in &self.paths {
+            let source = std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read source file: {}", path.display()))?;
+            let parser = get_parser(path)?;
+            let (module, diagnostics) = parser.parse(path, &source)?;
+
+            if !diagnostics.is_empty() {
+                for diag in &diagnostics {
+                    eprintln!("{:?}: {}", diag.severity, diag.message);
+                    if let Some(span) = &diag.span {
+                        eprintln!("  at lines {}-{}", span.start_line, span.end_line);
+                    }
+                }
+                eprintln!();
+            }
+
+            if multi {
+                println!("{}:", path.display());
+            }
+
+            let metric = metrics::CyclomaticComplexity;
+            let mut results: Vec<(String, u32)> = module
+                .units
+                .iter()
+                .map(|u| (u.name.clone(), metric.calculate(u)))
+                .collect();
+
+            let indent = if multi { "  " } else { "" };
+            results.sort_by_key(|(_, score)| Reverse(*score));
+            for (name, score) in &results {
+                if *score > threshold {
+                    println!("{indent}{name}: {score} (threshold: {threshold}) ✗");
+                } else {
+                    println!("{indent}{name}: {score}");
                 }
             }
-            eprintln!();
-        }
-
-        let metric = metrics::CyclomaticComplexity;
-        let mut results: Vec<(String, u32)> = module
-            .units
-            .iter()
-            .map(|u| (u.name.clone(), metric.calculate(u)))
-            .collect();
-
-        results.sort_by_key(|(_, score)| Reverse(*score));
-        for (name, score) in &results {
-            println!("{name}: {score}");
         }
         Ok(ExitCode::SUCCESS)
     }

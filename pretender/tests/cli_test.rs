@@ -146,6 +146,73 @@ fn test_complexity_command() {
 }
 
 #[test]
+fn test_complexity_multi_path() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("python_simple.py"))
+        .arg(source_fixture("rust_simple.rs"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Multi-path mode shows per-file headers
+    assert!(
+        stdout.contains("python_simple.py:"),
+        "should show file header for python file; stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("rust_simple.rs:"),
+        "should show file header for rust file; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_complexity_shows_threshold_marker_on_violation() {
+    // Write a fixture with a function that exceeds cyclomatic_max=10
+    // 11 branches → cyclomatic=12
+    let (dir, path) = write_temp_file(
+        "high_complexity.py",
+        r#"
+def very_complex(x):
+    if x == 1: return 1
+    if x == 2: return 2
+    if x == 3: return 3
+    if x == 4: return 4
+    if x == 5: return 5
+    if x == 6: return 6
+    if x == 7: return 7
+    if x == 8: return 8
+    if x == 9: return 9
+    if x == 10: return 10
+    return 0
+"#,
+    );
+    // No pretender.toml → defaults (app cyclomatic_max=10)
+    let _ = dir;
+
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(&path)
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("✗"),
+        "should mark function exceeding threshold with ✗; stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("threshold: 10"),
+        "should show threshold value; stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_check_command_human_output() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
