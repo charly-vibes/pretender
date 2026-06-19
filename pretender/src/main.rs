@@ -369,7 +369,7 @@ impl Executable for CheckArgs {
         match self.format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color, &config.bands)?;
+                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode)?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
@@ -524,7 +524,7 @@ impl Executable for ReportArgs {
         match self.format {
             LongReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color, &config.bands)?;
+                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode)?;
             }
             LongReportFormat::Markdown => {
                 write_markdown_report(sink.as_mut(), &report, &config.bands)?
@@ -1119,18 +1119,26 @@ fn write_human_report(
     report: &CheckReport,
     color: bool,
     bands: &Bands,
+    mode: Mode,
 ) -> Result<()> {
     let red = if color { "\u{1b}[31m" } else { "" };
     let yellow = if color { "\u{1b}[33m" } else { "" };
     let green = if color { "\u{1b}[32m" } else { "" };
     let reset = if color { "\u{1b}[0m" } else { "" };
 
+    let blocking = matches!(mode, Mode::Gate);
+    let (violation_icon, violation_label, violation_color) = if blocking {
+        ("✗", "VIOLATION", red)
+    } else {
+        ("⚠", "ADVISORY", yellow)
+    };
+
     for file in &report.files {
         let summary = summarize_file(file, bands);
         let (icon, accent) = match summary.severity {
             Severity::Green => ("✓", green),
             Severity::Yellow => ("⚠", yellow),
-            Severity::Red => ("✗", red),
+            Severity::Red => (violation_icon, if blocking { red } else { yellow }),
         };
 
         writeln!(
@@ -1143,7 +1151,7 @@ fn write_human_report(
         for violation in &file.file_violations {
             writeln!(
                 sink,
-                "  {red}VIOLATION{reset} {} {} > {}",
+                "  {violation_color}{violation_label}{reset} {} {} > {}",
                 violation.metric, violation.actual, violation.limit,
             )?;
         }
@@ -1163,7 +1171,7 @@ fn write_human_report(
             for violation in &unit.violations {
                 writeln!(
                     sink,
-                    "    {red}VIOLATION{reset} {} {} > {}",
+                    "    {violation_color}{violation_label}{reset} {} {} > {}",
                     violation.metric, violation.actual, violation.limit,
                 )?;
             }

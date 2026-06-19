@@ -264,6 +264,49 @@ fn test_check_tiered_mode_exits_zero_on_violation() {
 }
 
 #[test]
+fn test_check_tiered_mode_shows_advisory_not_violation() {
+    let (_dir, staged) = stage_fixture("python_violator.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("tiered")
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("ADVISORY"),
+        "tiered mode should show ADVISORY; stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("VIOLATION"),
+        "tiered mode should not show VIOLATION; stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("✗"),
+        "tiered mode should not show ✗; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_gate_mode_shows_violation() {
+    let (_dir, staged) = stage_fixture("python_violator.py");
+
+    let output = check(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Only assert the label — color codes vary by terminal
+    assert!(
+        stdout.contains("VIOLATION"),
+        "gate mode should show VIOLATION; stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_check_output_flag_writes_to_file() {
     let (_dir, staged) = stage_fixture("python_simple.py");
     let out_path = staged.with_file_name("report.json");
