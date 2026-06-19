@@ -226,7 +226,10 @@ fn test_check_command_human_output() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("python_simple.py"), "stdout: {stdout}");
     // Default mode hides clean functions; --verbose would show them
-    assert!(!stdout.contains("cyclomatic="), "default should not show per-function metrics for clean files; stdout: {stdout}");
+    assert!(
+        !stdout.contains("cyclomatic="),
+        "default should not show per-function metrics for clean files; stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -862,10 +865,7 @@ fn test_check_parallel_results_are_deterministic() {
 fn test_init_defaults_flag_is_rejected() {
     let dir = tempdir();
 
-    let output = init_in(&dir)
-        .arg("--defaults")
-        .output()
-        .expect("run init");
+    let output = init_in(&dir).arg("--defaults").output().expect("run init");
 
     assert!(
         !output.status.success(),
@@ -1731,7 +1731,9 @@ fn test_check_default_hides_clean_functions() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // No per-function metric lines should appear for a clean file
     assert!(
-        !stdout.lines().any(|l| l.starts_with("  ") && l.contains("cyclomatic=")),
+        !stdout
+            .lines()
+            .any(|l| l.starts_with("  ") && l.contains("cyclomatic=")),
         "clean functions should be hidden by default; stdout: {stdout}"
     );
 }
@@ -1796,11 +1798,8 @@ def complex_function(x, y, z):
 "#,
     );
     // Write a config that sets a very low abc threshold to force a violation
-    std::fs::write(
-        dir.join("pretender.toml"),
-        "[thresholds]\nabc_max = 1\n",
-    )
-    .expect("write config");
+    std::fs::write(dir.join("pretender.toml"), "[thresholds]\nabc_max = 1\n")
+        .expect("write config");
 
     let output = check_in(&dir, &path)
         .arg("--mode")
@@ -1813,7 +1812,10 @@ def complex_function(x, y, z):
     let abc_violation = stdout
         .lines()
         .find(|l| l.contains("VIOLATION") && l.contains("abc"));
-    assert!(abc_violation.is_some(), "expected abc violation; stdout: {stdout}");
+    assert!(
+        abc_violation.is_some(),
+        "expected abc violation; stdout: {stdout}"
+    );
     let line = abc_violation.unwrap();
     let has_long_float = line.split_whitespace().any(|tok| {
         if let Some(idx) = tok.find('.') {
@@ -1835,9 +1837,7 @@ fn test_check_skips_binary_files() {
     let binary = dir.join("artifact.bin");
     std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe").expect("write binary file");
 
-    let output = check(&binary)
-        .output()
-        .expect("failed to execute process");
+    let output = check(&binary).output().expect("failed to execute process");
 
     assert_eq!(
         output.status.code(),

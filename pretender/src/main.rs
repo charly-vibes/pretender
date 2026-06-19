@@ -383,7 +383,14 @@ impl Executable for CheckArgs {
         match self.format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode, self.verbose)?;
+                write_human_report(
+                    sink.as_mut(),
+                    &report,
+                    color,
+                    &config.bands,
+                    config.pretender.mode,
+                    self.verbose,
+                )?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
@@ -537,7 +544,14 @@ impl Executable for ReportArgs {
         match self.format {
             LongReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
-                write_human_report(sink.as_mut(), &report, color, &config.bands, config.pretender.mode, true)?;
+                write_human_report(
+                    sink.as_mut(),
+                    &report,
+                    color,
+                    &config.bands,
+                    config.pretender.mode,
+                    true,
+                )?;
             }
             LongReportFormat::Markdown => {
                 write_markdown_report(sink.as_mut(), &report, &config.bands)?
@@ -928,9 +942,7 @@ fn load_config() -> Result<Config> {
 
 fn warn_if_no_config() {
     if !Path::new("pretender.toml").exists() {
-        eprintln!(
-            "no pretender.toml found, using defaults — run `pretender init` to configure"
-        );
+        eprintln!("no pretender.toml found, using defaults — run `pretender init` to configure");
     }
 }
 
