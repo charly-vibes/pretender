@@ -196,6 +196,45 @@ fn test_check_command_json_output() {
 }
 
 #[test]
+fn test_check_warns_when_no_config() {
+    let dir = tempdir();
+    let source = dir.join("hello.py");
+    std::fs::write(&source, "def hello():\n    pass\n").expect("write source");
+
+    let output = check_in(&dir, &source)
+        .output()
+        .expect("failed to execute process");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no pretender.toml found"),
+        "expected warning about missing config; stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("pretender init"),
+        "expected suggestion to run pretender init; stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_check_no_warning_when_config_present() {
+    let dir = tempdir();
+    let source = dir.join("hello.py");
+    std::fs::write(&source, "def hello():\n    pass\n").expect("write source");
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+
+    let output = check_in(&dir, &source)
+        .output()
+        .expect("failed to execute process");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("no pretender.toml found"),
+        "unexpected config warning when toml is present; stderr: {stderr}"
+    );
+}
+
+#[test]
 fn test_check_exits_zero_when_clean() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 

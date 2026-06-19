@@ -318,6 +318,7 @@ impl Executable for CheckArgs {
             );
         }
 
+        warn_if_no_config();
         let mut config = load_config()?;
         if let Some(mode) = self.mode {
             config.pretender.mode = mode.into();
@@ -390,6 +391,7 @@ impl Executable for CheckArgs {
 
 impl Executable for DuplicationArgs {
     fn run(&self) -> Result<ExitCode> {
+        warn_if_no_config();
         let config = load_config()?;
         let file_paths = collect_input_files(&self.paths, &config)?;
         let min_nodes = self.min_nodes.unwrap_or(10) as usize;
@@ -908,6 +910,14 @@ fn load_config() -> Result<Config> {
         Config::load_from_path(path).map_err(Into::into)
     } else {
         Ok(Config::default())
+    }
+}
+
+fn warn_if_no_config() {
+    if !Path::new("pretender.toml").exists() {
+        eprintln!(
+            "no pretender.toml found, using defaults — run `pretender init` to configure"
+        );
     }
 }
 
