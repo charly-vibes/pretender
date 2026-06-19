@@ -10,7 +10,7 @@ but have noted gaps.
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| `pretender init` | ✅ Implemented | Interactive and `--defaults` modes |
+| `pretender init` | ✅ Implemented | Interactive and `--non-interactive` modes |
 | `pretender check` | ✅ Implemented | human, json, sarif output |
 | `pretender complexity` | ✅ Implemented | Single-file, worst-first sort |
 | `pretender report` | ✅ Implemented | human, markdown, html |

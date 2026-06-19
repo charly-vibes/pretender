@@ -75,9 +75,6 @@ struct InitArgs {
     /// Skip prompts, use best-guess defaults
     #[arg(long)]
     non_interactive: bool,
-    /// Skip prompts, use best-guess defaults
-    #[arg(long)]
-    defaults: bool,
     /// Override default mode
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
@@ -252,7 +249,7 @@ fn not_implemented(name: &str, tracker: &str) -> Result<ExitCode> {
 
 impl Executable for InitArgs {
     fn run(&self) -> Result<ExitCode> {
-        let options = if self.defaults || self.non_interactive {
+        let options = if self.non_interactive {
             InitOptions {
                 mode: self.mode.unwrap_or(ModeArg::Tiered),
                 languages: vec!["auto".to_string()],

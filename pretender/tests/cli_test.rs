@@ -790,11 +790,26 @@ fn test_check_parallel_results_are_deterministic() {
 }
 
 #[test]
-fn test_init_defaults_writes_config_with_mode_override() {
+fn test_init_defaults_flag_is_rejected() {
     let dir = tempdir();
 
     let output = init_in(&dir)
         .arg("--defaults")
+        .output()
+        .expect("run init");
+
+    assert!(
+        !output.status.success(),
+        "expected failure for removed --defaults flag"
+    );
+}
+
+#[test]
+fn test_init_non_interactive_writes_config_with_mode_override() {
+    let dir = tempdir();
+
+    let output = init_in(&dir)
+        .arg("--non-interactive")
         .arg("--mode")
         .arg("gate")
         .output()

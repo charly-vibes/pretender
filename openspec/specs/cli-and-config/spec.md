@@ -6,12 +6,12 @@ Defines Pretender's command-line interface, configuration file schema, output fo
 ## Requirements
 ### Requirement: Init Command
 
-The system SHALL provide `pretender init` to create `pretender.toml`, optionally install a pre-commit hook, and optionally generate GitHub Actions configuration. The command SHALL support `--non-interactive`, `--defaults`, and `--mode <mode>`.
+The system SHALL provide `pretender init` to create `pretender.toml`, optionally install a pre-commit hook, and optionally generate GitHub Actions configuration. The command SHALL support `--non-interactive` and `--mode <mode>`.
 
 In the current MVP, hook installation writes a repository-wide fallback shim that runs `pretender check .` and documents that `--staged --diff-only` will replace it when diff filtering is implemented.
 
-#### Scenario: Defaults create config
-- **WHEN** `pretender init --defaults` is run in a repository without `pretender.toml`
+#### Scenario: Non-interactive creates config
+- **WHEN** `pretender init --non-interactive` is run in a repository without `pretender.toml`
 - **THEN** the system writes a default `pretender.toml` and exits with code 0
 
 #### Scenario: Interactive init can install hook and workflow
