@@ -861,8 +861,14 @@ fn analyze_path(
     detector: &RoleDetector,
     config: &Config,
 ) -> Result<Option<FileReport>> {
-    let source = fs::read_to_string(path)
-        .with_context(|| format!("failed to read source file: {}", path.display()))?;
+    let source = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Ok(None),
+        Err(e) => {
+            return Err(e)
+                .with_context(|| format!("failed to read source file: {}", path.display()))
+        }
+    };
 
     let parser = match get_parser(path) {
         Ok(parser) => parser,

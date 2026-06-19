@@ -1509,3 +1509,41 @@ fn test_external_plugin_ruff_json_findings() {
         "finding code should be 'E501'"
     );
 }
+
+#[test]
+fn test_check_skips_binary_files() {
+    let dir = tempdir();
+    // Write a binary file (null bytes are not valid UTF-8)
+    let binary = dir.join("artifact.bin");
+    std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe").expect("write binary file");
+
+    let output = check(&binary)
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "check should exit 0 when given a binary file; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_check_skips_binary_files_in_directory() {
+    let dir = tempdir();
+    // Write a source file alongside a binary file
+    let source = dir.join("hello.py");
+    std::fs::write(&source, "def hello():\n    pass\n").expect("write source");
+    let binary = dir.join("artifact.bin");
+    std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe").expect("write binary file");
+
+    let output = check(&dir).output().expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "check should exit 0 when directory contains binary files; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
