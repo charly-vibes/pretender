@@ -389,11 +389,8 @@ impl Executable for CheckArgs {
         // pretender can't parse them, preventing false confidence from an empty green check.
         let explicit_paths = !self.staged && !self.diff_only && self.diff_base.is_none();
         if explicit_paths && !files.iter().any(|f| get_parser(f).is_ok()) {
-            let unsupported: Vec<String> = self
-                .paths
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect();
+            let unsupported: Vec<String> =
+                self.paths.iter().map(|p| p.display().to_string()).collect();
             eprintln!(
                 "warning: no files matched a supported grammar in: {}",
                 unsupported.join(", ")

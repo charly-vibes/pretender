@@ -1951,7 +1951,10 @@ fn test_doctor_all_pass_with_valid_config_and_hook() {
         String::from_utf8_lossy(&output.stdout)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("6/6 checks passed"), "expected summary; got: {stdout}");
+    assert!(
+        stdout.contains("6/6 checks passed"),
+        "expected summary; got: {stdout}"
+    );
 }
 
 #[test]
@@ -2034,8 +2037,11 @@ fn test_doctor_unmanaged_hook_fails_installed_skips_executable() {
 #[test]
 fn test_check_warns_on_unsupported_language_paths() {
     let dir = tempdir();
-    std::fs::write(dir.join("main.clj"), "(ns my-app)\n(defn hello [] (println \"hi\"))\n")
-        .expect("write clojure file");
+    std::fs::write(
+        dir.join("main.clj"),
+        "(ns my-app)\n(defn hello [] (println \"hi\"))\n",
+    )
+    .expect("write clojure file");
 
     let output = Command::new(pretender_bin())
         .arg("check")
