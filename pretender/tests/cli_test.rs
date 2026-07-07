@@ -2030,3 +2030,48 @@ fn test_doctor_unmanaged_hook_fails_installed_skips_executable() {
         "Hook executable should be skipped; got: {stdout}"
     );
 }
+
+#[test]
+fn test_check_warns_on_unsupported_language_paths() {
+    let dir = tempdir();
+    std::fs::write(dir.join("main.clj"), "(ns my-app)\n(defn hello [] (println \"hi\"))\n")
+        .expect("write clojure file");
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    // Should still exit 0 (it's a warning, not a hard failure)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no files matched a supported grammar"),
+        "expected warning about no supported grammar; stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("warning:"),
+        "warning should appear on stderr; stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_check_no_warning_when_supported_language_found() {
+    let dir = tempdir();
+    std::fs::write(dir.join("main.clj"), "(ns my-app)\n").expect("write clojure file");
+    std::fs::write(dir.join("main.py"), "def hello(): pass\n").expect("write python file");
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("no files matched a supported grammar"),
+        "should not warn when supported files are present; stderr: {stderr}"
+    );
+}

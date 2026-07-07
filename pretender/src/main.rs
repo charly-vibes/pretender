@@ -383,6 +383,22 @@ impl Executable for CheckArgs {
             collect_input_files(&self.paths, &config)?
         };
 
+        // Warn when explicit paths produce no files matching any supported grammar.
+        // This catches misconfigurations where new language backends are added but
+        // pretender can't parse them, preventing false confidence from an empty green check.
+        let explicit_paths = !self.staged && !self.diff_only && self.diff_base.is_none();
+        if explicit_paths && !files.iter().any(|f| get_parser(f).is_ok()) {
+            let unsupported: Vec<String> = self
+                .paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect();
+            eprintln!(
+                "warning: no files matched a supported grammar in: {}",
+                unsupported.join(", ")
+            );
+        }
+
         let mut reports: Vec<FileReport> = files
             .par_iter()
             .filter_map(|path| analyze_path(path, &detector, &config).transpose())
