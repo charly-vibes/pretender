@@ -16,6 +16,7 @@ mod model;
 mod mutation;
 mod plugin;
 mod python;
+mod r;
 mod roles;
 mod ruby;
 mod rust;
@@ -1664,6 +1665,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         "java" => Ok(Box::new(java::JavaParser)),
         "js" | "jsx" | "mjs" | "cjs" => Ok(Box::new(javascript::JavaScriptParser)),
         "py" => Ok(Box::new(python::PythonParser)),
+        "r" | "R" => Ok(Box::new(r::RParser)),
         "rb" => Ok(Box::new(ruby::RubyParser)),
         "rs" => Ok(Box::new(rust::RustParser)),
         "ts" | "mts" => Ok(Box::new(typescript::TypeScriptParser)),

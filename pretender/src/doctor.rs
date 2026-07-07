@@ -23,15 +23,27 @@ pub struct CheckResult {
 }
 
 fn pass(name: &'static str, message: impl Into<String>) -> CheckResult {
-    CheckResult { name, status: CheckStatus::Pass, message: message.into() }
+    CheckResult {
+        name,
+        status: CheckStatus::Pass,
+        message: message.into(),
+    }
 }
 
 fn fail(name: &'static str, message: impl Into<String>) -> CheckResult {
-    CheckResult { name, status: CheckStatus::Fail, message: message.into() }
+    CheckResult {
+        name,
+        status: CheckStatus::Fail,
+        message: message.into(),
+    }
 }
 
 fn skip(name: &'static str, message: impl Into<String>) -> CheckResult {
-    CheckResult { name, status: CheckStatus::Skip, message: message.into() }
+    CheckResult {
+        name,
+        status: CheckStatus::Skip,
+        message: message.into(),
+    }
 }
 
 pub fn run_doctor(format: DoctorFormat) -> Result<ExitCode> {
@@ -41,7 +53,11 @@ pub fn run_doctor(format: DoctorFormat) -> Result<ExitCode> {
         DoctorFormat::Json => print_json(&results)?,
     }
     let any_failed = results.iter().any(|r| r.status == CheckStatus::Fail);
-    Ok(if any_failed { ExitCode::FAILURE } else { ExitCode::SUCCESS })
+    Ok(if any_failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 fn run_checks() -> Vec<CheckResult> {
@@ -78,7 +94,14 @@ fn run_checks() -> Vec<CheckResult> {
         skip("Plugin manifests", "skipped (config not present)")
     };
 
-    vec![git, config_present, config_valid, hook_installed, hook_executable, plugin_manifests]
+    vec![
+        git,
+        config_present,
+        config_valid,
+        hook_installed,
+        hook_executable,
+        plugin_manifests,
+    ]
 }
 
 fn check_git_context() -> CheckResult {
@@ -88,7 +111,10 @@ fn check_git_context() -> CheckResult {
         .map(|o| o.status.success())
         .unwrap_or(false);
     if ok {
-        pass("Git context", "working directory is inside a git repository")
+        pass(
+            "Git context",
+            "working directory is inside a git repository",
+        )
     } else {
         fail("Git context", "not inside a git repository")
     }
@@ -98,7 +124,10 @@ fn check_config_present() -> CheckResult {
     if std::path::Path::new("pretender.toml").exists() {
         pass("Config present", "pretender.toml found")
     } else {
-        fail("Config present", "pretender.toml not found in current directory")
+        fail(
+            "Config present",
+            "pretender.toml not found in current directory",
+        )
     }
 }
 
@@ -112,9 +141,10 @@ fn check_config_valid() -> CheckResult {
 fn check_hook_installed() -> CheckResult {
     let hook_path = std::path::Path::new(".git/hooks/pre-commit");
     match std::fs::read_to_string(hook_path) {
-        Ok(content) if content.contains(PRE_COMMIT_HOOK_MARKER) => {
-            pass("Hook installed", "Pretender-managed pre-commit hook is installed")
-        }
+        Ok(content) if content.contains(PRE_COMMIT_HOOK_MARKER) => pass(
+            "Hook installed",
+            "Pretender-managed pre-commit hook is installed",
+        ),
         Ok(_) => fail(
             "Hook installed",
             "pre-commit hook exists but is not managed by Pretender",
@@ -134,14 +164,20 @@ fn check_hook_executable() -> CheckResult {
             pass("Hook executable", "hook file has executable permission")
         }
         Ok(_) => fail("Hook executable", "hook file is not executable"),
-        Err(e) => fail("Hook executable", format!("could not read hook metadata: {e}")),
+        Err(e) => fail(
+            "Hook executable",
+            format!("could not read hook metadata: {e}"),
+        ),
     }
 }
 
 fn check_plugin_manifests() -> CheckResult {
     let dir = external_plugin::default_metrics_dir();
     let Ok(entries) = std::fs::read_dir(&dir) else {
-        return pass("Plugin manifests", "no external metrics directory configured");
+        return pass(
+            "Plugin manifests",
+            "no external metrics directory configured",
+        );
     };
     let mut invalid: Vec<String> = Vec::new();
     for entry in entries.flatten() {
@@ -180,7 +216,10 @@ fn print_human(results: &[CheckResult]) {
         };
         println!("{prefix} {} — {}", r.name, r.message);
     }
-    let passed = results.iter().filter(|r| r.status == CheckStatus::Pass).count();
+    let passed = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Pass)
+        .count();
     println!("\n{passed}/6 checks passed");
 }
 

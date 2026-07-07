@@ -76,6 +76,7 @@ pub enum Language {
     C,
     #[serde(rename = "C++")]
     Cpp,
+    R,
     #[serde(rename = "C#")]
     CSharp,
 }

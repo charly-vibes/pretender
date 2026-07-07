@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 pub fn ts_language_for_path(path: &Path) -> Option<tree_sitter::Language> {
     match path.extension()?.to_str()? {
+        "r" | "R" => Some(tree_sitter_r::LANGUAGE.into()),
         "py" => Some(tree_sitter_python::LANGUAGE.into()),
         "js" | "jsx" | "mjs" | "cjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
         "ts" | "mts" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),

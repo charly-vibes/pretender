@@ -2075,3 +2075,31 @@ fn test_check_no_warning_when_supported_language_found() {
         "should not warn when supported files are present; stderr: {stderr}"
     );
 }
+
+#[test]
+fn test_r_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("r_sample.R"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with_branch: 2"),
+        "expected with_branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex_func: 5"),
+        "expected complex_func: 5 in stdout: {stdout}"
+    );
+}

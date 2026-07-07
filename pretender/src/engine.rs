@@ -351,6 +351,10 @@ fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Paramete
                 .child_by_field_name("name")
                 .and_then(|n| n.utf8_text(source).ok())
                 .map(str::to_string),
+            "parameter" => child
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(str::to_string),
             "list_splat_pattern" | "dictionary_splat_pattern" => {
                 let prefix = if child.kind() == "list_splat_pattern" {
                     "*"
