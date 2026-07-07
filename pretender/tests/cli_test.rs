@@ -1865,3 +1865,168 @@ fn test_check_skips_binary_files_in_directory() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+// No clap version set yet; move to a version-based test once #[command(version)] is added
+#[test]
+fn test_version_flag_works() {
+    let output = Command::new(pretender_bin())
+        .arg("--version")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "--version should exit 0; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("pretender"),
+        "--version should print 'pretender'; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("0.1."),
+        "--version should include version number; got: {stdout}"
+    );
+}
+
+#[test]
+fn test_version_short_flag_works() {
+    let output = Command::new(pretender_bin())
+        .arg("-V")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "-V should exit 0; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("pretender"),
+        "-V should print 'pretender'; got: {stdout}"
+    );
+}
+
+fn doctor_in(dir: &Path, extra_args: &[&str]) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("doctor")
+        .args(extra_args)
+        .current_dir(dir)
+        .env("NO_COLOR", "1");
+    cmd
+}
+
+fn write_pretender_hook(dir: &Path) {
+    let hooks_dir = dir.join(".git/hooks");
+    std::fs::create_dir_all(&hooks_dir).expect("create hooks dir");
+    let hook = hooks_dir.join("pre-commit");
+    std::fs::write(
+        &hook,
+        "#!/usr/bin/env sh\n# Installed by Pretender.\nexec pretender check . --staged\n",
+    )
+    .expect("write hook");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod hook");
+    }
+}
+
+#[test]
+fn test_doctor_all_pass_with_valid_config_and_hook() {
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "").expect("write config");
+    write_pretender_hook(&dir);
+
+    let output = doctor_in(&dir, &[]).output().expect("run doctor");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "doctor should exit 0; stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("6/6 checks passed"), "expected summary; got: {stdout}");
+}
+
+#[test]
+fn test_doctor_missing_config_exits_1_with_correct_skips() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let output = doctor_in(&dir, &[]).output().expect("run doctor");
+
+    assert_eq!(output.status.code(), Some(1), "should exit 1");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("✗ Config present"),
+        "Config present should fail; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("⚠ Config valid"),
+        "Config valid should be skipped; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("⚠ Plugin manifests"),
+        "Plugin manifests should be skipped; got: {stdout}"
+    );
+}
+
+#[test]
+fn test_doctor_json_missing_config_exits_1_with_fail_status() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let output = doctor_in(&dir, &["--format", "json"])
+        .output()
+        .expect("run doctor");
+
+    assert_eq!(output.status.code(), Some(1), "should exit 1");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
+    let checks = parsed.as_array().expect("JSON root should be array");
+    let config_present = checks
+        .iter()
+        .find(|c| c["name"] == "Config present")
+        .expect("Config present check missing");
+    assert_eq!(
+        config_present["status"], "fail",
+        "Config present should have status=fail"
+    );
+}
+
+#[test]
+fn test_doctor_unmanaged_hook_fails_installed_skips_executable() {
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "").expect("write config");
+    let hooks_dir = dir.join(".git/hooks");
+    std::fs::create_dir_all(&hooks_dir).expect("create hooks dir");
+    let hook = hooks_dir.join("pre-commit");
+    std::fs::write(&hook, "#!/usr/bin/env sh\necho 'custom hook'\n").expect("write hook");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod hook");
+    }
+
+    let output = doctor_in(&dir, &[]).output().expect("run doctor");
+
+    assert_eq!(output.status.code(), Some(1), "should exit 1");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("✗ Hook installed"),
+        "Hook installed should fail; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("⚠ Hook executable"),
+        "Hook executable should be skipped; got: {stdout}"
+    );
+}

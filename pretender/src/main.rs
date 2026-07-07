@@ -1,6 +1,7 @@
 mod c;
 mod config;
 mod cpp;
+mod doctor;
 mod duplication;
 mod engine;
 mod explain;
@@ -37,7 +38,7 @@ use std::process::ExitCode;
 const NOT_IMPLEMENTED_EXIT: u8 = 2;
 
 #[derive(Parser)]
-#[command(name = "pretender")]
+#[command(name = "pretender", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -68,6 +69,8 @@ enum Commands {
     Plugins(PluginsCommand),
     /// Print metric definition and threshold citation
     Explain(ExplainArgs),
+    /// Diagnose configuration, hooks, and plugin health
+    Doctor(DoctorArgs),
 }
 
 #[derive(Parser)]
@@ -187,6 +190,18 @@ struct ExplainArgs {
     metric: String,
 }
 
+#[derive(Parser)]
+struct DoctorArgs {
+    #[arg(long, value_enum, default_value_t = DoctorFormat::Human)]
+    format: DoctorFormat,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum DoctorFormat {
+    Human,
+    Json,
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ReportFormat {
     Human,
@@ -235,6 +250,7 @@ impl Executable for Commands {
             Commands::Ci(args) => args.run(),
             Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
             Commands::Explain(args) => args.run(),
+            Commands::Doctor(args) => args.run(),
         }
     }
 }
@@ -243,6 +259,12 @@ impl Executable for ExplainArgs {
     fn run(&self) -> Result<ExitCode> {
         explain::run(&self.metric)?;
         Ok(ExitCode::SUCCESS)
+    }
+}
+
+impl Executable for DoctorArgs {
+    fn run(&self) -> Result<ExitCode> {
+        doctor::run_doctor(self.format)
     }
 }
 
