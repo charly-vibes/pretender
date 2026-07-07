@@ -72,6 +72,7 @@ pub enum Language {
     Rust,
     Go,
     Java,
+    Julia,
     Ruby,
     C,
     #[serde(rename = "C++")]

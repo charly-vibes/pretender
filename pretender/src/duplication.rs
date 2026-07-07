@@ -12,6 +12,7 @@ pub fn ts_language_for_path(path: &Path) -> Option<tree_sitter::Language> {
         "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
         "java" => Some(tree_sitter_java::LANGUAGE.into()),
+        "jl" => Some(tree_sitter_julia::LANGUAGE.into()),
         "rb" => Some(tree_sitter_ruby::LANGUAGE.into()),
         "c" | "h" => Some(tree_sitter_c::LANGUAGE.into()),
         "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some(tree_sitter_cpp::LANGUAGE.into()),

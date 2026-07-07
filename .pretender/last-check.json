@@ -1,7 +1,7 @@
 {
   "files": [
     {
-      "path": "tests/fixtures/r_sample.R",
+      "path": "tests/fixtures/julia_sample.jl",
       "role": "test",
       "diagnostics": [],
       "file_violations": [],
@@ -17,7 +17,7 @@
             "function_lines": 3,
             "params": 1,
             "nesting_max": 0,
-            "abc": 0.0
+            "abc": 1.0
           },
           "violations": [
             {
@@ -38,7 +38,7 @@
             "function_lines": 7,
             "params": 1,
             "nesting_max": 0,
-            "abc": 1.0
+            "abc": 1.4142135623730951
           },
           "violations": [
             {
@@ -59,7 +59,7 @@
             "function_lines": 14,
             "params": 3,
             "nesting_max": 0,
-            "abc": 5.0
+            "abc": 5.0990195135927845
           },
           "violations": [
             {

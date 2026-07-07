@@ -11,6 +11,7 @@ mod go;
 mod history;
 mod java;
 mod javascript;
+mod julia;
 mod metrics;
 mod model;
 mod mutation;
@@ -1660,6 +1661,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Ok(Box::new(cpp::CppParser)),
         "go" => Ok(Box::new(go::GoParser)),
         "java" => Ok(Box::new(java::JavaParser)),
+        "jl" => Ok(Box::new(julia::JuliaParser)),
         "js" | "jsx" | "mjs" | "cjs" => Ok(Box::new(javascript::JavaScriptParser)),
         "py" => Ok(Box::new(python::PythonParser)),
         "r" | "R" => Ok(Box::new(r::RParser)),

@@ -1,12 +1,12 @@
 {
   "top_hotspots": [
     {
-      "fingerprint": "pretender/src/main.rs::write_human_report::cognitive_max",
+      "fingerprint": "pretender/src/main.rs::write_html_report::cognitive_max",
       "count": 7,
       "distinct_days": 2
     },
     {
-      "fingerprint": "pretender/src/main.rs::write_html_report::cognitive_max",
+      "fingerprint": "pretender/src/main.rs::write_human_report::cognitive_max",
       "count": 7,
       "distinct_days": 2
     }
