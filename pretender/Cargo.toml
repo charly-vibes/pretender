@@ -17,9 +17,10 @@ rayon = "1"
 serde = { version = "1", features = ["derive"] }
 serde-sarif = "0.8.0"
 serde_json = "1"
+streaming-iterator = "0.1"
 thiserror = "1"
 toml = "0.8"
-tree-sitter = "0.23"
+tree-sitter = "0.25"
 tree-sitter-c = "0.23"
 tree-sitter-cpp = "0.23"
 tree-sitter-go = "0.23"
@@ -31,6 +32,6 @@ tree-sitter-rust = "0.23"
 tree-sitter-typescript = "0.23"
 tree-sitter-r = "1.3.0"
 tree-sitter-julia = "0.23.1"
-# Pinned to =0.23.0 — v0.23.5+ requires tree-sitter 0.24+ (ABI 15 vs current 14)
-# See languages/csharp/README.md for details
-tree-sitter-c-sharp = "=0.23.0"
+# Now compatible with tree-sitter 0.25+
+tree-sitter-c-sharp = "0.23"
+tree-sitter-clojure = "0.1"

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use streaming_iterator::StreamingIterator;
 
 use crate::model::{
     Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Language,
@@ -179,7 +180,8 @@ impl QueryEngine {
         let mut functions: Vec<FunctionCapture> = Vec::new();
         let mut captures = CaptureMap::default();
 
-        for m in query_cursor.matches(&self.query, root, source_bytes) {
+        let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
+        while let Some(m) = query_matches.next() {
             let has_fn_def = m.captures.iter().any(|c| c.index == self.fn_def_idx);
 
             if has_fn_def {
