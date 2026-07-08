@@ -2165,3 +2165,21 @@ fn test_csharp_complexity() {
         "expected ComplexFunc: 5 in stdout: {stdout}"
     );
 }
+
+#[test]
+fn test_csharp_check() {
+    let (_dir, staged) = stage_fixture("csharp_sample.cs");
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("csharp_sample.cs"),
+        "expected csharp_sample.cs in output; stdout: {stdout}"
+    );
+}
