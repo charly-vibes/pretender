@@ -80,6 +80,7 @@ pub enum Language {
     R,
     #[serde(rename = "C#")]
     CSharp,
+    Clojure,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

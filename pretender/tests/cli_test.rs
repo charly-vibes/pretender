@@ -2038,10 +2038,10 @@ fn test_doctor_unmanaged_hook_fails_installed_skips_executable() {
 fn test_check_warns_on_unsupported_language_paths() {
     let dir = tempdir();
     std::fs::write(
-        dir.join("main.clj"),
-        "(ns my-app)\n(defn hello [] (println \"hi\"))\n",
+        dir.join("main.hs"),
+        "module Main where\nmain :: IO ()\nmain = putStrLn \"hi\"\n",
     )
-    .expect("write clojure file");
+    .expect("write haskell file");
 
     let output = Command::new(pretender_bin())
         .arg("check")
@@ -2181,5 +2181,33 @@ fn test_csharp_check() {
     assert!(
         stdout.contains("csharp_sample.cs"),
         "expected csharp_sample.cs in output; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_clojure_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("clojure_sample.clj"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("simple: 1"),
+        "expected simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("with-branch: 2"),
+        "expected with-branch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("complex-func: 5"),
+        "expected complex-func: 5 in stdout: {stdout}"
     );
 }

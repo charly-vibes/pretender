@@ -1,4 +1,5 @@
 mod c;
+mod clojure;
 mod config;
 mod cpp;
 mod csharp;
@@ -1659,6 +1660,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
 
     match ext {
         "cs" => Ok(Box::new(csharp::CSharpParser)),
+        "clj" | "cljs" | "cljc" | "edn" => Ok(Box::new(clojure::ClojureParser)),
         "c" | "h" => Ok(Box::new(c::CParser)),
         "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Ok(Box::new(cpp::CppParser)),
         "go" => Ok(Box::new(go::GoParser)),

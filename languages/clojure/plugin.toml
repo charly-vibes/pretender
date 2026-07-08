@@ -1,0 +1,34 @@
+name         = "clojure"
+display_name = "Clojure"
+extensions   = [".clj", ".cljs", ".cljc", ".edn"]
+shebangs     = []
+tree_sitter  = { source = "builtin:tree-sitter-clojure", rev = "0.1" }
+query        = "metrics.scm"
+
+[branches]
+"@branch.if"           = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
+
+[assertions]
+patterns = [
+  "^is$",
+  "^is-not$",
+  "^are$",
+  "^testing$",
+  "^deftest$",
+  "^with-test$",
+  "^assert$",
+  "^assert-predicate$",
+  "^thrown\\?",
+  "^thrown-with-msg\\?",
+]
+
+[smell_weights]
+"eval"       = 5.0
+"read-string" = 4.0
+"ns-resolve" = 3.0
+"intern"     = 3.0
+"atom"       = 1.0
+"swap!"      = 1.5
+"reset!"     = 1.5

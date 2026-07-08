@@ -391,7 +391,11 @@ fn build_block(
     call_weights: &BTreeMap<String, f64>,
 ) -> Block {
     let mut children = Vec::new();
-    walk_block(
+    // Check the block_node itself against captures first.
+    // This handles languages where the function body IS a branch node
+    // (e.g. Clojure: (defn f [x] (if ...)) where the entire body is an if form).
+    let visited = visit_child(
+        block_node,
         block_node,
         source,
         captures,
@@ -399,6 +403,16 @@ fn build_block(
         &mut children,
         call_weights,
     );
+    if !visited {
+        walk_block(
+            block_node,
+            source,
+            captures,
+            nesting,
+            &mut children,
+            call_weights,
+        );
+    }
     Block {
         span: node_span(block_node),
         nesting,
