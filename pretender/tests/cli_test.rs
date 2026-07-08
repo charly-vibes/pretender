@@ -1885,7 +1885,7 @@ fn test_version_flag_works() {
         "--version should print 'pretender'; got: {stdout}"
     );
     assert!(
-        stdout.contains("0.1."),
+        stdout.contains("0.2."),
         "--version should include version number; got: {stdout}"
     );
 }

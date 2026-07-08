@@ -4,6 +4,45 @@ All notable changes to Pretender are documented here.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-08
+
+### Added
+
+#### Language plugins
+- **R** — language plugin (tree-sitter-r), extensions `.r`, `.R`
+- **Julia** — language plugin (tree-sitter-julia), extension `.jl`
+- **C#** — language plugin (tree-sitter-c-sharp), extension `.cs`;
+  pinned to compatible ABI version
+- **Clojure** — language plugin (tree-sitter-clojure), extensions
+  `.clj`, `.cljs`, `.cljc`, `.edn`; homoiconic syntax evaluated via
+  symbol-text matching with `#match?` predicates
+
+#### Diagnostics
+- `pretender doctor` — 6 built-in health checks for config, hooks,
+  plugin manifests, and doctor exit codes; `--format human|json`
+- **Unsupported-language warning** — `pretender check` warns on stderr
+  when explicit paths contain no files with supported language extensions
+
+#### Engine improvements
+- **tree-sitter upgrade** — 0.23 → 0.25 (v0.23.2 → v0.25.10);
+  `QueryCursor::matches` adapted to streaming-iterator API;
+  all grammar crates updated to latest compatible versions
+- **Body-as-branch handling** — function body checked against capture
+  map before walking children, fixing languages where the entire
+  body is a single branch form (e.g. Clojure `(if ...)` as defn body)
+
+#### Test infrastructure
+- Integration tests for all new language plugins
+- Updated unsupported-language test to use `.hs` (Haskell fixture)
+
+### Changed
+
+- `tree-sitter` dependency relaxed from `"0.23"` to `"0.25"`
+- `tree-sitter-c-sharp` unpinned from `=0.23.0` to `"0.23"`
+- Added `streaming-iterator = "0.1"` dependency
+- Added `tree-sitter-clojure = "0.1"` dependency
+- `Language` enum extended with `R`, `Julia`, `CSharp`, `Clojure`
+
 ## [0.1.0] — MVP
 
 ### Added
