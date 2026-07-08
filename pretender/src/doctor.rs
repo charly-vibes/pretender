@@ -157,17 +157,27 @@ fn check_hook_installed() -> CheckResult {
 }
 
 fn check_hook_executable() -> CheckResult {
-    use std::os::unix::fs::PermissionsExt;
-    let hook_path = std::path::Path::new(".git/hooks/pre-commit");
-    match std::fs::metadata(hook_path) {
-        Ok(meta) if meta.permissions().mode() & 0o111 != 0 => {
-            pass("Hook executable", "hook file has executable permission")
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let hook_path = std::path::Path::new(".git/hooks/pre-commit");
+        match std::fs::metadata(hook_path) {
+            Ok(meta) if meta.permissions().mode() & 0o111 != 0 => {
+                pass("Hook executable", "hook file has executable permission")
+            }
+            Ok(_) => fail("Hook executable", "hook file is not executable"),
+            Err(e) => fail(
+                "Hook executable",
+                format!("could not read hook metadata: {e}"),
+            ),
         }
-        Ok(_) => fail("Hook executable", "hook file is not executable"),
-        Err(e) => fail(
-            "Hook executable",
-            format!("could not read hook metadata: {e}"),
-        ),
+    }
+    #[cfg(windows)]
+    {
+        // Windows uses ACLs, not Unix permission bits.
+        // The hook check on Windows can rely on other checks
+        // (e.g., Hook installed) to detect issues.
+        pass("Hook executable", "not checked on Windows")
     }
 }
 
