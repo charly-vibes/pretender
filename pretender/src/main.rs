@@ -1,6 +1,7 @@
 mod c;
 mod config;
 mod cpp;
+mod csharp;
 mod doctor;
 mod duplication;
 mod engine;
@@ -1657,6 +1658,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
 
     match ext {
+        "cs" => Ok(Box::new(csharp::CSharpParser)),
         "c" | "h" => Ok(Box::new(c::CParser)),
         "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Ok(Box::new(cpp::CppParser)),
         "go" => Ok(Box::new(go::GoParser)),

@@ -1,0 +1,46 @@
+name         = "csharp"
+display_name = "C#"
+extensions   = [".cs"]
+shebangs     = []
+tree_sitter  = { source = "builtin:tree-sitter-c-sharp", rev = "0.23" }
+query        = "metrics.scm"
+
+[branches]
+"@branch.if"           = { cyclomatic = 1, cognitive = 1 }
+"@branch.loop"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.catch"        = { cyclomatic = 1, cognitive = 1 }
+"@branch.ternary"      = { cyclomatic = 1, cognitive = 1 }
+"@branch.case"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
+
+[assertions]
+patterns = [
+  "^Assert\\.",
+  "^Assert\\.That",
+  "^Assert\\.AreEqual",
+  "^Assert\\.IsTrue",
+  "^Assert\\.IsFalse",
+  "^Assert\\.IsNull",
+  "^Assert\\.IsNotNull",
+  "^Assert\\.Throws",
+  "^Assert\\.DoesNotThrow",
+  "^Assert\\.Fail",
+  "^Assert\\.Inconclusive",
+  "^Assume\\.That",
+  "^CollectionAssert\\.",
+  "^StringAssert\\.",
+  "^FileAssert\\.",
+  "^DirectoryAssert\\.",
+  "^NUnit\\.Framework\\.",
+  "^Shouldy\\.Should",
+  "^FluentAssertions\\.",
+]
+
+[smell_weights]
+"lock"      = 2.0
+"Monitor"   = 2.0
+"Mutex"     = 2.0
+"Semaphore" = 2.0
+"unsafe"    = 4.0
+"dynamic"   = 3.0

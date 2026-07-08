@@ -2137,3 +2137,31 @@ fn test_julia_complexity() {
         "expected complex_func: 5 in stdout: {stdout}"
     );
 }
+
+#[test]
+fn test_csharp_complexity() {
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("csharp_sample.cs"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Simple: 1"),
+        "expected Simple: 1 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("WithBranch: 2"),
+        "expected WithBranch: 2 in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("ComplexFunc: 5"),
+        "expected ComplexFunc: 5 in stdout: {stdout}"
+    );
+}
