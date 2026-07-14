@@ -2,6 +2,38 @@
 
 Pretender is a Rust CLI for structural code-quality checks across multiple languages.
 
+## Installation
+
+### Cargo (crates.io)
+
+```bash
+cargo install pretender
+```
+
+Installs the `pretender` binary.
+
+### Homebrew (macOS & Linux)
+
+```bash
+brew tap charly-vibes/charly
+brew install pretender
+```
+
+### Scoop (Windows)
+
+```powershell
+scoop bucket add charly https://github.com/charly-vibes/scoop-charly.git
+scoop install pretender
+```
+
+### From source
+
+```bash
+git clone https://github.com/charly-vibes/pretender
+cd pretender
+cargo build --release
+```
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
