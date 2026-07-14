@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const CPP_QUERY: &str = include_str!("../../languages/cpp/metrics.scm");
-const CPP_MANIFEST: &str = include_str!("../../languages/cpp/plugin.toml");
+const CPP_QUERY: &str = include_str!("../languages/cpp/metrics.scm");
+const CPP_MANIFEST: &str = include_str!("../languages/cpp/plugin.toml");
 
 pub struct CppParser;
 

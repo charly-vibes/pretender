@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const JULIA_QUERY: &str = include_str!("../../languages/julia/metrics.scm");
-const JULIA_MANIFEST: &str = include_str!("../../languages/julia/plugin.toml");
+const JULIA_QUERY: &str = include_str!("../languages/julia/metrics.scm");
+const JULIA_MANIFEST: &str = include_str!("../languages/julia/plugin.toml");
 
 pub struct JuliaParser;
 

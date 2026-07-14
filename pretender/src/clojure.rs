@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const CLOJURE_QUERY: &str = include_str!("../../languages/clojure/metrics.scm");
-const CLOJURE_MANIFEST: &str = include_str!("../../languages/clojure/plugin.toml");
+const CLOJURE_QUERY: &str = include_str!("../languages/clojure/metrics.scm");
+const CLOJURE_MANIFEST: &str = include_str!("../languages/clojure/plugin.toml");
 
 pub struct ClojureParser;
 

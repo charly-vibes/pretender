@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const R_QUERY: &str = include_str!("../../languages/r/metrics.scm");
-const R_MANIFEST: &str = include_str!("../../languages/r/plugin.toml");
+const R_QUERY: &str = include_str!("../languages/r/metrics.scm");
+const R_MANIFEST: &str = include_str!("../languages/r/plugin.toml");
 
 pub struct RParser;
 

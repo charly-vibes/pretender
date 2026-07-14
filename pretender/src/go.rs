@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const GO_QUERY: &str = include_str!("../../languages/go/metrics.scm");
-const GO_MANIFEST: &str = include_str!("../../languages/go/plugin.toml");
+const GO_QUERY: &str = include_str!("../languages/go/metrics.scm");
+const GO_MANIFEST: &str = include_str!("../languages/go/plugin.toml");
 
 pub struct GoParser;
 

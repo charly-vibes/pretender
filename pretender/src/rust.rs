@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const RUST_QUERY: &str = include_str!("../../languages/rust/metrics.scm");
-const RUST_MANIFEST: &str = include_str!("../../languages/rust/plugin.toml");
+const RUST_QUERY: &str = include_str!("../languages/rust/metrics.scm");
+const RUST_MANIFEST: &str = include_str!("../languages/rust/plugin.toml");
 
 pub struct RustParser;
 

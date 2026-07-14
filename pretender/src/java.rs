@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const JAVA_QUERY: &str = include_str!("../../languages/java/metrics.scm");
-const JAVA_MANIFEST: &str = include_str!("../../languages/java/plugin.toml");
+const JAVA_QUERY: &str = include_str!("../languages/java/metrics.scm");
+const JAVA_MANIFEST: &str = include_str!("../languages/java/plugin.toml");
 
 pub struct JavaParser;
 

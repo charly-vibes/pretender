@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const PYTHON_QUERY: &str = include_str!("../../languages/python/metrics.scm");
-const PYTHON_MANIFEST: &str = include_str!("../../languages/python/plugin.toml");
+const PYTHON_QUERY: &str = include_str!("../languages/python/metrics.scm");
+const PYTHON_MANIFEST: &str = include_str!("../languages/python/plugin.toml");
 
 pub struct PythonParser;
 

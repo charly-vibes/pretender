@@ -57,7 +57,7 @@ impl PluginManifest {
 mod tests {
     use super::*;
 
-    const PYTHON_MANIFEST: &str = include_str!("../../languages/python/plugin.toml");
+    const PYTHON_MANIFEST: &str = include_str!("../languages/python/plugin.toml");
 
     #[test]
     fn parses_python_manifest() {

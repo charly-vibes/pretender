@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const CSHARP_QUERY: &str = include_str!("../../languages/csharp/metrics.scm");
-const CSHARP_MANIFEST: &str = include_str!("../../languages/csharp/plugin.toml");
+const CSHARP_QUERY: &str = include_str!("../languages/csharp/metrics.scm");
+const CSHARP_MANIFEST: &str = include_str!("../languages/csharp/plugin.toml");
 
 pub struct CSharpParser;
 

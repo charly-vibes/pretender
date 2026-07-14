@@ -1,7 +1,7 @@
 {
   "files": [
     {
-      "path": "tests/fixtures/julia_sample.jl",
+      "path": "tests/fixtures/clojure_sample.clj",
       "role": "test",
       "diagnostics": [],
       "file_violations": [],
@@ -14,8 +14,8 @@
             "cyclomatic": 1,
             "cognitive": 0,
             "assertions": 0,
-            "function_lines": 3,
-            "params": 1,
+            "function_lines": 2,
+            "params": 0,
             "nesting_max": 0,
             "abc": 1.0
           },
@@ -28,17 +28,17 @@
           ]
         },
         {
-          "name": "with_branch",
+          "name": "with-branch",
           "kind": "Function",
-          "start_line": 6,
+          "start_line": 5,
           "metrics": {
             "cyclomatic": 2,
             "cognitive": 1,
             "assertions": 0,
-            "function_lines": 7,
-            "params": 1,
+            "function_lines": 4,
+            "params": 0,
             "nesting_max": 0,
-            "abc": 1.4142135623730951
+            "abc": 2.23606797749979
           },
           "violations": [
             {
@@ -49,28 +49,23 @@
           ]
         },
         {
-          "name": "complex_func",
+          "name": "complex-func",
           "kind": "Function",
-          "start_line": 14,
+          "start_line": 10,
           "metrics": {
             "cyclomatic": 5,
             "cognitive": 4,
             "assertions": 0,
-            "function_lines": 14,
-            "params": 3,
+            "function_lines": 9,
+            "params": 0,
             "nesting_max": 0,
-            "abc": 5.0990195135927845
+            "abc": 8.06225774829855
           },
           "violations": [
             {
               "metric": "cyclomatic",
               "actual": 5.0,
               "limit": 3.0
-            },
-            {
-              "metric": "params",
-              "actual": 3.0,
-              "limit": 2.0
             },
             {
               "metric": "min_assertions",

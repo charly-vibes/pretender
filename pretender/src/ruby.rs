@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const RUBY_QUERY: &str = include_str!("../../languages/ruby/metrics.scm");
-const RUBY_MANIFEST: &str = include_str!("../../languages/ruby/plugin.toml");
+const RUBY_QUERY: &str = include_str!("../languages/ruby/metrics.scm");
+const RUBY_MANIFEST: &str = include_str!("../languages/ruby/plugin.toml");
 
 pub struct RubyParser;
 

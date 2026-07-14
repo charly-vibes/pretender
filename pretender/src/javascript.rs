@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const JS_QUERY: &str = include_str!("../../languages/javascript/metrics.scm");
-const JS_MANIFEST: &str = include_str!("../../languages/javascript/plugin.toml");
+const JS_QUERY: &str = include_str!("../languages/javascript/metrics.scm");
+const JS_MANIFEST: &str = include_str!("../languages/javascript/plugin.toml");
 
 pub struct JavaScriptParser;
 

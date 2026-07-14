@@ -6,8 +6,8 @@ use crate::engine::QueryEngine;
 use crate::model::{Diagnostic, Language, Module, Parser};
 use crate::plugin::PluginManifest;
 
-const TS_QUERY: &str = include_str!("../../languages/typescript/metrics.scm");
-const TS_MANIFEST: &str = include_str!("../../languages/typescript/plugin.toml");
+const TS_QUERY: &str = include_str!("../languages/typescript/metrics.scm");
+const TS_MANIFEST: &str = include_str!("../languages/typescript/plugin.toml");
 
 pub struct TypeScriptParser;
 
