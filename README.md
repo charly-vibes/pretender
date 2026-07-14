@@ -40,7 +40,7 @@ cargo build --release
 - [Configuration reference](docs/configuration.md)
 - [Mutation testing](docs/mutation.md)
 - [Writing plugins](docs/plugins.md)
-- [Language support](languages/)
+- [Language support](pretender/languages/)
 
 ## Commands
 
