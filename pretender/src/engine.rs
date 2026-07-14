@@ -867,7 +867,7 @@ mod tests {
     #[test]
     fn parse_python_fixture() {
         let engine = engine();
-        let fixture = include_str!("../../tests/fixtures/python_simple.py");
+        let fixture = include_str!("../tests/fixtures/python_simple.py");
         let (module, diags) = engine
             .parse(Path::new("python_simple.py"), fixture)
             .unwrap();
@@ -891,7 +891,7 @@ mod tests {
     #[test]
     fn fixture_metrics_match_expected() {
         let engine = engine();
-        let fixture = include_str!("../../tests/fixtures/python_simple.py");
+        let fixture = include_str!("../tests/fixtures/python_simple.py");
         let (module, _) = engine
             .parse(Path::new("python_simple.py"), fixture)
             .unwrap();

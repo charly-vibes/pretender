@@ -187,4 +187,4 @@ on mutation score in CI, set `thresholds.mutation_min` in `pretender.toml`
 | All `pretender.toml` keys and defaults | [Configuration reference](configuration.md) |
 | Mutation testing flags and JSON output | [Mutation testing](mutation.md) |
 | Writing custom metric plugins | [Writing plugins](plugins.md) |
-| Language-specific tracked nodes | [languages/](../languages/) |
+| Language-specific tracked nodes | [languages/](../pretender/languages/) |

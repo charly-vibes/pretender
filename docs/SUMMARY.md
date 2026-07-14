@@ -8,15 +8,15 @@
 
 # Language Support
 
-- [C](../languages/c/README.md)
-- [C++](../languages/cpp/README.md)
-- [Go](../languages/go/README.md)
-- [Java](../languages/java/README.md)
-- [JavaScript](../languages/javascript/README.md)
-- [Python](../languages/python/README.md)
-- [Ruby](../languages/ruby/README.md)
-- [Rust](../languages/rust/README.md)
-- [TypeScript](../languages/typescript/README.md)
+- [C](../pretender/languages/c/README.md)
+- [C++](../pretender/languages/cpp/README.md)
+- [Go](../pretender/languages/go/README.md)
+- [Java](../pretender/languages/java/README.md)
+- [JavaScript](../pretender/languages/javascript/README.md)
+- [Python](../pretender/languages/python/README.md)
+- [Ruby](../pretender/languages/ruby/README.md)
+- [Rust](../pretender/languages/rust/README.md)
+- [TypeScript](../pretender/languages/typescript/README.md)
 
 # Design Specs
 
