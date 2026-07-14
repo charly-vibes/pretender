@@ -2,6 +2,12 @@
 name = "pretender"
 version = "0.2.0"
 edition = "2021"
+description = "Multi-language structural code-quality checks — complexity, duplication, mutation testing, and CI integration"
+license = "Apache-2.0"
+repository = "https://github.com/charly-vibes/pretender"
+readme = "../README.md"
+keywords = ["code-quality", "linting", "complexity", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "pretender"
