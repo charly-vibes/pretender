@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn min_nodes_threshold_filters_small_subtrees() {
         let file = load_fixture("python_duplicates.py");
-        let small = detect_clones(&[file.clone()], 1, false).unwrap();
+        let small = detect_clones(std::slice::from_ref(&file), 1, false).unwrap();
         let large = detect_clones(&[file], 30, false).unwrap();
         // Lowering the threshold finds more (or equal) clone groups
         assert!(small.len() >= large.len());

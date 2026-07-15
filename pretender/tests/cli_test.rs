@@ -686,24 +686,23 @@ fn test_mutation_dry_run_python() {
 
 #[test]
 fn test_stub_subcommands_exit_two() {
-    for cmd in [vec!["plugins", "list"]] {
-        let output = Command::new(pretender_bin())
-            .args(&cmd)
-            .output()
-            .expect("failed to execute process");
+    let cmd = vec!["plugins", "list"];
+    let output = Command::new(pretender_bin())
+        .args(&cmd)
+        .output()
+        .expect("failed to execute process");
 
-        assert_eq!(
-            output.status.code(),
-            Some(2),
-            "{cmd:?} should exit 2 (not yet implemented); stderr: {}",
-            String::from_utf8_lossy(&output.stderr),
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("not yet implemented"),
-            "{cmd:?} stderr should explain status; got: {stderr}",
-        );
-    }
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "{cmd:?} should exit 2 (not yet implemented); stderr: {}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not yet implemented"),
+        "{cmd:?} stderr should explain status; got: {stderr}",
+    );
 }
 
 #[test]
