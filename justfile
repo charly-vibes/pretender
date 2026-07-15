@@ -28,9 +28,9 @@ test-verbose:
 type-check:
     cargo check
 
-# Lint (deny warnings)
+# Lint (deny warnings, all targets)
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy --all-targets -- -D warnings
 
 # Format source files
 fmt:

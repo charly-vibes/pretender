@@ -10,7 +10,7 @@
 !.beads/config.yaml
 
 # Pretender runtime cache
-pretender/.pretender/
+/.pretender/
 
 # mdBook build output
 /book

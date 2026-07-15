@@ -1,0 +1,57 @@
+{
+  "files": [
+    {
+      "path": "/tmp/pretender-cli-753689-1784072769648617117/csharp_sample.cs",
+      "role": "app",
+      "diagnostics": [],
+      "file_violations": [],
+      "units": [
+        {
+          "name": "Simple",
+          "kind": "Function",
+          "start_line": 3,
+          "metrics": {
+            "cyclomatic": 1,
+            "cognitive": 0,
+            "assertions": 0,
+            "function_lines": 3,
+            "params": 1,
+            "nesting_max": 0,
+            "abc": 0.0
+          },
+          "violations": []
+        },
+        {
+          "name": "WithBranch",
+          "kind": "Function",
+          "start_line": 7,
+          "metrics": {
+            "cyclomatic": 2,
+            "cognitive": 1,
+            "assertions": 0,
+            "function_lines": 6,
+            "params": 1,
+            "nesting_max": 1,
+            "abc": 1.0
+          },
+          "violations": []
+        },
+        {
+          "name": "ComplexFunc",
+          "kind": "Function",
+          "start_line": 14,
+          "metrics": {
+            "cyclomatic": 5,
+            "cognitive": 6,
+            "assertions": 0,
+            "function_lines": 14,
+            "params": 3,
+            "nesting_max": 2,
+            "abc": 5.656854249492381
+          },
+          "violations": []
+        }
+      ]
+    }
+  ]
+}
