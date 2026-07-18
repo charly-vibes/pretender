@@ -32,14 +32,14 @@ pub struct ViolationEvent {
     pub fingerprint: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotspotSummary {
     pub fingerprint: String,
     pub count: usize,
     pub distinct_days: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternSummary {
     pub rule_key: String,
     pub role: String,
@@ -49,7 +49,7 @@ pub struct PatternSummary {
     pub distinct_days: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistorySummary {
     pub top_hotspots: Vec<HotspotSummary>,
     pub top_patterns: Vec<PatternSummary>,

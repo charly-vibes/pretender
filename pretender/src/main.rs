@@ -379,7 +379,10 @@ impl Executable for CheckArgs {
                     println!("No changed files to check.");
                 }
                 return Ok(decide_exit_code(
-                    &CheckReport { files: vec![] },
+                    &CheckReport {
+                        files: vec![],
+                        history: None,
+                    },
                     config.pretender.mode,
                 ));
             }
@@ -418,9 +421,20 @@ impl Executable for CheckArgs {
             }
         }
 
-        let report = CheckReport { files: reports };
+        let mut report = CheckReport {
+            files: reports,
+            history: None,
+        };
         let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
+        // Attach history before writing output so JSON format includes it
+        emit_history_events(
+            &mut report,
+            &config,
+            self.format,
+            writing_to_stdout,
+            sink.as_mut(),
+        );
         match self.format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
@@ -437,13 +451,6 @@ impl Executable for CheckArgs {
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
         }
         persist_last_check_report(&report)?;
-        emit_history_events(
-            &report,
-            &config,
-            self.format,
-            writing_to_stdout,
-            sink.as_mut(),
-        );
         sink.flush().context("failed to flush report output")?;
 
         Ok(decide_exit_code(&report, config.pretender.mode))
@@ -1682,6 +1689,8 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
 #[derive(Debug, Serialize, Deserialize)]
 struct CheckReport {
     files: Vec<FileReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history: Option<history::HistorySummary>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1742,7 +1751,7 @@ struct ViolationReport {
 }
 
 fn emit_history_events(
-    report: &CheckReport,
+    report: &mut CheckReport,
     config: &config::Config,
     format: ReportFormat,
     writing_to_stdout: bool,
@@ -1751,7 +1760,7 @@ fn emit_history_events(
     let timestamp = history::now_iso8601();
     let run_id = history::make_run_id();
     let mode_str = format!("{:?}", config.pretender.mode).to_ascii_lowercase();
-    let new_events = cognitive_max_events(report, &run_id, &timestamp, &mode_str);
+    let new_events = all_violation_events(report, &run_id, &timestamp, &mode_str);
     if new_events.is_empty() {
         return;
     }
@@ -1765,22 +1774,47 @@ fn emit_history_events(
     };
     let summary = history::compute_summary(&all_events);
     let _ = store.persist_summary(&summary);
-    if matches!(format, ReportFormat::Human)
-        && (!summary.top_hotspots.is_empty() || !summary.top_patterns.is_empty())
-    {
-        let color = writing_to_stdout && color_enabled();
-        let _ = write_recurrence_hints(sink, &summary, color);
+
+    // Attach history to the report so it appears in JSON output
+    if !summary.top_hotspots.is_empty() || !summary.top_patterns.is_empty() {
+        report.history = Some(summary.clone());
+        if matches!(format, ReportFormat::Human) {
+            let color = writing_to_stdout && color_enabled();
+            let _ = write_recurrence_hints(sink, &summary, color);
+        }
     }
 }
 
-fn cognitive_max_events(
+fn metric_to_rule_key(metric: &str) -> &str {
+    match metric {
+        "cognitive" => "cognitive_max",
+        "cyclomatic" => "cyclomatic_max",
+        "params" => "params_max",
+        "nesting" => "nesting_max",
+        "function_lines" => "function_lines_max",
+        "abc" => "abc_max",
+        "duplication_pct" => "duplication_pct_max",
+        "min_assertions" => "min_assertions",
+        other => other,
+    }
+}
+
+fn metric_to_family(metric: &str) -> &str {
+    match metric {
+        "cognitive" | "cyclomatic" | "nesting" | "abc" => "complexity",
+        "params" | "function_lines" => "size",
+        "duplication_pct" => "duplication",
+        "min_assertions" => "testing",
+        other => other,
+    }
+}
+
+fn all_violation_events(
     report: &CheckReport,
     run_id: &str,
     timestamp: &str,
     mode: &str,
 ) -> Vec<history::ViolationEvent> {
-    // TODO(Phase 2): extend to cyclomatic_max, params_max, nesting_max,
-    // function_lines_max, abc_max — see feedback-loop-design.md §Phase 2.
     let mut events = Vec::new();
     for file in &report.files {
         // Normalize away leading "./" so fingerprints are stable regardless of
@@ -1792,9 +1826,8 @@ fn cognitive_max_events(
             .to_string();
         for unit in &file.units {
             for violation in &unit.violations {
-                if violation.metric != "cognitive" {
-                    continue;
-                }
+                let rule_key = metric_to_rule_key(&violation.metric);
+                let metric_family = metric_to_family(&violation.metric);
                 events.push(history::ViolationEvent {
                     schema_version: 1,
                     timestamp: timestamp.to_string(),
@@ -1803,16 +1836,14 @@ fn cognitive_max_events(
                     path: path.clone(),
                     unit_name: Some(unit.name.clone()),
                     role: file.role.clone(),
-                    rule_key: "cognitive_max".to_string(),
-                    metric_family: "complexity".to_string(),
+                    rule_key: rule_key.to_string(),
+                    metric_family: metric_family.to_string(),
                     scope: "unit".to_string(),
-                    // Phase 1: only threshold violations (red); yellow-band and
-                    // gate-fail severity levels will be added in Phase 2.
                     severity: "red".to_string(),
                     actual: violation.actual,
                     limit: violation.limit,
                     delta: violation.actual - violation.limit,
-                    fingerprint: format!("{}::{}::cognitive_max", path, unit.name),
+                    fingerprint: format!("{}::{}::{}", path, unit.name, rule_key),
                 });
             }
         }
