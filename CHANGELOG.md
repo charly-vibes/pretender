@@ -4,6 +4,36 @@ All notable changes to Pretender are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-18
+
+### Added
+
+- **Feedback loop extended to all metrics** — `pretender check` now emits
+  violation events for ALL threshold categories (cyclomatic, params, nesting,
+  function_lines, abc, duplication, min_assertions), not just cognitive.
+  History is persisted to `.pretender/history/` with 90-day retention.
+- **JSON output includes history** — `pretender check --format json` now
+  includes `history` field with hotspots and recurring patterns.
+- **Default path** — `pretender check`, `complexity`, `duplication` now
+  default to scanning the current directory when no path is given.
+- **Agent integration template** — `docs/agent-integration.md` provides
+  copyable CLAUDE.md/AGENTS.md snippets for project discoverability.
+- **wai way integration** — `check_pretender()` added to `wai way`;
+  `wai way code-quality` topic guide covers installation, configuration,
+  hooks, and CI.
+- **Research docs** — `docs/research/agent-adoption.md` and related docs
+  document pretender adoption analysis.
+
+### Changed
+
+- Bumped MSRV-compatible dependency versions.
+- Internal: HistorySummary, HotspotSummary, PatternSummary now implement Clone.
+
+### Fixed
+
+- CLI no longer requires a path argument for check, complexity, duplication.
+- Clippy lints (single_element_loop).
+
 ## [0.2.0] — 2026-07-08
 
 ### Added

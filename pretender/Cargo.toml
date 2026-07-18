@@ -1,6 +1,6 @@
 [package]
 name = "pretender"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 description = "Multi-language structural code-quality checks — complexity, duplication, mutation testing, and CI integration"
 license = "Apache-2.0"
