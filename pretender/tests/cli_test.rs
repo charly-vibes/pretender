@@ -89,6 +89,13 @@ fn check(path: &Path) -> Command {
     cmd
 }
 
+fn check_default(dir: &Path) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("check").env("NO_COLOR", "1");
+    cmd.current_dir(dir);
+    cmd
+}
+
 fn check_in(dir: &Path, path: &Path) -> Command {
     let mut cmd = check(path);
     cmd.current_dir(dir);
@@ -210,6 +217,26 @@ def very_complex(x):
         stdout.contains("threshold: 10"),
         "should show threshold value; stdout: {stdout}"
     );
+}
+
+#[test]
+fn test_check_defaults_to_current_dir() {
+    let dir = tempdir();
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests/fixtures")
+        .join("python_simple.py");
+    let dest = dir.join("python_simple.py");
+    std::fs::copy(&src, &dest).expect("copy fixture");
+
+    let output = check_default(&dir).output().expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("python_simple.py"), "stdout: {stdout}");
 }
 
 #[test]

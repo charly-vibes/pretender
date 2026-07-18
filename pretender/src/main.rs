@@ -89,15 +89,15 @@ struct InitArgs {
 
 #[derive(Parser)]
 struct ComplexityArgs {
-    /// Metric name to explain (e.g., cyclomatic, cognitive, abc)
-    #[arg(required = true)]
+    /// Paths to files or directories to analyze
+    #[arg(default_values = ["."])]
     paths: Vec<PathBuf>,
 }
 
 #[derive(Parser)]
 struct CheckArgs {
     /// Paths to files or directories to check for complexity metrics
-    #[arg(required = true)]
+    #[arg(default_values = ["."])]
     paths: Vec<PathBuf>,
     #[arg(long, value_enum, default_value_t = ReportFormat::Human)]
     format: ReportFormat,
