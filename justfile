@@ -20,6 +20,10 @@ release:
 test:
     cargo test
 
+# Validate spec-test correspondence (requires ah)
+validate:
+    ah check
+
 # Run tests with output
 test-verbose:
     cargo test -- --nocapture
