@@ -228,7 +228,9 @@ fn test_check_defaults_to_current_dir() {
     let dest = dir.join("python_simple.py");
     std::fs::copy(&src, &dest).expect("copy fixture");
 
-    let output = check_default(&dir).output().expect("failed to execute process");
+    let output = check_default(&dir)
+        .output()
+        .expect("failed to execute process");
 
     assert!(
         output.status.success(),
@@ -1911,7 +1913,7 @@ fn test_version_flag_works() {
         "--version should print 'pretender'; got: {stdout}"
     );
     assert!(
-        stdout.contains("0.2."),
+        stdout.contains("0.3."),
         "--version should include version number; got: {stdout}"
     );
 }

@@ -1049,12 +1049,19 @@ fn collect_path(path: &Path, exclude_set: &globset::GlobSet, out: &mut Vec<PathB
             .with_context(|| format!("failed to read directory: {}", path.display()))?
         {
             let entry = entry?;
-            collect_path(&entry.path(), exclude_set, out)?;
+            let entry_path = entry.path();
+            // Skip non-regular, non-directory entries (sockets, FIFOs, etc.)
+            // rather than erroring, since these can appear in .git/ and other
+            // infrastructure directories.
+            if entry_path.is_file() || entry_path.is_dir() {
+                collect_path(&entry_path, exclude_set, out)?;
+            }
         }
         return Ok(());
     }
 
-    Err(anyhow!("path does not exist: {}", path.display()))
+    // Not a regular file or directory — skip silently.
+    Ok(())
 }
 
 fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -> UnitReport {

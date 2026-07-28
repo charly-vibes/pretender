@@ -4,6 +4,17 @@ All notable changes to Pretender are documented here.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-07-28
+
+### Fixed
+
+- **Crash on Unix sockets in directory walk** — `pretender check .` no longer
+  panics when `.git/fsmonitor--daemon.ipc` (or other socket/FIFO entries) is
+  encountered during tree traversal. Non-regular, non-directory filesystem
+  entries are now silently skipped.
+- **Stale version assertion in test** — `test_version_flag_works` was checking
+  for `"0.2."` after the crate was bumped to `0.3.0`. Updated to `"0.3."`.
+
 ## [0.3.0] — 2026-07-18
 
 ### Added
