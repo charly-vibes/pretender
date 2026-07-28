@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn configured_path_globs_override_heuristics() {
-        let config = Config::load_from_str(
+        let config = Config::parse_str(
             r#"
             [roles]
             script = { paths = ["tests/manual/**"] }
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_heuristics_then_app() {
-        let config = Config::load_from_str(
+        let config = Config::parse_str(
             r#"
             [roles]
             test = { paths = [] }

@@ -1,7 +1,8 @@
-use crate::config::Config;
+use crate::config;
 use crate::external_plugin;
 use crate::DoctorFormat;
 use anyhow::Result;
+use genesis::config::ValidationSeverity;
 use serde::Serialize;
 use std::process::{Command, ExitCode};
 
@@ -132,9 +133,15 @@ fn check_config_present() -> CheckResult {
 }
 
 fn check_config_valid() -> CheckResult {
-    match Config::load_from_path("pretender.toml") {
-        Ok(_) => pass("Config valid", "configuration is valid"),
-        Err(e) => fail("Config valid", e.to_string()),
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let store = genesis::config::ConfigStore::new(config::build_registry());
+    let validations = store.validate_all(&cwd);
+    let first_error = validations
+        .iter()
+        .find(|v| v.severity == ValidationSeverity::Error);
+    match first_error {
+        None => pass("Config valid", "configuration is valid"),
+        Some(err) => fail("Config valid", err.message.clone()),
     }
 }
 

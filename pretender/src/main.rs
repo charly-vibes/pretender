@@ -30,12 +30,14 @@ use crate::model::Metric;
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use genesis::config::{ConfigStore, ValidationSeverity};
 use genesis::envelope::{Envelope, EnvelopeKind};
 use genesis::feedback::gh::{create_issue, CreateIssueOptions};
 use genesis::feedback::redactor;
-use genesis::feedback::scratch::{self, ErrorRecord};
+use genesis::feedback::scratch;
+use genesis::guide::Guide;
 use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
-use genesis::suggestions::{CommandRegistry, SuggestionEngine};
+use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -1201,11 +1203,24 @@ fn analyze_path(
 
 fn load_config() -> Result<Config> {
     let path = Path::new("pretender.toml");
-    if path.exists() {
-        Config::load_from_path(path).map_err(Into::into)
-    } else {
-        Ok(Config::default())
+    if !path.exists() {
+        return Ok(Config::default());
     }
+    // Delegate read + validate to genesis::config via the ConfigStore.
+    let cwd = std::env::current_dir().context("failed to get current directory")?;
+    let store = ConfigStore::new(config::build_registry());
+    let parsed: Config = store
+        .get("pretender", &cwd)
+        .map_err(|e| anyhow!("failed to read pretender.toml: {e}"))?;
+    let validations = store.validate_all(&cwd);
+    if config::has_errors(&validations) {
+        let first = validations
+            .iter()
+            .find(|v| v.severity == ValidationSeverity::Error)
+            .expect("has_errors guaranteed an error entry");
+        return Err(anyhow!("invalid pretender.toml: {}", first.message));
+    }
+    Ok(parsed)
 }
 
 fn warn_if_no_config() {
@@ -2107,7 +2122,11 @@ fn write_recurrence_hints(
     Ok(())
 }
 
-fn main() -> Result<ExitCode> {
+fn main() -> ExitCode {
+    let guide = Guide::builder("pretender", env!("CARGO_PKG_VERSION"))
+        .commands(PRETENDER_COMMANDS)
+        .build();
+
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
@@ -2115,13 +2134,8 @@ fn main() -> Result<ExitCode> {
                 let err_msg = err.to_string();
                 if let Some(bad_cmd) = extract_bad_subcommand(&err_msg) {
                     let engine = SuggestionEngine::new();
-                    let mut registry = CommandRegistry::new();
-                    registry.register(
-                        env!("CARGO_PKG_NAME"),
-                        PRETENDER_COMMANDS.iter().map(|s| s.to_string()).collect(),
-                    );
 
-                    if let Some(suggestion) = engine.suggest_typo(&bad_cmd, &registry) {
+                    if let Some(suggestion) = engine.suggest_typo(&bad_cmd, guide.registry()) {
                         eprintln!("error: unrecognized subcommand '{bad_cmd}'");
                         eprintln!();
                         eprintln!("{}", suggestion.message());
@@ -2137,43 +2151,16 @@ fn main() -> Result<ExitCode> {
     };
 
     match cli.command.run() {
-        Ok(code) => {
-            if code != ExitCode::SUCCESS {
-                write_error_scratch_and_footer();
-            }
-            Ok(code)
-        }
+        Ok(code) => code,
         Err(err) => {
-            write_error_scratch_and_footer();
-            Err(err)
+            // ErrorSink prints the error, writes the scratch record (for
+            // `feedback --from-last-error`), and emits a self-healing footer.
+            let sink = guide.error_sink().with_suggest(false);
+            let mut stderr = io::stderr();
+            sink.handle(err.as_ref(), &mut stderr);
+            ExitCode::FAILURE
         }
     }
-}
-
-/// Write the error to genesis::feedback::scratch and print the feedback footer.
-///
-/// Only called for errors that have NO Fix suggestion from the typo handler
-/// (the typo handler calls `std::process::exit(2)` directly, bypassing this).
-fn write_error_scratch_and_footer() {
-    let argv: Vec<String> = std::env::args().collect();
-    let record = ErrorRecord {
-        ts: unix_epoch_seconds(),
-        argv: argv.clone(),
-        exit: 1,
-        footer: None,
-        kind: "Error".to_string(),
-    };
-    scratch::write_scratch_best_effort("pretender", &record);
-    eprintln!("Feedback: pretender feedback bug --from-last-error");
-}
-
-/// Simple Unix-epoch-seconds timestamp.
-fn unix_epoch_seconds() -> String {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        .to_string()
 }
 
 /// Extract the bad subcommand name from clap's error message.

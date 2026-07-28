@@ -126,3 +126,67 @@ fn genesis_constants_accessible() {
     let _version = genesis::envelope::ENVELOPE_VERSION;
     let _cli_version = genesis::envelope::CLI_VERSION;
 }
+
+#[test]
+fn genesis_config_accessible() {
+    use genesis::config::{ConfigRegistry, ConfigStore, ConfigValidation};
+    use serde::Deserialize;
+    use std::path::{Path, PathBuf};
+
+    // A minimal config type implementing ConfigFile.
+    #[derive(Debug, Default, PartialEq, Eq, Deserialize)]
+    struct MockConfig {
+        name: String,
+    }
+
+    impl genesis::config::ConfigFile for MockConfig {
+        fn path(repo_root: &Path) -> PathBuf {
+            repo_root.join("mock.toml")
+        }
+    }
+
+    // Registry registration + discovery contract.
+    let mut registry = ConfigRegistry::new();
+    registry.register::<MockConfig>("mock", "mock.toml");
+    assert!(registry.is_registered("mock"));
+    assert_eq!(registry.marker("mock"), Some("mock.toml"));
+
+    let store = ConfigStore::new(registry);
+    assert!(!store.registry().is_empty());
+
+    // Validation result constructors compile.
+    let warn = ConfigValidation::warning("x", "be careful");
+    let err = ConfigValidation::error("y", "no good");
+    assert_eq!(warn.field, "x");
+    assert_eq!(err.field, "y");
+}
+
+#[test]
+fn genesis_guide_accessible() {
+    use genesis::guide::{Guide, Output, Verbosity};
+
+    // Guide builder assembles a CLI scaffold.
+    let guide = Guide::builder("pretender", "0.3.1")
+        .commands(&["check", "doctor"])
+        .max_verbosity(2)
+        .build();
+    assert_eq!(guide.name(), "pretender");
+    assert_eq!(guide.version(), "0.3.1");
+    assert_eq!(guide.verbosity(), Verbosity::Verbose);
+    assert!(guide.registry().all().contains(&"check"));
+
+    // Output<T> fluent construction + verbosity filtering.
+    let output: Output<&str> = Output::success("done")
+        .with_next_step("run doctor")
+        .with_warning("check config");
+    assert!(!output.is_error);
+    assert_eq!(output.warnings.len(), 1);
+
+    // ErrorSink is wired for the tool.
+    let sink = guide.error_sink();
+    assert_eq!(sink.tool_name, "pretender");
+
+    // Guide::run returns 0 on a success Output.
+    let exit = guide.run(|| Ok(Output::success("ok")));
+    assert_eq!(exit, 0);
+}

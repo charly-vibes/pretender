@@ -2160,7 +2160,7 @@ fn write_pretender_hook(dir: &Path) {
 fn test_doctor_all_pass_with_valid_config_and_hook() {
     let dir = tempdir();
     git_init(&dir);
-    std::fs::write(dir.join("pretender.toml"), "").expect("write config");
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
     write_pretender_hook(&dir);
 
     let output = doctor_in(&dir, &[]).output().expect("run doctor");
@@ -2231,7 +2231,7 @@ fn test_doctor_json_missing_config_exits_1_with_fail_status() {
 fn test_doctor_unmanaged_hook_fails_installed_skips_executable() {
     let dir = tempdir();
     git_init(&dir);
-    std::fs::write(dir.join("pretender.toml"), "").expect("write config");
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
     let hooks_dir = dir.join(".git/hooks");
     std::fs::create_dir_all(&hooks_dir).expect("create hooks dir");
     let hook = hooks_dir.join("pre-commit");

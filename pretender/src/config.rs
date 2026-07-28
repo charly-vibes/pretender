@@ -1,26 +1,14 @@
-use miette::Diagnostic;
+//! Pretender configuration.
+//!
+//! The `Config` struct is the domain model for `pretender.toml`. All file
+//! I/O (read, parse, validate) delegates to `genesis::config::ConfigFile`;
+//! this module only owns the struct shape and the domain validation rules.
+
+use genesis::config::{ConfigFile, ConfigRegistry, ConfigValidation, ValidationSeverity};
 use serde::Deserialize;
-use std::path::Path;
-use thiserror::Error;
+use std::path::{Path, PathBuf};
 
-#[derive(Debug, Error, Diagnostic)]
-pub enum ConfigError {
-    #[error("failed to read config file {path}: {source}")]
-    #[diagnostic(code(pretender::config::read_failed))]
-    Read {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
-
-    #[error("failed to parse pretender.toml: {0}")]
-    #[diagnostic(code(pretender::config::parse_failed))]
-    Parse(#[from] toml::de::Error),
-
-    #[error("invalid config at {path}: {message}")]
-    #[diagnostic(code(pretender::config::validation_failed))]
-    Validation { path: &'static str, message: String },
-}
+// ── Config struct ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
@@ -36,33 +24,52 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
-        let path = path.as_ref();
-        let source = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
-            path: path.display().to_string(),
-            source,
-        })?;
-        Self::load_from_str(&source)
-    }
-
-    pub fn load_from_str(source: &str) -> Result<Self, ConfigError> {
-        let config: Self = toml::from_str(source)?;
-        config.validate()?;
-        Ok(config)
-    }
-
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.bands.validate()?;
-        self.thresholds.validate()?;
-        if self.output.formats.is_empty() {
-            return Err(ConfigError::Validation {
-                path: "output.formats",
-                message: "expected at least one output format".to_string(),
-            });
-        }
-        Ok(())
+    /// Parse a config from a TOML source string without touching the
+    /// filesystem. Test convenience; runtime loading goes through
+    /// [`genesis::config::ConfigFile::read_from`] via the `ConfigStore`.
+    #[cfg(test)]
+    pub fn parse_str(source: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(source)
     }
 }
+
+impl ConfigFile for Config {
+    fn path(repo_root: &Path) -> PathBuf {
+        repo_root.join("pretender.toml")
+    }
+
+    fn validate(&self) -> Result<Vec<ConfigValidation>, genesis::config::ConfigError> {
+        let mut results = Vec::new();
+        self.bands.collect_validations(&mut results);
+        self.thresholds.collect_validations(&mut results);
+        if self.output.formats.is_empty() {
+            results.push(ConfigValidation::error(
+                "output.formats",
+                "expected at least one output format",
+            ));
+        }
+        Ok(results)
+    }
+}
+
+/// Build a [`ConfigRegistry`] with pretender's config registered.
+///
+/// Tools register their config struct at startup so the shared
+/// `ConfigStore` can discover and validate it alongside other suite tools.
+pub fn build_registry() -> ConfigRegistry {
+    let mut registry = ConfigRegistry::new();
+    registry.register::<Config>("pretender", "pretender.toml");
+    registry
+}
+
+/// Return `true` if `validations` contains any error-severity entry.
+pub fn has_errors(validations: &[ConfigValidation]) -> bool {
+    validations
+        .iter()
+        .any(|v| v.severity == ValidationSeverity::Error)
+}
+
+// ── Sections ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
@@ -105,33 +112,37 @@ pub struct Thresholds {
 }
 
 impl Thresholds {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn collect_validations(&self, out: &mut Vec<ConfigValidation>) {
         validate_percent(
+            out,
             "thresholds.duplication_pct_max",
             self.app.duplication_pct_max,
-        )?;
-        validate_percent("thresholds.coverage_line_min", self.app.coverage_line_min)?;
+        );
         validate_percent(
+            out,
+            "thresholds.coverage_line_min",
+            self.app.coverage_line_min,
+        );
+        validate_percent(
+            out,
             "thresholds.coverage_branch_min",
             self.app.coverage_branch_min,
-        )?;
-        validate_percent("thresholds.mutation_min", self.app.mutation_min)?;
+        );
+        validate_percent(out, "thresholds.mutation_min", self.app.mutation_min);
         validate_percent(
+            out,
             "thresholds.test.duplication_pct_max",
             self.test.duplication_pct_max,
-        )?;
-        Ok(())
+        );
     }
 }
 
-fn validate_percent(path: &'static str, value: u32) -> Result<(), ConfigError> {
-    if value <= 100 {
-        Ok(())
-    } else {
-        Err(ConfigError::Validation {
-            path,
-            message: "expected percentage value <= 100".to_string(),
-        })
+fn validate_percent(out: &mut Vec<ConfigValidation>, field: &'static str, value: u32) {
+    if value > 100 {
+        out.push(ConfigValidation::error(
+            field,
+            "expected percentage value <= 100",
+        ));
     }
 }
 
@@ -241,14 +252,12 @@ pub struct Band {
 }
 
 impl Band {
-    fn validate(&self, path: &'static str) -> Result<(), ConfigError> {
-        if self.green <= self.yellow && self.yellow <= self.red {
-            Ok(())
-        } else {
-            Err(ConfigError::Validation {
-                path,
-                message: "expected green <= yellow <= red".to_string(),
-            })
+    fn collect_validations(&self, field: &'static str, out: &mut Vec<ConfigValidation>) {
+        if !(self.green <= self.yellow && self.yellow <= self.red) {
+            out.push(ConfigValidation::error(
+                field,
+                "expected green <= yellow <= red",
+            ));
         }
     }
 }
@@ -261,14 +270,13 @@ pub struct Bands {
 }
 
 impl Bands {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn collect_validations(&self, out: &mut Vec<ConfigValidation>) {
         if let Some(band) = self.cyclomatic {
-            band.validate("bands.cyclomatic")?;
+            band.collect_validations("bands.cyclomatic", out);
         }
         if let Some(band) = self.cognitive {
-            band.validate("bands.cognitive")?;
+            band.collect_validations("bands.cognitive", out);
         }
-        Ok(())
     }
 }
 
@@ -413,7 +421,7 @@ mod tests {
 
     #[test]
     fn parses_full_config_schema_and_ignores_unknown_keys() {
-        let config = Config::load_from_str(
+        let config = Config::parse_str(
             r#"
             unknown_top_level = "ignored"
 
@@ -500,6 +508,9 @@ mod tests {
             vec![OutputFormat::Human, OutputFormat::Sarif]
         );
         assert_eq!(config.roles.test.paths, vec!["tests/**"]);
+
+        let validations = config.validate().expect("validate");
+        assert!(!has_errors(&validations), "valid config has no errors");
     }
 
     #[test]
@@ -542,29 +553,51 @@ mod tests {
     }
 
     #[test]
-    fn validation_rejects_inverted_bands_with_miette_diagnostic() {
-        let error = Config::load_from_str(
+    fn validation_flags_inverted_bands() {
+        let config = Config::parse_str(
             r#"
             [bands]
             cyclomatic = { green = 20, yellow = 10, red = 15 }
             "#,
         )
-        .expect_err("invalid bands should fail validation");
+        .expect("config should parse");
 
-        let rendered = format!("{error}");
-        assert!(rendered.contains("bands.cyclomatic"));
+        let validations = config.validate().expect("validate");
+        let band_issue = validations
+            .iter()
+            .find(|v| v.field == "bands.cyclomatic")
+            .expect("bands.cyclomatic should be flagged");
+        assert_eq!(band_issue.severity, ValidationSeverity::Error);
+        assert!(band_issue.message.contains("green <= yellow <= red"));
     }
 
     #[test]
-    fn validation_rejects_impossible_percentages() {
-        let error = Config::load_from_str(
+    fn validation_flags_impossible_percentages() {
+        let config = Config::parse_str(
             r#"
             [thresholds]
             coverage_line_min = 101
             "#,
         )
-        .expect_err("percentage thresholds above 100 should fail validation");
+        .expect("config should parse");
 
-        assert!(format!("{error}").contains("thresholds.coverage_line_min"));
+        let validations = config.validate().expect("validate");
+        assert!(validations
+            .iter()
+            .any(|v| v.field == "thresholds.coverage_line_min"
+                && v.severity == ValidationSeverity::Error));
+    }
+
+    #[test]
+    fn configfile_path_is_repo_root_pretender_toml() {
+        let root = Path::new("/tmp/repo");
+        assert_eq!(Config::path(root), root.join("pretender.toml"));
+    }
+
+    #[test]
+    fn build_registry_registers_pretender() {
+        let registry = build_registry();
+        assert!(registry.is_registered("pretender"));
+        assert_eq!(registry.marker("pretender"), Some("pretender.toml"));
     }
 }
