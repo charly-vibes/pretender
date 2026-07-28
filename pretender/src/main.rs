@@ -429,16 +429,21 @@ impl Executable for FeedbackArgs {
 
 /// Extract the repository string from Cargo.toml's [package] repository field.
 fn extract_repo_from_cargo_toml() -> Result<String> {
-    let content = std::fs::read_to_string("Cargo.toml")
-        .context("failed to read Cargo.toml")?;
+    // Read the pretender member's Cargo.toml (not the workspace root)
+    let cargo_path = if std::path::Path::new("pretender/Cargo.toml").exists() {
+        "pretender/Cargo.toml"
+    } else {
+        "Cargo.toml"
+    };
+    let content = std::fs::read_to_string(cargo_path)
+        .context(format!("failed to read {cargo_path}"))?;
     let value: toml::Value = content.parse::<toml::Value>()
         .context("failed to parse Cargo.toml")?;
-    let repo = value["package"]["repository"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Cargo.toml missing [package].repository"))?
-        .to_string();
+    let package = value.get("package").and_then(|v| v.get("repository"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Cargo.toml missing [package].repository"))?;
     // Convert full URL to owner/repo format
-    let repo_short = repo
+    let repo_short = package
         .trim_start_matches("https://github.com/")
         .trim_end_matches(".git")
         .to_string();
