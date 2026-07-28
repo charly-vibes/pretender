@@ -1030,6 +1030,52 @@ fn test_init_non_interactive_writes_config_with_mode_override() {
 }
 
 #[test]
+fn test_init_injects_managed_blocks() {
+    let dir = tempdir();
+
+    let output = init_in(&dir)
+        .arg("--non-interactive")
+        .output()
+        .expect("run init");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let agents_path = dir.join("AGENTS.md");
+    assert!(
+        agents_path.exists(),
+        "AGENTS.md should be created by init"
+    );
+    let content = std::fs::read_to_string(&agents_path).expect("read AGENTS.md");
+    assert!(
+        content.contains("<!-- WAI:START -->"),
+        "AGENTS.md should contain WAI managed block"
+    );
+    assert!(
+        content.contains("<!-- WAI:END -->"),
+        "AGENTS.md should contain WAI end marker"
+    );
+    assert!(
+        content.contains("<!-- OPENSPEC:START -->"),
+        "AGENTS.md should contain OPENSPEC managed block"
+    );
+    assert!(
+        content.contains("<!-- OPENSPEC:END -->"),
+        "AGENTS.md should contain OPENSPEC end marker"
+    );
+    assert!(
+        content.contains("<!-- DONT:START -->"),
+        "AGENTS.md should contain DONT managed block"
+    );
+    assert!(
+        content.contains("<!-- DONT:END -->"),
+        "AGENTS.md should contain DONT end marker"
+    );
+}
+
+#[test]
 fn test_init_interactive_can_install_hook_and_ci() {
     let dir = tempdir();
     std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");

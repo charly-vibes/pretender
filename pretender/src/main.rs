@@ -295,6 +295,9 @@ impl Executable for InitArgs {
         fs::write("pretender.toml", render_init_config(&options))
             .context("failed to write pretender.toml")?;
 
+        // Inject suite managed blocks into AGENTS.md
+        inject_managed_blocks()?;
+
         if options.install_hook {
             install_pre_commit_hook()?;
         }
@@ -304,6 +307,36 @@ impl Executable for InitArgs {
 
         Ok(ExitCode::SUCCESS)
     }
+}
+
+fn inject_managed_blocks() -> Result<()> {
+    use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
+
+    let mut reg = BlockRegistry::new();
+    reg.register(BlockDef::new("WAI"));
+    reg.register(BlockDef::new("OPENSPEC"));
+    reg.register(BlockDef::new("DONT"));
+    let injector = BlockInjector::new(reg);
+
+    let agents_path = std::path::Path::new("AGENTS.md");
+    let wai_content = "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n"
+        .to_string();
+    let openspec_content = "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
+        .to_string();
+    let dont_content = "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n"
+        .to_string();
+
+    injector
+        .inject(agents_path, "WAI", &wai_content)
+        .context("failed to inject WAI managed block")?;
+    injector
+        .inject(agents_path, "OPENSPEC", &openspec_content)
+        .context("failed to inject OPENSPEC managed block")?;
+    injector
+        .inject(agents_path, "DONT", &dont_content)
+        .context("failed to inject DONT managed block")?;
+
+    Ok(())
 }
 
 impl Executable for ComplexityArgs {
