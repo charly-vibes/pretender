@@ -883,6 +883,77 @@ fn test_non_zero_exit_shows_feedback_footer() {
 }
 
 #[test]
+fn test_empty_config_file_falls_back_to_defaults_for_check() {
+    // EDGE-001: a present-but-empty pretender.toml must not break `check`.
+    // genesis::config rejects empty files, so load_config short-circuits
+    // zero-byte files to Config::default() (doctor stays strict).
+    let dir = tempdir();
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests/fixtures")
+        .join("python_simple.py");
+    std::fs::copy(&src, dir.join("python_simple.py")).expect("copy fixture");
+    std::fs::write(dir.join("pretender.toml"), "").expect("write empty config");
+
+    let output = check(&dir.join("python_simple.py"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "empty config should fall back to defaults, not fail; stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("failed to read pretender.toml"),
+        "empty config should not surface a read error; got: {stderr}"
+    );
+}
+
+#[test]
+fn test_error_scratch_records_full_argv() {
+    // CORR-001: `feedback --from-last-error` surfaces the failing command,
+    // so the scratch record must capture the full argv, not just the tool
+    // name. ErrorSink's built-in scratch only records argv=[tool_name];
+    // pretender overrides it with std::env::args().
+    let cache = tempdir().join("cache");
+    std::fs::create_dir_all(&cache).expect("create cache dir");
+
+    let output = Command::new(pretender_bin())
+        .args(["explain", "not_a_real_metric"])
+        .env("XDG_CACHE_HOME", &cache)
+        .output()
+        .expect("failed to execute process");
+    assert!(!output.status.success(), "should exit non-zero");
+
+    let scratch = cache.join("pretender").join("errors.jsonl");
+    let content = std::fs::read_to_string(&scratch)
+        .unwrap_or_else(|e| panic!("scratch file should exist at {}: {e}", scratch.display()));
+    let parsed: serde_json::Value = serde_json::from_str(content.trim_end_matches('\n'))
+        .unwrap_or_else(|e| panic!("scratch should be one JSON object: {e}\n{content}"));
+    let argv = parsed["argv"]
+        .as_array()
+        .expect("scratch should have argv array")
+        .iter()
+        .map(|v| v.as_str().unwrap_or("").to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        argv.iter().any(|a| a == "explain"),
+        "scratch argv should include the subcommand; got: {argv:?}"
+    );
+    assert!(
+        argv.iter().any(|a| a == "not_a_real_metric"),
+        "scratch argv should include the metric arg; got: {argv:?}"
+    );
+    // Sanity: more than just the tool name (the regression we fixed).
+    assert!(
+        argv.len() > 1,
+        "scratch argv should capture the full command, not just the tool name; got: {argv:?}"
+    );
+}
+
+#[test]
 fn test_explain_known_metric_prints_doc() {
     let output = Command::new(pretender_bin())
         .args(["explain", "cyclomatic"])

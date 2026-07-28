@@ -30,11 +30,11 @@ use crate::model::Metric;
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use genesis::config::{ConfigStore, ValidationSeverity};
+use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
 use genesis::envelope::{Envelope, EnvelopeKind};
 use genesis::feedback::gh::{create_issue, CreateIssueOptions};
 use genesis::feedback::redactor;
-use genesis::feedback::scratch;
+use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::guide::Guide;
 use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
 use genesis::suggestions::SuggestionEngine;
@@ -1206,13 +1206,26 @@ fn load_config() -> Result<Config> {
     if !path.exists() {
         return Ok(Config::default());
     }
-    // Delegate read + validate to genesis::config via the ConfigStore.
+    // An empty config file is treated as "use defaults" to preserve the
+    // v0.1.0 tolerance: a present-but-empty pretender.toml is not an error
+    // for `check`/`complexity` (doctor still flags it as invalid).
+    if std::fs::metadata(path)
+        .with_context(|| format!("failed to stat config: {}", path.display()))?
+        .len()
+        == 0
+    {
+        return Ok(Config::default());
+    }
+    // Delegate read/parse to genesis::config, then validate the parsed
+    // instance directly (single read, no TOCTOU between get and validate).
     let cwd = std::env::current_dir().context("failed to get current directory")?;
     let store = ConfigStore::new(config::build_registry());
     let parsed: Config = store
         .get("pretender", &cwd)
         .map_err(|e| anyhow!("failed to read pretender.toml: {e}"))?;
-    let validations = store.validate_all(&cwd);
+    let validations = parsed
+        .validate()
+        .map_err(|e| anyhow!("failed to validate pretender.toml: {e}"))?;
     if config::has_errors(&validations) {
         let first = validations
             .iter()
@@ -2153,14 +2166,42 @@ fn main() -> ExitCode {
     match cli.command.run() {
         Ok(code) => code,
         Err(err) => {
-            // ErrorSink prints the error, writes the scratch record (for
-            // `feedback --from-last-error`), and emits a self-healing footer.
-            let sink = guide.error_sink().with_suggest(false);
+            // ErrorSink prints the error and the `feedback --from-last-error`
+            // footer. Its built-in scratch only records the tool name, so we
+            // disable it and write a richer record with the full argv (which
+            // `feedback --from-last-error` surfaces as `Command: …`).
+            let sink = guide.error_sink().with_suggest(false).with_scratch(false);
             let mut stderr = io::stderr();
             sink.handle(err.as_ref(), &mut stderr);
+            write_error_scratch();
             ExitCode::FAILURE
         }
     }
+}
+
+/// Write the failing command to the error scratch so `feedback
+/// --from-last-error` can surface the full argv (not just the tool name).
+///
+/// ErrorSink's built-in scratch records only `argv = [tool_name]`; this
+/// restores the v0.1.0 behavior of capturing `std::env::args()`.
+fn write_error_scratch() {
+    let record = ErrorRecord {
+        ts: unix_epoch_seconds(),
+        argv: std::env::args().collect(),
+        exit: 1,
+        footer: None,
+        kind: "Error".to_string(),
+    };
+    scratch::write_scratch_best_effort("pretender", &record);
+}
+
+/// Simple Unix-epoch-seconds timestamp.
+fn unix_epoch_seconds() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string()
 }
 
 /// Extract the bad subcommand name from clap's error message.
