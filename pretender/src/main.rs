@@ -30,6 +30,12 @@ use crate::model::Metric;
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use genesis::envelope::{Envelope, EnvelopeKind};
+use genesis::feedback::gh::{create_issue, CreateIssueOptions};
+use genesis::feedback::redactor;
+use genesis::feedback::scratch::{self, ErrorRecord};
+use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
+use genesis::suggestions::{CommandRegistry, SuggestionEngine};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -372,8 +378,6 @@ impl Executable for InitArgs {
 
 impl Executable for FeedbackArgs {
     fn run(&self) -> Result<ExitCode> {
-        use genesis::feedback::gh::{create_issue, CreateIssueOptions};
-
         let repo = extract_repo_from_cargo_toml()?;
         let (kind_label, title_suffix) = match self.kind {
             FeedbackKind::Bug => ("bug", "Bug report"),
@@ -393,7 +397,7 @@ impl Executable for FeedbackArgs {
             .unwrap_or_else(|| build_feedback_body(self.from_last_error));
 
         // Redact the body
-        let body = genesis::feedback::redactor::redact(&body, None, None);
+        let body = redactor::redact(&body, None, None);
 
         if self.dry_run {
             let labels = ["agent-reported", kind_label, "has-repro"];
@@ -444,8 +448,6 @@ impl Executable for FeedbackArgs {
 
 /// Build a default feedback issue body.
 fn build_feedback_body(from_last_error: bool) -> String {
-    use genesis::feedback::scratch;
-
     let mut b = String::new();
     b.push_str("## Description\n\n");
     b.push_str("<!-- Please describe the issue -->\n\n");
@@ -495,8 +497,6 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
 }
 
 fn inject_managed_blocks() -> Result<()> {
-    use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
-
     let mut reg = BlockRegistry::new();
     reg.register(BlockDef::new("WAI"));
     reg.register(BlockDef::new("OPENSPEC"));
@@ -737,7 +737,6 @@ impl Executable for MutationArgs {
 
         match self.format {
             ReportFormat::Json => {
-                use genesis::envelope::{Envelope, EnvelopeKind};
                 let env = Envelope::success(EnvelopeKind::Check, &report, vec![], vec![]);
                 println!("{}", serde_json::to_string_pretty(&env)?);
             }
@@ -1777,8 +1776,6 @@ fn html_escape(value: &str) -> String {
 }
 
 fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
-    use genesis::envelope::{Envelope, EnvelopeKind};
-
     let env = Envelope::success(EnvelopeKind::Check, report, vec![], vec![]);
     serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;
@@ -2117,8 +2114,6 @@ fn main() -> Result<ExitCode> {
             if err.kind() == clap::error::ErrorKind::InvalidSubcommand {
                 let err_msg = err.to_string();
                 if let Some(bad_cmd) = extract_bad_subcommand(&err_msg) {
-                    use genesis::suggestions::{CommandRegistry, SuggestionEngine};
-
                     let engine = SuggestionEngine::new();
                     let mut registry = CommandRegistry::new();
                     registry.register(
@@ -2156,9 +2151,10 @@ fn main() -> Result<ExitCode> {
 }
 
 /// Write the error to genesis::feedback::scratch and print the feedback footer.
+///
+/// Only called for errors that have NO Fix suggestion from the typo handler
+/// (the typo handler calls `std::process::exit(2)` directly, bypassing this).
 fn write_error_scratch_and_footer() {
-    use genesis::feedback::scratch::ErrorRecord;
-
     let argv: Vec<String> = std::env::args().collect();
     let record = ErrorRecord {
         ts: unix_epoch_seconds(),
@@ -2167,7 +2163,7 @@ fn write_error_scratch_and_footer() {
         footer: None,
         kind: "Error".to_string(),
     };
-    genesis::feedback::scratch::write_scratch_best_effort("pretender", &record);
+    scratch::write_scratch_best_effort("pretender", &record);
     eprintln!("Feedback: pretender feedback bug --from-last-error");
 }
 
