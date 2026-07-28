@@ -262,9 +262,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "genesis"
-version = "0.1.0"
-source = "git+https://github.com/charly-vibes/genesis?tag=v0.2.0#a59670bdc2ae6a8a15b6bec479a57bcbb1ffac47"
+name = "genesis-vibes"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bde28eaba5f9787e8952d5637dde4c6a265b52cd479a2afcdfb708ef44e0b13a"
 dependencies = [
  "clap",
  "miette",
@@ -501,7 +502,7 @@ version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
- "genesis",
+ "genesis-vibes",
  "git2",
  "globset",
  "rayon",
