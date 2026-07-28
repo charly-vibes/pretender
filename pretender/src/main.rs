@@ -79,6 +79,35 @@ enum Commands {
     Feedback(FeedbackArgs),
 }
 
+/// All valid pretender commands, kept in sync with the `Commands` enum.
+/// Update this list when adding a new command.
+const PRETENDER_COMMANDS: &[&str] = &[
+    "check",
+    "complexity",
+    "report",
+    "doctor",
+    "init",
+    "duplication",
+    "mutation",
+    "hooks",
+    "ci",
+    "plugins",
+    "explain",
+    "feedback",
+];
+
+#[test]
+fn test_pretender_commands_list_is_complete() {
+    // Compile-time assertion: if a new variant is added to Commands enum
+    // but not to PRETENDER_COMMANDS, this test will fail.
+    // Keep this count in sync with the number of Commands variants.
+    assert_eq!(
+        PRETENDER_COMMANDS.len(),
+        12,
+        "PRETENDER_COMMANDS must have one entry per Commands variant"
+    );
+}
+
 #[derive(Parser)]
 struct InitArgs {
     /// Skip prompts, use best-guess defaults
@@ -344,47 +373,41 @@ impl Executable for InitArgs {
 impl Executable for FeedbackArgs {
     fn run(&self) -> Result<ExitCode> {
         use genesis::feedback::gh::{create_issue, CreateIssueOptions};
-        use genesis::feedback::scratch::read_last_error;
 
         let repo = extract_repo_from_cargo_toml()?;
-        let kind_label = match self.kind {
-            FeedbackKind::Bug => "bug",
-            FeedbackKind::Feature => "feature",
-            FeedbackKind::Question => "question",
+        let (kind_label, title_suffix) = match self.kind {
+            FeedbackKind::Bug => ("bug", "Bug report"),
+            FeedbackKind::Feature => ("feature", "Feature request"),
+            FeedbackKind::Question => ("question", "Question"),
         };
 
-        let title = self.title.clone().unwrap_or_else(|| {
-            format!(
-                "[pretender] {}",
-                match self.kind {
-                    FeedbackKind::Bug => "Bug report",
-                    FeedbackKind::Feature => "Feature request",
-                    FeedbackKind::Question => "Question",
-                }
-            )
-        });
+        let tool_name = env!("CARGO_PKG_NAME");
+        let title = self
+            .title
+            .clone()
+            .unwrap_or_else(|| format!("[{tool_name}] {title_suffix}"));
 
-        let mut body = self.body.clone().unwrap_or_else(|| {
-            let mut b = String::new();
-            b.push_str("## Description\n\n");
-            b.push_str("<!-- Please describe the issue -->\n\n");
-            if self.from_last_error {
-                b.push_str("## Error context\n\n");
-                if let Some(record) = read_last_error("pretender") {
-                    b.push_str(&format!("Command: `{}`\n", record.argv.join(" ")));
-                    b.push_str(&format!("Exit code: {}\n", record.exit));
-                    if let Some(footer) = &record.footer {
-                        b.push_str(&format!("Footer: {footer}\n"));
-                    }
-                } else {
-                    b.push_str("No recent error found.\n");
-                }
-            }
-            b
-        });
+        let body = self
+            .body
+            .clone()
+            .unwrap_or_else(|| build_feedback_body(self.from_last_error));
 
         // Redact the body
-        body = genesis::feedback::redactor::redact(&body, None, None);
+        let body = genesis::feedback::redactor::redact(&body, None, None);
+
+        if self.dry_run {
+            let labels = ["agent-reported", kind_label, "has-repro"];
+            let labels_str = labels
+                .iter()
+                .map(|l| format!("--label '{}'", l))
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!(
+                "DRY RUN: would run: gh issue create --repo '{}' --title '{}' {} --body-file -",
+                repo, title, labels_str
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
 
         let opts = CreateIssueOptions {
             repo: repo.clone(),
@@ -395,36 +418,50 @@ impl Executable for FeedbackArgs {
                 kind_label.to_string(),
                 "has-repro".to_string(),
             ],
-            dry_run: self.dry_run,
+            dry_run: false,
         };
 
         match create_issue(&opts) {
-            Ok(result) => {
-                match result {
-                    genesis::feedback::gh::GhResult::Created { url, number } => {
-                        println!("Created issue #{number}: {url}");
-                    }
-                    genesis::feedback::gh::GhResult::FallbackUrl(url) => {
-                        println!("Open to create issue: {url}");
-                    }
-                    genesis::feedback::gh::GhResult::LocalFile(path) => {
-                        println!("Issue body written to: {}", path.display());
-                    }
+            Ok(result) => match result {
+                genesis::feedback::gh::GhResult::Created { url, number } => {
+                    println!("Created issue #{number}: {url}");
                 }
-                Ok(ExitCode::SUCCESS)
-            }
+                genesis::feedback::gh::GhResult::FallbackUrl(url) => {
+                    println!("Open to create issue: {url}");
+                }
+                genesis::feedback::gh::GhResult::LocalFile(path) => {
+                    println!("Issue body written to: {}", path.display());
+                }
+            },
             Err(msg) => {
-                if self.dry_run {
-                    // Dry-run returns the command in the error
-                    println!("{msg}");
-                    Ok(ExitCode::SUCCESS)
-                } else {
-                    eprintln!("Failed to create issue: {msg}");
-                    Ok(ExitCode::FAILURE)
-                }
+                eprintln!("Failed to create issue: {msg}");
+                return Ok(ExitCode::FAILURE);
             }
         }
+        Ok(ExitCode::SUCCESS)
     }
+}
+
+/// Build a default feedback issue body.
+fn build_feedback_body(from_last_error: bool) -> String {
+    use genesis::feedback::scratch;
+
+    let mut b = String::new();
+    b.push_str("## Description\n\n");
+    b.push_str("<!-- Please describe the issue -->\n\n");
+    if from_last_error {
+        b.push_str("## Error context\n\n");
+        if let Some(record) = scratch::read_last_error("pretender") {
+            b.push_str(&format!("Command: `{}`\n", record.argv.join(" ")));
+            b.push_str(&format!("Exit code: {}\n", record.exit));
+            if let Some(footer) = &record.footer {
+                b.push_str(&format!("Footer: {footer}\n"));
+            }
+        } else {
+            b.push_str("No recent error found.\n");
+        }
+    }
+    b
 }
 
 /// Extract the repository string from Cargo.toml's [package] repository field.
@@ -446,8 +483,12 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Cargo.toml missing [package].repository"))?;
     // Convert full URL to owner/repo format
+    // Handles: https://github.com/owner/repo, https://github.com/owner/repo.git,
+    //          git@github.com:owner/repo.git, ssh://git@github.com/owner/repo.git
     let repo_short = package
         .trim_start_matches("https://github.com/")
+        .trim_start_matches("git@github.com:")
+        .trim_start_matches("ssh://git@github.com/")
         .trim_end_matches(".git")
         .to_string();
     Ok(repo_short)
@@ -2081,21 +2122,8 @@ fn main() -> Result<ExitCode> {
                     let engine = SuggestionEngine::new();
                     let mut registry = CommandRegistry::new();
                     registry.register(
-                        "pretender",
-                        vec![
-                            "check".into(),
-                            "complexity".into(),
-                            "report".into(),
-                            "doctor".into(),
-                            "init".into(),
-                            "duplication".into(),
-                            "mutation".into(),
-                            "hooks".into(),
-                            "ci".into(),
-                            "plugins".into(),
-                            "explain".into(),
-                            "feedback".into(),
-                        ],
+                        env!("CARGO_PKG_NAME"),
+                        PRETENDER_COMMANDS.iter().map(|s| s.to_string()).collect(),
                     );
 
                     if let Some(suggestion) = engine.suggest_typo(&bad_cmd, &registry) {
@@ -2116,24 +2144,24 @@ fn main() -> Result<ExitCode> {
     match cli.command.run() {
         Ok(code) => {
             if code != ExitCode::SUCCESS {
-                write_error_scratch_and_footer(None, code);
+                write_error_scratch_and_footer();
             }
             Ok(code)
         }
         Err(err) => {
-            write_error_scratch_and_footer(Some(&err), ExitCode::FAILURE);
+            write_error_scratch_and_footer();
             Err(err)
         }
     }
 }
 
 /// Write the error to genesis::feedback::scratch and print the feedback footer.
-fn write_error_scratch_and_footer(_err: Option<&anyhow::Error>, _code: ExitCode) {
+fn write_error_scratch_and_footer() {
     use genesis::feedback::scratch::ErrorRecord;
 
     let argv: Vec<String> = std::env::args().collect();
     let record = ErrorRecord {
-        ts: chrono_now_iso8601(),
+        ts: unix_epoch_seconds(),
         argv: argv.clone(),
         exit: 1,
         footer: None,
@@ -2143,53 +2171,13 @@ fn write_error_scratch_and_footer(_err: Option<&anyhow::Error>, _code: ExitCode)
     eprintln!("Feedback: pretender feedback bug --from-last-error");
 }
 
-/// Simple ISO 8601 timestamp without external dependency.
-fn chrono_now_iso8601() -> String {
-    let now = std::time::SystemTime::now()
+/// Simple Unix-epoch-seconds timestamp.
+fn unix_epoch_seconds() -> String {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    let mut y = 1970i64;
-    let mut remaining = days as i64;
-    loop {
-        let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if remaining < days_in_year {
-            break;
-        }
-        remaining -= days_in_year;
-        y += 1;
-    }
-    let month_days = if is_leap(y) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut m = 0usize;
-    for (i, &md) in month_days.iter().enumerate() {
-        if remaining < md as i64 {
-            m = i + 1;
-            break;
-        }
-        remaining -= md as i64;
-    }
-    if m == 0 {
-        m = 12;
-    }
-    let d = (remaining + 1) as u8;
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, hours, minutes, seconds
-    )
-}
-
-fn is_leap(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+        .unwrap_or_default()
+        .as_secs()
+        .to_string()
 }
 
 /// Extract the bad subcommand name from clap's error message.
