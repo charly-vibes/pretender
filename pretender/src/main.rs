@@ -1930,6 +1930,56 @@ fn write_recurrence_hints(
 }
 
 fn main() -> Result<ExitCode> {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            if err.kind() == clap::error::ErrorKind::InvalidSubcommand {
+                let err_msg = err.to_string();
+                if let Some(bad_cmd) = extract_bad_subcommand(&err_msg) {
+                    use genesis::suggestions::{CommandRegistry, SuggestionEngine};
+
+                    let engine = SuggestionEngine::new();
+                    let mut registry = CommandRegistry::new();
+                    registry.register(
+                        "pretender",
+                        vec![
+                            "check".into(),
+                            "complexity".into(),
+                            "report".into(),
+                            "doctor".into(),
+                            "init".into(),
+                            "duplication".into(),
+                            "mutation".into(),
+                            "hooks".into(),
+                            "ci".into(),
+                            "plugins".into(),
+                            "explain".into(),
+                        ],
+                    );
+
+                    if let Some(suggestion) = engine.suggest_typo(&bad_cmd, &registry) {
+                        eprintln!("error: unrecognized subcommand '{bad_cmd}'");
+                        eprintln!();
+                        eprintln!("{}", suggestion.message());
+                        if let Some(footer) = suggestion.footer() {
+                            eprintln!("{footer}");
+                        }
+                        std::process::exit(2);
+                    }
+                }
+            }
+            err.exit();
+        }
+    };
     cli.command.run()
+}
+
+/// Extract the bad subcommand name from clap's error message.
+///
+/// Clap format: "error: unrecognized subcommand 'complxity'"
+fn extract_bad_subcommand(msg: &str) -> Option<String> {
+    let quote_start = msg.find('\'')?;
+    let rest = &msg[quote_start + 1..];
+    let quote_end = rest.find('\'')?;
+    Some(rest[..quote_end].to_string())
 }

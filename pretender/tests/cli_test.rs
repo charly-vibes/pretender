@@ -838,6 +838,24 @@ fn test_stub_subcommands_exit_two() {
 }
 
 #[test]
+fn test_typo_suggestion_for_misspelled_command() {
+    let output = Command::new(pretender_bin())
+        .args(["complxity"])
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        !output.status.success(),
+        "typo should exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Did you mean") && stderr.contains("complexity"),
+        "stderr should contain 'Did you mean complexity?'; got: {stderr}"
+    );
+}
+
+#[test]
 fn test_explain_known_metric_prints_doc() {
     let output = Command::new(pretender_bin())
         .args(["explain", "cyclomatic"])
