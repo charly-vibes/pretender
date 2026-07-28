@@ -518,7 +518,9 @@ impl Executable for MutationArgs {
 
         match self.format {
             ReportFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(&report)?);
+                use genesis::envelope::{Envelope, EnvelopeKind};
+                let env = Envelope::success(EnvelopeKind::Check, &report, vec![], vec![]);
+                println!("{}", serde_json::to_string_pretty(&env)?);
             }
             _ => print_mutation_report(&report),
         }
@@ -1556,7 +1558,15 @@ fn html_escape(value: &str) -> String {
 }
 
 fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
-    serde_json::to_writer_pretty(&mut *sink, report)?;
+    use genesis::envelope::{Envelope, EnvelopeKind};
+
+    let env = Envelope::success(
+        EnvelopeKind::Check,
+        report,
+        vec![],
+        vec![],
+    );
+    serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;
     Ok(())
 }

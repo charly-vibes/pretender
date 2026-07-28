@@ -279,18 +279,121 @@ fn test_check_command_json_output() {
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
 
-    assert_eq!(json["files"].as_array().map(Vec::len), Some(1));
+    assert_eq!(json["data"]["files"].as_array().map(Vec::len), Some(1));
     assert_eq!(
-        json["files"][0]["path"].as_str(),
+        json["data"]["files"][0]["path"].as_str(),
         Some(staged.to_string_lossy().as_ref())
     );
     assert_eq!(
-        json["files"][0]["units"][0]["name"].as_str(),
+        json["data"]["files"][0]["units"][0]["name"].as_str(),
         Some("simple")
     );
     assert_eq!(
-        json["files"][0]["units"][2]["metrics"]["cyclomatic"].as_u64(),
+        json["data"]["files"][0]["units"][2]["metrics"]["cyclomatic"].as_u64(),
         Some(6)
+    );
+}
+
+#[test]
+fn test_check_json_output_has_envelope_shape() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+
+    // Verify genesis envelope shape
+    assert!(
+        json.get("ok").is_some(),
+        "envelope must have 'ok' field"
+    );
+    assert_eq!(json["ok"], true, "successful check should have ok=true");
+    assert_eq!(
+        json["envelope_version"], "0.1",
+        "envelope_version should be 0.1"
+    );
+    assert_eq!(
+        json["envelope_kind"], "check",
+        "envelope_kind should be 'check'"
+    );
+    assert!(
+        json.get("cli_version").is_some(),
+        "envelope must have 'cli_version'"
+    );
+    assert!(
+        json.get("data").is_some(),
+        "envelope must have 'data' field"
+    );
+    assert!(
+        json.get("warnings").is_some(),
+        "envelope must have 'warnings' field"
+    );
+    assert!(
+        json.get("hints").is_some(),
+        "envelope must have 'hints' field"
+    );
+    assert!(
+        json.get("meta").is_some(),
+        "envelope must have 'meta' field"
+    );
+    // Verify existing data is preserved within the envelope
+    assert_eq!(
+        json["data"]["files"].as_array().map(Vec::len),
+        Some(1),
+        "data.files should have 1 file"
+    );
+}
+
+#[test]
+fn test_doctor_json_output_has_envelope_shape() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let output = doctor_in(&dir, &["--format", "json"])
+        .output()
+        .expect("run doctor");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
+
+    // Verify genesis envelope shape
+    assert!(
+        json.get("ok").is_some(),
+        "envelope must have 'ok' field"
+    );
+    assert_eq!(json["ok"], true, "doctor ran successfully, ok=true");
+    assert_eq!(
+        json["envelope_version"], "0.1",
+        "envelope_version should be 0.1"
+    );
+    assert_eq!(
+        json["envelope_kind"], "doctor",
+        "envelope_kind should be 'doctor'"
+    );
+    assert!(
+        json.get("data").is_some(),
+        "envelope must have 'data' field"
+    );
+    // Verify existing data is preserved within the envelope
+    let checks = json["data"].as_array().expect("data should be array");
+    let config_present = checks
+        .iter()
+        .find(|c| c["name"] == "Config present")
+        .expect("Config present check missing");
+    assert_eq!(
+        config_present["status"], "fail",
+        "Config present should have status=fail"
     );
 }
 
@@ -432,7 +535,7 @@ fn test_check_output_flag_writes_to_file() {
     let written = std::fs::read_to_string(&out_path).expect("report file should exist");
     let json: serde_json::Value =
         serde_json::from_str(&written).expect("report file should be valid json");
-    assert_eq!(json["files"].as_array().map(Vec::len), Some(1));
+    assert_eq!(json["data"]["files"].as_array().map(Vec::len), Some(1));
 }
 
 #[test]
@@ -1328,7 +1431,7 @@ fn test_smell_call_weights_elevate_abc() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("invalid json: {e}\nstdout: {stdout}"));
-    let units = json["files"][0]["units"].as_array().expect("units array");
+    let units = json["data"]["files"][0]["units"].as_array().expect("units array");
     let abc_for = |name: &str| -> f64 {
         units
             .iter()
@@ -1683,7 +1786,7 @@ fn test_external_plugin_ruff_json_findings() {
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("valid json output");
 
-    let files = json["files"].as_array().expect("files array");
+    let files = json["data"]["files"].as_array().expect("files array");
     assert_eq!(files.len(), 1);
     let external = files[0]["external_findings"]
         .as_array()
@@ -2021,7 +2124,7 @@ fn test_doctor_json_missing_config_exits_1_with_fail_status() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).expect("output should be valid JSON");
-    let checks = parsed.as_array().expect("JSON root should be array");
+    let checks = parsed["data"].as_array().expect("JSON data should be array");
     let config_present = checks
         .iter()
         .find(|c| c["name"] == "Config present")
