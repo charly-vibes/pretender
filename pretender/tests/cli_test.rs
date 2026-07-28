@@ -874,6 +874,24 @@ fn test_feedback_dry_run_prints_body_and_gh_line() {
 }
 
 #[test]
+fn test_non_zero_exit_shows_feedback_footer() {
+    let output = Command::new(pretender_bin())
+        .args(["explain", "not_a_real_metric"])
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        !output.status.success(),
+        "unknown metric should exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Feedback") || stderr.contains("feedback bug"),
+        "stderr should suggest using feedback; got: {stderr}"
+    );
+}
+
+#[test]
 fn test_explain_known_metric_prints_doc() {
     let output = Command::new(pretender_bin())
         .args(["explain", "cyclomatic"])

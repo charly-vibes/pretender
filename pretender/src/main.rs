@@ -2090,6 +2090,7 @@ fn main() -> Result<ExitCode> {
                             "ci".into(),
                             "plugins".into(),
                             "explain".into(),
+                            "feedback".into(),
                         ],
                     );
 
@@ -2107,7 +2108,84 @@ fn main() -> Result<ExitCode> {
             err.exit();
         }
     };
-    cli.command.run()
+
+    match cli.command.run() {
+        Ok(code) => {
+            if code != ExitCode::SUCCESS {
+                write_error_scratch_and_footer(None, code);
+            }
+            Ok(code)
+        }
+        Err(err) => {
+            write_error_scratch_and_footer(Some(&err), ExitCode::FAILURE);
+            Err(err)
+        }
+    }
+}
+
+/// Write the error to genesis::feedback::scratch and print the feedback footer.
+fn write_error_scratch_and_footer(_err: Option<&anyhow::Error>, _code: ExitCode) {
+    use genesis::feedback::scratch::ErrorRecord;
+
+    let argv: Vec<String> = std::env::args().collect();
+    let record = ErrorRecord {
+        ts: chrono_now_iso8601(),
+        argv: argv.clone(),
+        exit: 1,
+        footer: None,
+        kind: "Error".to_string(),
+    };
+    genesis::feedback::scratch::write_scratch_best_effort("pretender", &record);
+    eprintln!("Feedback: pretender feedback bug --from-last-error");
+}
+
+/// Simple ISO 8601 timestamp without external dependency.
+fn chrono_now_iso8601() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let days = secs / 86400;
+    let time_secs = secs % 86400;
+    let hours = time_secs / 3600;
+    let minutes = (time_secs % 3600) / 60;
+    let seconds = time_secs % 60;
+
+    let mut y = 1970i64;
+    let mut remaining = days as i64;
+    loop {
+        let days_in_year = if is_leap(y) { 366 } else { 365 };
+        if remaining < days_in_year {
+            break;
+        }
+        remaining -= days_in_year;
+        y += 1;
+    }
+    let month_days = if is_leap(y) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut m = 0usize;
+    for (i, &md) in month_days.iter().enumerate() {
+        if remaining < md as i64 {
+            m = i + 1;
+            break;
+        }
+        remaining -= md as i64;
+    }
+    if m == 0 {
+        m = 12;
+    }
+    let d = (remaining + 1) as u8;
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hours, minutes, seconds
+    )
+}
+
+fn is_leap(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 /// Extract the bad subcommand name from clap's error message.
