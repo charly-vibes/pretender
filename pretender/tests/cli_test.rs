@@ -313,10 +313,7 @@ fn test_check_json_output_has_envelope_shape() {
         serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
 
     // Verify genesis envelope shape
-    assert!(
-        json.get("ok").is_some(),
-        "envelope must have 'ok' field"
-    );
+    assert!(json.get("ok").is_some(), "envelope must have 'ok' field");
     assert_eq!(json["ok"], true, "successful check should have ok=true");
     assert_eq!(
         json["envelope_version"], "0.1",
@@ -368,10 +365,7 @@ fn test_doctor_json_output_has_envelope_shape() {
         serde_json::from_str(&stdout).expect("output should be valid JSON");
 
     // Verify genesis envelope shape
-    assert!(
-        json.get("ok").is_some(),
-        "envelope must have 'ok' field"
-    );
+    assert!(json.get("ok").is_some(), "envelope must have 'ok' field");
     assert_eq!(json["ok"], true, "doctor ran successfully, ok=true");
     assert_eq!(
         json["envelope_version"], "0.1",
@@ -844,10 +838,7 @@ fn test_typo_suggestion_for_misspelled_command() {
         .output()
         .expect("failed to execute process");
 
-    assert!(
-        !output.status.success(),
-        "typo should exit non-zero"
-    );
+    assert!(!output.status.success(), "typo should exit non-zero");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("Did you mean") && stderr.contains("complexity"),
@@ -1098,10 +1089,7 @@ fn test_init_injects_managed_blocks() {
         String::from_utf8_lossy(&output.stderr)
     );
     let agents_path = dir.join("AGENTS.md");
-    assert!(
-        agents_path.exists(),
-        "AGENTS.md should be created by init"
-    );
+    assert!(agents_path.exists(), "AGENTS.md should be created by init");
     let content = std::fs::read_to_string(&agents_path).expect("read AGENTS.md");
     assert!(
         content.contains("<!-- WAI:START -->"),
@@ -1531,7 +1519,9 @@ fn test_smell_call_weights_elevate_abc() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("invalid json: {e}\nstdout: {stdout}"));
-    let units = json["data"]["files"][0]["units"].as_array().expect("units array");
+    let units = json["data"]["files"][0]["units"]
+        .as_array()
+        .expect("units array");
     let abc_for = |name: &str| -> f64 {
         units
             .iter()
@@ -2224,7 +2214,9 @@ fn test_doctor_json_missing_config_exits_1_with_fail_status() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).expect("output should be valid JSON");
-    let checks = parsed["data"].as_array().expect("JSON data should be array");
+    let checks = parsed["data"]
+        .as_array()
+        .expect("JSON data should be array");
     let config_present = checks
         .iter()
         .find(|c| c["name"] == "Config present")

@@ -435,11 +435,14 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
     } else {
         "Cargo.toml"
     };
-    let content = std::fs::read_to_string(cargo_path)
-        .context(format!("failed to read {cargo_path}"))?;
-    let value: toml::Value = content.parse::<toml::Value>()
+    let content =
+        std::fs::read_to_string(cargo_path).context(format!("failed to read {cargo_path}"))?;
+    let value: toml::Value = content
+        .parse::<toml::Value>()
         .context("failed to parse Cargo.toml")?;
-    let package = value.get("package").and_then(|v| v.get("repository"))
+    let package = value
+        .get("package")
+        .and_then(|v| v.get("repository"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Cargo.toml missing [package].repository"))?;
     // Convert full URL to owner/repo format
@@ -460,12 +463,13 @@ fn inject_managed_blocks() -> Result<()> {
     let injector = BlockInjector::new(reg);
 
     let agents_path = std::path::Path::new("AGENTS.md");
-    let wai_content = "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n"
-        .to_string();
-    let openspec_content = "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
-        .to_string();
-    let dont_content = "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n"
-        .to_string();
+    let wai_content =
+        "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n".to_string();
+    let openspec_content =
+        "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
+            .to_string();
+    let dont_content =
+        "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n".to_string();
 
     injector
         .inject(agents_path, "WAI", &wai_content)
@@ -1734,12 +1738,7 @@ fn html_escape(value: &str) -> String {
 fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
     use genesis::envelope::{Envelope, EnvelopeKind};
 
-    let env = Envelope::success(
-        EnvelopeKind::Check,
-        report,
-        vec![],
-        vec![],
-    );
+    let env = Envelope::success(EnvelopeKind::Check, report, vec![], vec![]);
     serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;
     Ok(())

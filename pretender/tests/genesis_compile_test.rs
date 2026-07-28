@@ -3,7 +3,7 @@
 /// (envelope, suggestions, feedback) are stable.
 #[test]
 fn genesis_envelope_accessible() {
-    use genesis::envelope::{Envelope, EnvelopeKind, ErrorResult, RemediationEntry, set_author};
+    use genesis::envelope::{set_author, Envelope, EnvelopeKind, ErrorResult, RemediationEntry};
 
     // Create a success envelope
     let env = Envelope::success(
@@ -50,20 +50,27 @@ fn genesis_suggestions_accessible() {
     // Create an engine and registry
     let engine = SuggestionEngine::new();
     let mut registry = CommandRegistry::new();
-    registry.register("pretender", vec![
-        "check".into(),
-        "complexity".into(),
-        "report".into(),
-        "doctor".into(),
-        "init".into(),
-        "duplication".into(),
-        "mutation".into(),
-    ]);
+    registry.register(
+        "pretender",
+        vec![
+            "check".into(),
+            "complexity".into(),
+            "report".into(),
+            "doctor".into(),
+            "init".into(),
+            "duplication".into(),
+            "mutation".into(),
+        ],
+    );
 
     // Typo detection
     let suggestion = engine.suggest_typo("complxity", &registry);
     assert!(suggestion.is_some());
-    if let Some(Suggestion::DidYouMean { original, suggestion }) = suggestion {
+    if let Some(Suggestion::DidYouMean {
+        original,
+        suggestion,
+    }) = suggestion
+    {
         assert_eq!(original, "complxity");
         assert_eq!(suggestion, "complexity");
     }
@@ -90,9 +97,8 @@ fn genesis_feedback_modules_accessible() {
     genesis::feedback::scratch::write_scratch_best_effort("pretender", &record);
 
     // Verify feedback::redactor compiles
-    let _reduced = genesis::feedback::redactor::reduce_git_remote_url(
-        "https://github.com/owner/repo.git",
-    );
+    let _reduced =
+        genesis::feedback::redactor::reduce_git_remote_url("https://github.com/owner/repo.git");
 }
 
 #[test]

@@ -236,12 +236,7 @@ fn print_human(results: &[CheckResult]) {
 fn print_json(results: &[CheckResult]) -> Result<()> {
     use genesis::envelope::{Envelope, EnvelopeKind};
 
-    let env = Envelope::success(
-        EnvelopeKind::Doctor,
-        results,
-        vec![],
-        vec![],
-    );
+    let env = Envelope::success(EnvelopeKind::Doctor, results, vec![], vec![]);
     let json = serde_json::to_string_pretty(&env)?;
     println!("{json}");
     Ok(())
