@@ -75,6 +75,8 @@ enum Commands {
     Explain(ExplainArgs),
     /// Diagnose configuration, hooks, and plugin health
     Doctor(DoctorArgs),
+    /// File a structured issue against pretender's upstream repo
+    Feedback(FeedbackArgs),
 }
 
 #[derive(Parser)]
@@ -239,6 +241,35 @@ impl From<ModeArg> for Mode {
     }
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum FeedbackKind {
+    Bug,
+    Feature,
+    Question,
+}
+
+#[derive(Parser)]
+struct FeedbackArgs {
+    /// Kind of issue to file
+    #[arg(value_enum)]
+    kind: FeedbackKind,
+    /// Print what would be done without creating the issue
+    #[arg(long)]
+    dry_run: bool,
+    /// Read error context from last error scratch
+    #[arg(long)]
+    from_last_error: bool,
+    /// Override issue title (default: auto-generated from kind)
+    #[arg(long)]
+    title: Option<String>,
+    /// Override issue body (default: auto-generated)
+    #[arg(long)]
+    body: Option<String>,
+    /// Skip confirmation prompt
+    #[arg(long)]
+    yes: bool,
+}
+
 trait Executable {
     fn run(&self) -> Result<ExitCode>;
 }
@@ -257,6 +288,7 @@ impl Executable for Commands {
             Commands::Plugins(_) => not_implemented("plugins", "pretender-07m"),
             Commands::Explain(args) => args.run(),
             Commands::Doctor(args) => args.run(),
+            Commands::Feedback(args) => args.run(),
         }
     }
 }
@@ -307,6 +339,110 @@ impl Executable for InitArgs {
 
         Ok(ExitCode::SUCCESS)
     }
+}
+
+impl Executable for FeedbackArgs {
+    fn run(&self) -> Result<ExitCode> {
+        use genesis::feedback::gh::{create_issue, CreateIssueOptions};
+        use genesis::feedback::scratch::read_last_error;
+
+        let repo = extract_repo_from_cargo_toml()?;
+        let kind_label = match self.kind {
+            FeedbackKind::Bug => "bug",
+            FeedbackKind::Feature => "feature",
+            FeedbackKind::Question => "question",
+        };
+
+        let title = self.title.clone().unwrap_or_else(|| {
+            format!(
+                "[pretender] {}",
+                match self.kind {
+                    FeedbackKind::Bug => "Bug report",
+                    FeedbackKind::Feature => "Feature request",
+                    FeedbackKind::Question => "Question",
+                }
+            )
+        });
+
+        let mut body = self.body.clone().unwrap_or_else(|| {
+            let mut b = String::new();
+            b.push_str("## Description\n\n");
+            b.push_str("<!-- Please describe the issue -->\n\n");
+            if self.from_last_error {
+                b.push_str("## Error context\n\n");
+                if let Some(record) = read_last_error("pretender") {
+                    b.push_str(&format!("Command: `{}`\n", record.argv.join(" ")));
+                    b.push_str(&format!("Exit code: {}\n", record.exit));
+                    if let Some(footer) = &record.footer {
+                        b.push_str(&format!("Footer: {footer}\n"));
+                    }
+                } else {
+                    b.push_str("No recent error found.\n");
+                }
+            }
+            b
+        });
+
+        // Redact the body
+        body = genesis::feedback::redactor::redact(&body, None, None);
+
+        let opts = CreateIssueOptions {
+            repo: repo.clone(),
+            title: title.clone(),
+            body,
+            labels: vec![
+                "agent-reported".to_string(),
+                kind_label.to_string(),
+                "has-repro".to_string(),
+            ],
+            dry_run: self.dry_run,
+        };
+
+        match create_issue(&opts) {
+            Ok(result) => {
+                match result {
+                    genesis::feedback::gh::GhResult::Created { url, number } => {
+                        println!("Created issue #{number}: {url}");
+                    }
+                    genesis::feedback::gh::GhResult::FallbackUrl(url) => {
+                        println!("Open to create issue: {url}");
+                    }
+                    genesis::feedback::gh::GhResult::LocalFile(path) => {
+                        println!("Issue body written to: {}", path.display());
+                    }
+                }
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(msg) => {
+                if self.dry_run {
+                    // Dry-run returns the command in the error
+                    println!("{msg}");
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    eprintln!("Failed to create issue: {msg}");
+                    Ok(ExitCode::FAILURE)
+                }
+            }
+        }
+    }
+}
+
+/// Extract the repository string from Cargo.toml's [package] repository field.
+fn extract_repo_from_cargo_toml() -> Result<String> {
+    let content = std::fs::read_to_string("Cargo.toml")
+        .context("failed to read Cargo.toml")?;
+    let value: toml::Value = content.parse::<toml::Value>()
+        .context("failed to parse Cargo.toml")?;
+    let repo = value["package"]["repository"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Cargo.toml missing [package].repository"))?
+        .to_string();
+    // Convert full URL to owner/repo format
+    let repo_short = repo
+        .trim_start_matches("https://github.com/")
+        .trim_end_matches(".git")
+        .to_string();
+    Ok(repo_short)
 }
 
 fn inject_managed_blocks() -> Result<()> {

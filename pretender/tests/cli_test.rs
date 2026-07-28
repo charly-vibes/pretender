@@ -856,6 +856,24 @@ fn test_typo_suggestion_for_misspelled_command() {
 }
 
 #[test]
+fn test_feedback_dry_run_prints_body_and_gh_line() {
+    let output = Command::new(pretender_bin())
+        .args(["feedback", "bug", "--dry-run"])
+        .output()
+        .expect("failed to execute process");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("DRY RUN"),
+        "dry run should print DRY RUN; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("gh issue create"),
+        "dry run should print gh command; got: {stdout}"
+    );
+}
+
+#[test]
 fn test_explain_known_metric_prints_doc() {
     let output = Command::new(pretender_bin())
         .args(["explain", "cyclomatic"])
