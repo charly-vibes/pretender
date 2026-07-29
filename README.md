@@ -1,5 +1,7 @@
 # pretender
 
+[![tracked with wai](https://img.shields.io/badge/tracked%20with-wai-blue)](https://github.com/charly-vibes/wai)
+
 Pretender is a Rust CLI for structural code-quality checks across multiple languages.
 
 ## Installation
