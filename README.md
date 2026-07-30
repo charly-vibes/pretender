@@ -1,3 +1,15 @@
+> *"Send in your skeletons*
+> *Sing as their bones go marchin' in again*
+> *The need you buried deep*
+> *The secrets that you keep are ever ready*
+> *Are you ready?*
+> *I'm finished makin' sense*
+> *Done pleading ignorance, that whole defense*
+> *Spinning infinity, boy*
+> *The wheel is spinnin' me, it's never ending, never ending*
+> *Same old story"*
+> — Foo Fighters
+
 # pretender
 
 [![tracked with wai](https://img.shields.io/badge/tracked%20with-wai-blue)](https://github.com/charly-vibes/wai)
