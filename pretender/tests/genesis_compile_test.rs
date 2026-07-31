@@ -194,33 +194,25 @@ fn genesis_guide_accessible() {
 #[test]
 fn genesis_cli_accessible() {
     // Verify the module and its key functions compile
-    // (real usage is at src/main.rs:362 and src/main.rs:2534)
+    // (real usage in main.rs: Completions variant handler and version-json pre-parse guard)
     let _ = genesis::cli::generate_completions;
     let _ = genesis::cli::maybe_print_version_json;
 }
 
 #[test]
 fn genesis_scaffold_accessible() {
-    use genesis::scaffold::Scaffold;
-    use std::path::Path;
-
-    // Scaffold::new creates a builder for the given directory
-    let _scaffold = Scaffold::new(Path::new("/tmp"));
+    // Verify Scaffold::new compiles by calling with a concrete path.
+    // Use a type annotation to satisfy generic resolution.
+    let _: genesis::scaffold::Scaffold =
+        genesis::scaffold::Scaffold::new(std::path::Path::new("/nonexistent"));
 }
 
 #[test]
 fn genesis_discovery_accessible() {
-    use genesis::discovery::register;
-    use std::path::Path;
-
-    // register function signature compiles
-    let _ = register(
-        Path::new("/tmp"),
-        "test-tool",
-        "A test tool",
-        "file",
-        "test.toml",
-    );
+    // Verify the module and its key functions compile.
+    // NOTE: Avoid calling register() here since it writes .genesis/tools.toml
+    // (side effect unsuitable for a compile-only test).
+    let _ = genesis::discovery::register;
 }
 
 #[test]
@@ -229,6 +221,7 @@ fn genesis_fixture_accessible() {
 
     let fixture = Fixture::new()
         .with_file("hello.txt", "world")
+        .with_marker(".git")
         .build()
         .expect("fixture should build");
 
@@ -236,6 +229,9 @@ fn genesis_fixture_accessible() {
     assert!(path.exists(), "fixture file should exist on disk");
     let content = std::fs::read_to_string(&path).expect("should read fixture file");
     assert_eq!(content, "world", "fixture file content should match");
+
+    let marker = fixture.path(".git");
+    assert!(marker.exists(), "fixture marker dir should exist on disk");
 }
 
 #[test]
