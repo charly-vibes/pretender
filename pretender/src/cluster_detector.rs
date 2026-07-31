@@ -46,19 +46,27 @@ pub fn detect(units: &[CodeUnit], min_size: u32) -> Vec<LazyCluster> {
             let mut branch_counts: std::collections::HashMap<String, u32> =
                 std::collections::HashMap::new();
 
-            collect_stats(&unit.body, &mut call_count, &mut callee_names, &mut branch_counts);
+            collect_stats(
+                &unit.body,
+                &mut call_count,
+                &mut callee_names,
+                &mut branch_counts,
+            );
 
             let mut branch_counts_vec: Vec<(String, u32)> = branch_counts.into_iter().collect();
             branch_counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
 
             callee_names.sort();
 
-            (idx, Fingerprint {
-                call_count,
-                callee_names,
-                assertion_count,
-                branch_counts: branch_counts_vec,
-            })
+            (
+                idx,
+                Fingerprint {
+                    call_count,
+                    callee_names,
+                    assertion_count,
+                    branch_counts: branch_counts_vec,
+                },
+            )
         })
         .collect();
 
@@ -132,7 +140,10 @@ mod tests {
     fn make_call(callee: &str) -> Node {
         Node::Call(CallSite {
             callee: callee.to_string(),
-            span: Span { start_line: 1, end_line: 1 },
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
             smell_weight: 1.0,
         })
     }
@@ -140,7 +151,10 @@ mod tests {
     fn make_branch(kind: BranchKind) -> Node {
         Node::Branch(Branch {
             kind,
-            span: Span { start_line: 1, end_line: 1 },
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
             nesting_at: 0,
             sequence_id: None,
             cyclomatic_weight: 1,
@@ -152,10 +166,16 @@ mod tests {
         CodeUnit {
             name: name.to_string(),
             kind: crate::model::UnitKind::Function,
-            span: Span { start_line: start, end_line: start + 2 },
+            span: Span {
+                start_line: start,
+                end_line: start + 2,
+            },
             parameters: vec![],
             body: Block {
-                span: Span { start_line: start, end_line: start + 2 },
+                span: Span {
+                    start_line: start,
+                    end_line: start + 2,
+                },
                 nesting: 0,
                 children: body_children,
             },
@@ -168,9 +188,24 @@ mod tests {
     #[test]
     fn detects_cluster_of_three() {
         let units = vec![
-            make_unit("test_add_1", vec![make_call("add"), make_branch(BranchKind::If)], 2, 1),
-            make_unit("test_add_2", vec![make_call("add"), make_branch(BranchKind::If)], 2, 5),
-            make_unit("test_add_3", vec![make_call("add"), make_branch(BranchKind::If)], 2, 9),
+            make_unit(
+                "test_add_1",
+                vec![make_call("add"), make_branch(BranchKind::If)],
+                2,
+                1,
+            ),
+            make_unit(
+                "test_add_2",
+                vec![make_call("add"), make_branch(BranchKind::If)],
+                2,
+                5,
+            ),
+            make_unit(
+                "test_add_3",
+                vec![make_call("add"), make_branch(BranchKind::If)],
+                2,
+                9,
+            ),
         ];
         let clusters = detect(&units, 3);
         assert_eq!(clusters.len(), 1);
@@ -180,9 +215,28 @@ mod tests {
     #[test]
     fn different_structure_not_clustered() {
         let units = vec![
-            make_unit("test_a", vec![make_call("add"), make_branch(BranchKind::If)], 2, 1),
-            make_unit("test_b", vec![make_call("add"), make_branch(BranchKind::If), make_branch(BranchKind::Loop)], 2, 5),
-            make_unit("test_c", vec![make_call("add"), make_branch(BranchKind::If)], 2, 9),
+            make_unit(
+                "test_a",
+                vec![make_call("add"), make_branch(BranchKind::If)],
+                2,
+                1,
+            ),
+            make_unit(
+                "test_b",
+                vec![
+                    make_call("add"),
+                    make_branch(BranchKind::If),
+                    make_branch(BranchKind::Loop),
+                ],
+                2,
+                5,
+            ),
+            make_unit(
+                "test_c",
+                vec![make_call("add"), make_branch(BranchKind::If)],
+                2,
+                9,
+            ),
         ];
         let clusters = detect(&units, 3);
         // Different branch structure -> no cluster of 3

@@ -21,8 +21,8 @@ mod julia;
 mod metrics;
 mod mock_detector;
 mod model;
-mod mutation;
 mod mutability_metrics;
+mod mutation;
 mod plugin;
 mod primitive_obsession;
 mod python;
@@ -669,7 +669,10 @@ impl Executable for CheckArgs {
 
         // Run coupling analysis if thresholds are configured
         let coupling_result = coupling::analyze(
-            &modules.iter().map(|(p, m)| (p.clone(), m)).collect::<Vec<_>>(),
+            &modules
+                .iter()
+                .map(|(p, m)| (p.clone(), m))
+                .collect::<Vec<_>>(),
             &config.thresholds.coupling,
         );
         report.modules = coupling_result
@@ -1354,7 +1357,8 @@ fn analyze_path(
 
     // Lazy test cluster detection
     if role == Role::Test && config.thresholds.test.lazy_cluster_min > 0 {
-        let clusters = cluster_detector::detect(&module.units, config.thresholds.test.lazy_cluster_min);
+        let clusters =
+            cluster_detector::detect(&module.units, config.thresholds.test.lazy_cluster_min);
         for cluster in &clusters {
             file_violations.push(ViolationReport {
                 metric: "lazy_cluster".to_string(),

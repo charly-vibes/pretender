@@ -172,7 +172,11 @@ pub fn detect_void_mutators(
         let is_method = match language {
             Language::Rust => unit.name.contains("self") || has_self_param(&unit.parameters),
             Language::Python => unit.name.contains("self") || has_self_param(&unit.parameters),
-            Language::Java | Language::Cpp | Language::CSharp | Language::JavaScript | Language::TypeScript => true, // Assume all class members are methods
+            Language::Java
+            | Language::Cpp
+            | Language::CSharp
+            | Language::JavaScript
+            | Language::TypeScript => true, // Assume all class members are methods
             _ => false,
         };
 
@@ -203,9 +207,11 @@ pub fn detect_void_mutators(
             Language::Rust | Language::Python => {
                 body_text.contains("self.") && body_text.contains(" = ")
             }
-            Language::Java | Language::Cpp | Language::CSharp | Language::JavaScript | Language::TypeScript => {
-                body_text.contains("this.") && body_text.contains(" = ")
-            }
+            Language::Java
+            | Language::Cpp
+            | Language::CSharp
+            | Language::JavaScript
+            | Language::TypeScript => body_text.contains("this.") && body_text.contains(" = "),
             _ => false,
         };
 
@@ -244,8 +250,7 @@ fn is_void_return(body_text: &str, language: &Language, _void_keywords: &[&str])
         Language::Java | Language::Cpp | Language::CSharp => {
             // Check if the method signature contains `void`
             let first_line = body_text.lines().next().unwrap_or("");
-            first_line.trim().starts_with("void ")
-                || first_line.contains("void ")
+            first_line.trim().starts_with("void ") || first_line.contains("void ")
         }
         Language::JavaScript | Language::TypeScript => {
             // Check for no return statement
@@ -290,14 +295,26 @@ mod tests {
         CodeUnit {
             name: name.to_string(),
             kind,
-            span: Span { start_line: start, end_line: end },
-            parameters: params.into_iter().map(|p| Parameter {
-                name: p.to_string(),
-                span: Span { start_line: start, end_line: start },
-                type_name: None,
-            }).collect(),
+            span: Span {
+                start_line: start,
+                end_line: end,
+            },
+            parameters: params
+                .into_iter()
+                .map(|p| Parameter {
+                    name: p.to_string(),
+                    span: Span {
+                        start_line: start,
+                        end_line: start,
+                    },
+                    type_name: None,
+                })
+                .collect(),
             body: crate::model::Block {
-                span: Span { start_line: start, end_line: end },
+                span: Span {
+                    start_line: start,
+                    end_line: end,
+                },
                 nesting: 0,
                 children: vec![],
             },
@@ -316,7 +333,13 @@ impl MyStruct {
     }
 }
 "#;
-        let units = vec![make_unit("update", UnitKind::Method, 3, 5, vec!["&mut self", "value"])];
+        let units = vec![make_unit(
+            "update",
+            UnitKind::Method,
+            3,
+            5,
+            vec!["&mut self", "value"],
+        )];
         let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "update");
@@ -343,7 +366,13 @@ impl MyStruct {
     }
 }
 "#;
-        let units = vec![make_unit("update", UnitKind::Method, 2, 4, vec!["&mut self"])];
+        let units = vec![make_unit(
+            "update",
+            UnitKind::Method,
+            2,
+            4,
+            vec!["&mut self"],
+        )];
         let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
         // self.list.add(42) is a method call, not self.field = value
         // The body has "self." but not " = " — so it should NOT be flagged

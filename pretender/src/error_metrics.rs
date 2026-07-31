@@ -86,7 +86,10 @@ fn detect_python_unwraps(source: &str) -> Vec<UnwrapSite> {
             });
         }
         // except Exception: (catching too broadly)
-        if trimmed.starts_with("except Exception") && !trimmed.contains("as e") && !trimmed.contains(" as ") {
+        if trimmed.starts_with("except Exception")
+            && !trimmed.contains("as e")
+            && !trimmed.contains(" as ")
+        {
             sites.push(UnwrapSite {
                 line: line_num,
                 kind: UnwrapKind::BareExcept,
@@ -132,7 +135,9 @@ fn detect_java_unwraps(source: &str) -> Vec<UnwrapSite> {
         let line_num = (i + 1) as u32;
         let trimmed = line.trim();
         // catch (Exception e) {} — overly broad catch
-        if trimmed.contains("catch (Exception") && (trimmed.ends_with("{}") || trimmed.ends_with("{ }")) {
+        if trimmed.contains("catch (Exception")
+            && (trimmed.ends_with("{}") || trimmed.ends_with("{ }"))
+        {
             sites.push(UnwrapSite {
                 line: line_num,
                 kind: UnwrapKind::EmptyCatch,
@@ -156,7 +161,8 @@ fn detect_go_unwraps(source: &str) -> Vec<UnwrapSite> {
         }
         // Bare panic or recover outside of error check
         // Note: `if err != nil { return err }` is idiomatic Go — NOT flagged
-        if trimmed == "panic(" || trimmed.starts_with("panic(") && !trimmed.starts_with("panic(err") {
+        if trimmed == "panic(" || trimmed.starts_with("panic(") && !trimmed.starts_with("panic(err")
+        {
             sites.push(UnwrapSite {
                 line: line_num,
                 kind: UnwrapKind::BarePanic,

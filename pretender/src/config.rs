@@ -136,7 +136,8 @@ impl Thresholds {
             "thresholds.test.duplication_pct_max",
             self.test.duplication_pct_max,
         );
-        self.coupling.collect_validations("thresholds.coupling", out);
+        self.coupling
+            .collect_validations("thresholds.coupling", out);
         if self.app.mut_ratio_max > 0.0
             && (self.app.mut_ratio_max < 0.0 || self.app.mut_ratio_max > 1.0)
         {

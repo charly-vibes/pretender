@@ -285,8 +285,14 @@ fn test() {
 "#;
         let analysis = detect_mocks(source, &Language::Rust, &[], Path::new("test.rs"));
         assert!(analysis.total_usage > 0);
-        assert!(analysis.references.iter().any(|r| r.kind == MockKind::Infrastructure));
-        assert!(analysis.references.iter().any(|r| r.kind == MockKind::Usage));
+        assert!(analysis
+            .references
+            .iter()
+            .any(|r| r.kind == MockKind::Infrastructure));
+        assert!(analysis
+            .references
+            .iter()
+            .any(|r| r.kind == MockKind::Usage));
     }
 
     #[test]

@@ -49,50 +49,7 @@ pub fn analyze(
 
         // Skip struct/class/record definitions — only check function/method params
         if !matches!(unit.kind, UnitKind::Ctor | UnitKind::Initializer) {
-
-        // Count bool params
-        for param in &unit.parameters {
-            let is_bool = param
-                .type_name
-                .as_deref()
-                .map(|t| {
-                    let t = t.trim();
-                    t == "bool"
-                        || t == "boolean"
-                        || t == "Boolean"
-                        || t == "bool?"
-                        || t == "Bool"
-                        || t == "boolish"
-                })
-                .unwrap_or(false);
-
-            if is_bool {
-                analysis.bool_param_count += 1;
-            }
-
-            // Check for primitive domain params
-            if primitive_param_check {
-                if let Some(ref type_name) = param.type_name {
-                    let type_trimmed = type_name.trim();
-                    let is_primitive = matches!(
-                        type_trimmed,
-                        "String" | "str" | "int" | "i32" | "i64" | "u32" | "u64" | "Int"
-                            | "Integer" | "number" | "string"
-                    );
-                    if is_primitive && is_domain_param_name(&param.name, extra_domain_patterns) {
-                        analysis.violations.push(PrimitiveViolation {
-                            kind: PrimitiveViolationKind::PrimitiveDomainParam,
-                            unit_name: unit.name.clone(),
-                            param_name: param.name.clone(),
-                            line: param.span.start_line,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Check bool cluster threshold
-        if bool_cluster_max > 0 && analysis.bool_param_count >= bool_cluster_max {
+            // Count bool params
             for param in &unit.parameters {
                 let is_bool = param
                     .type_name
@@ -104,19 +61,70 @@ pub fn analyze(
                             || t == "Boolean"
                             || t == "bool?"
                             || t == "Bool"
+                            || t == "boolish"
                     })
                     .unwrap_or(false);
+
                 if is_bool {
-                    analysis.violations.push(PrimitiveViolation {
-                        kind: PrimitiveViolationKind::BoolCluster,
-                        unit_name: unit.name.clone(),
-                        param_name: param.name.clone(),
-                        line: param.span.start_line,
-                    });
+                    analysis.bool_param_count += 1;
+                }
+
+                // Check for primitive domain params
+                if primitive_param_check {
+                    if let Some(ref type_name) = param.type_name {
+                        let type_trimmed = type_name.trim();
+                        let is_primitive = matches!(
+                            type_trimmed,
+                            "String"
+                                | "str"
+                                | "int"
+                                | "i32"
+                                | "i64"
+                                | "u32"
+                                | "u64"
+                                | "Int"
+                                | "Integer"
+                                | "number"
+                                | "string"
+                        );
+                        if is_primitive && is_domain_param_name(&param.name, extra_domain_patterns)
+                        {
+                            analysis.violations.push(PrimitiveViolation {
+                                kind: PrimitiveViolationKind::PrimitiveDomainParam,
+                                unit_name: unit.name.clone(),
+                                param_name: param.name.clone(),
+                                line: param.span.start_line,
+                            });
+                        }
+                    }
                 }
             }
-        }
 
+            // Check bool cluster threshold
+            if bool_cluster_max > 0 && analysis.bool_param_count >= bool_cluster_max {
+                for param in &unit.parameters {
+                    let is_bool = param
+                        .type_name
+                        .as_deref()
+                        .map(|t| {
+                            let t = t.trim();
+                            t == "bool"
+                                || t == "boolean"
+                                || t == "Boolean"
+                                || t == "bool?"
+                                || t == "Bool"
+                        })
+                        .unwrap_or(false);
+                    if is_bool {
+                        analysis.violations.push(PrimitiveViolation {
+                            kind: PrimitiveViolationKind::BoolCluster,
+                            unit_name: unit.name.clone(),
+                            param_name: param.name.clone(),
+                            line: param.span.start_line,
+                        });
+                    }
+                }
+            }
         } // end of non-ctor block
 
         results.push(analysis);
@@ -206,10 +214,10 @@ mod tests {
         );
         let results = analyze(&[unit], &Language::Rust, 3, false, &[]);
         assert!(!results[0].violations.is_empty());
-        assert!(results[0].violations.iter().any(|v| matches!(
-            v.kind,
-            PrimitiveViolationKind::BoolCluster
-        )));
+        assert!(results[0]
+            .violations
+            .iter()
+            .any(|v| matches!(v.kind, PrimitiveViolationKind::BoolCluster)));
         assert_eq!(results[0].bool_param_count, 4);
     }
 
@@ -218,10 +226,7 @@ mod tests {
         let unit = make_unit(
             "do_something",
             UnitKind::Function,
-            vec![
-                make_param("a", Some("bool")),
-                make_param("b", Some("bool")),
-            ],
+            vec![make_param("a", Some("bool")), make_param("b", Some("bool"))],
         );
         let results = analyze(&[unit], &Language::Rust, 3, false, &[]);
         assert!(results[0].violations.is_empty());
@@ -230,11 +235,15 @@ mod tests {
     #[test]
     fn struct_definition_not_flagged() {
         // Constructors should be skipped
-        let unit = make_unit("new", UnitKind::Ctor, vec![
-            make_param("debug", Some("bool")),
-            make_param("verbose", Some("bool")),
-            make_param("dry_run", Some("bool")),
-        ]);
+        let unit = make_unit(
+            "new",
+            UnitKind::Ctor,
+            vec![
+                make_param("debug", Some("bool")),
+                make_param("verbose", Some("bool")),
+                make_param("dry_run", Some("bool")),
+            ],
+        );
         let results = analyze(&[unit], &Language::Rust, 3, false, &[]);
         assert!(results[0].violations.is_empty());
     }

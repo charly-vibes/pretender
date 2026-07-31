@@ -71,7 +71,8 @@ pub fn analyze(
     let mut ca: HashMap<String, u32> = HashMap::new();
 
     for (mod_path, deps) in &outgoing {
-        let internal_deps: Vec<&String> = deps.iter().filter(|d| all_modules.contains(*d)).collect();
+        let internal_deps: Vec<&String> =
+            deps.iter().filter(|d| all_modules.contains(*d)).collect();
         ce.insert(mod_path.clone(), internal_deps.len() as u32);
         for dep in internal_deps {
             *ca.entry(dep.clone()).or_insert(0) += 1;
@@ -132,7 +133,10 @@ pub fn analyze(
         Vec::new()
     };
 
-    CouplingAnalysis { modules: reports, cycles }
+    CouplingAnalysis {
+        modules: reports,
+        cycles,
+    }
 }
 
 /// Detect cycles in the directed import graph using DFS with back-edge detection.
@@ -205,10 +209,7 @@ fn is_canonical_cycle(cycle: &[String]) -> bool {
         return false;
     }
     let first = &cycle[0];
-    cycle
-        .iter()
-        .min()
-        .is_none_or(|min| min == first)
+    cycle.iter().min().is_none_or(|min| min == first)
 }
 
 /// Normalize a file path to a module path for dependency graph keying.
@@ -274,13 +275,7 @@ mod tests {
         (path, module)
     }
 
-    fn make_thresholds(
-        ce: u32,
-        ca: u32,
-        cbo: u32,
-        lcom: u32,
-        cycles: bool,
-    ) -> CouplingThresholds {
+    fn make_thresholds(ce: u32, ca: u32, cbo: u32, lcom: u32, cycles: bool) -> CouplingThresholds {
         CouplingThresholds {
             ce_max: ce,
             ca_max: ca,
@@ -308,7 +303,11 @@ mod tests {
         let modules = vec![(ap, &a), (bp, &b), (cp, &c)];
         let result = analyze(&modules, &make_thresholds(1, 0, 0, 0, false));
 
-        let a_report = result.modules.iter().find(|r| r.path.contains("a.rs")).unwrap();
+        let a_report = result
+            .modules
+            .iter()
+            .find(|r| r.path.contains("a.rs"))
+            .unwrap();
         assert_eq!(a_report.violations.len(), 1);
         assert_eq!(a_report.violations[0].metric, "ce");
         assert_eq!(a_report.violations[0].actual, 2.0);
@@ -340,7 +339,9 @@ mod tests {
         let (p, a) = make_module("src/a.rs", vec!["std::collections::HashMap", "core::fmt"]);
         let modules = vec![(p, &a)];
         let result = analyze(&modules, &make_thresholds(1, 0, 0, 0, false));
-        assert!(result.modules.is_empty() || result.modules.iter().all(|r| r.violations.is_empty()));
+        assert!(
+            result.modules.is_empty() || result.modules.iter().all(|r| r.violations.is_empty())
+        );
     }
 
     #[test]
@@ -352,7 +353,11 @@ mod tests {
         let modules = vec![(ap, &a), (bp, &b), (cp, &c)];
         let result = analyze(&modules, &make_thresholds(0, 1, 0, 0, false));
 
-        let b_report = result.modules.iter().find(|r| r.path.contains("b.rs")).unwrap();
+        let b_report = result
+            .modules
+            .iter()
+            .find(|r| r.path.contains("b.rs"))
+            .unwrap();
         assert_eq!(b_report.violations.len(), 1);
         assert_eq!(b_report.violations[0].metric, "ca");
         assert_eq!(b_report.violations[0].actual, 2.0);

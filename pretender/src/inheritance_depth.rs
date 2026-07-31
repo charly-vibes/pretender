@@ -51,7 +51,12 @@ pub fn analyze(source: &str, language: &Language) -> InheritanceAnalysis {
     // Compute depth for each class by walking the parent chain
     let mut classes = Vec::new();
     for decl in &declarations {
-        let (depth, cross_file) = compute_depth(&decl.name, &class_map, &mut std::collections::HashSet::new(), 0);
+        let (depth, cross_file) = compute_depth(
+            &decl.name,
+            &class_map,
+            &mut std::collections::HashSet::new(),
+            0,
+        );
         classes.push(ClassDepth {
             name: decl.name.clone(),
             depth,
@@ -106,7 +111,10 @@ fn extract_java_classes(source: &str) -> Vec<ClassDecl> {
                 continue;
             }
             let parent = if let Some(extends_pos) = rest.find(" extends ") {
-                rest[extends_pos + 9..].split_whitespace().next().map(|s| s.trim_end_matches('{').trim().to_string())
+                rest[extends_pos + 9..]
+                    .split_whitespace()
+                    .next()
+                    .map(|s| s.trim_end_matches('{').trim().to_string())
             } else {
                 None
             };
@@ -150,8 +158,15 @@ fn extract_ts_classes(source: &str) -> Vec<ClassDecl> {
         // class Foo extends Bar
         if let Some(rest) = trimmed.strip_prefix("class ") {
             if let Some(extends_pos) = rest.find(" extends ") {
-                let name = rest[..extends_pos].split_whitespace().next().unwrap_or("").to_string();
-                let parent = rest[extends_pos + 9..].split_whitespace().next().map(|s| s.trim_matches(|c: char| c.is_whitespace() || c == '{' || c == ',').to_string());
+                let name = rest[..extends_pos]
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                let parent = rest[extends_pos + 9..].split_whitespace().next().map(|s| {
+                    s.trim_matches(|c: char| c.is_whitespace() || c == '{' || c == ',')
+                        .to_string()
+                });
                 if !name.is_empty() {
                     classes.push(ClassDecl { name, parent });
                 }
@@ -173,11 +188,15 @@ fn extract_cpp_classes(source: &str) -> Vec<ClassDecl> {
                 if let Some(colon_pos) = rest.find(" : ") {
                     let visibility = ["public ", "private ", "protected "];
                     let after_colon = rest[colon_pos + 3..].trim();
-                    let parent = visibility.iter().find_map(|v| {
-                        after_colon.strip_prefix(v)
-                    }).or(Some(after_colon)).and_then(|s| {
-                        s.split_whitespace().next().map(|s| s.trim_matches(|c: char| c == '{' || c == ',').to_string())
-                    });
+                    let parent = visibility
+                        .iter()
+                        .find_map(|v| after_colon.strip_prefix(v))
+                        .or(Some(after_colon))
+                        .and_then(|s| {
+                            s.split_whitespace()
+                                .next()
+                                .map(|s| s.trim_matches(|c: char| c == '{' || c == ',').to_string())
+                        });
                     classes.push(ClassDecl { name, parent });
                 }
             }
@@ -199,7 +218,10 @@ fn extract_ruby_classes(source: &str) -> Vec<ClassDecl> {
         if let Some(rest) = trimmed.strip_prefix("class ") {
             if let Some(lt_pos) = rest.find(" < ") {
                 let name = rest[..lt_pos].trim().to_string();
-                let parent = rest[lt_pos + 3..].split_whitespace().next().map(|s| s.to_string());
+                let parent = rest[lt_pos + 3..]
+                    .split_whitespace()
+                    .next()
+                    .map(|s| s.to_string());
                 if !name.is_empty() {
                     classes.push(ClassDecl { name, parent });
                 }
@@ -224,9 +246,30 @@ fn extract_rust_traits(source: &str) -> Vec<ClassDecl> {
             if parts.len() > 1 {
                 let bounds = parts[1].trim_end_matches(['{', '}']).trim();
                 // Find the first non-stdlib bound
-                let parent = bounds.split('+').map(|s| s.trim()).find(|b| {
-                    !matches!(*b, "Display" | "Debug" | "Clone" | "Copy" | "Send" | "Sync" | "Sized" | "Default" | "Eq" | "PartialEq" | "Ord" | "PartialOrd" | "Hash" | "Into" | "From")
-                }).map(|s| s.to_string());
+                let parent = bounds
+                    .split('+')
+                    .map(|s| s.trim())
+                    .find(|b| {
+                        !matches!(
+                            *b,
+                            "Display"
+                                | "Debug"
+                                | "Clone"
+                                | "Copy"
+                                | "Send"
+                                | "Sync"
+                                | "Sized"
+                                | "Default"
+                                | "Eq"
+                                | "PartialEq"
+                                | "Ord"
+                                | "PartialOrd"
+                                | "Hash"
+                                | "Into"
+                                | "From"
+                        )
+                    })
+                    .map(|s| s.to_string());
                 classes.push(ClassDecl { name, parent });
             } else {
                 // No bounds — standalone trait
