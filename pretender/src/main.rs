@@ -44,6 +44,7 @@ use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbac
 use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::guide::Guide;
 use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
+use genesis::status::{StatusContributor, StatusItem, StatusLevel, StatusSection};
 use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -2646,5 +2647,47 @@ fn resolve_doctor_format() -> genesis::guide::OutputFormat {
         genesis::guide::OutputFormat::Human
     } else {
         genesis::guide::OutputFormat::Json
+    }
+}
+
+/// Pretender's status contributor for the cross-tool dashboard.
+pub struct PretenderStatus;
+
+impl StatusContributor for PretenderStatus {
+    fn name(&self) -> &'static str {
+        "pretender"
+    }
+
+    fn status(&self, repo_root: &std::path::Path) -> Result<StatusSection, String> {
+        let config_exists = repo_root.join("pretender.toml").exists();
+        let git_dir = repo_root.join(".git");
+        let has_git = git_dir.exists();
+        let hook_installed = has_git && git_dir.join("hooks/pre-commit").exists();
+
+        let mut items = Vec::new();
+
+        if config_exists {
+            items.push(StatusItem::healthy("config", "pretender.toml found"));
+        } else {
+            items.push(StatusItem::error("config", "pretender.toml not found"));
+        }
+
+        if has_git {
+            items.push(StatusItem::healthy("git", "git repository detected"));
+        } else {
+            items.push(StatusItem::warning("git", "not in a git repository"));
+        }
+
+        if hook_installed {
+            items.push(StatusItem::healthy("hook", "pre-commit hook installed"));
+        }
+
+        let summary = if config_exists {
+            "configured".to_string()
+        } else {
+            "not initialized".to_string()
+        };
+
+        Ok(StatusSection::with_items("pretender", summary, items))
     }
 }
