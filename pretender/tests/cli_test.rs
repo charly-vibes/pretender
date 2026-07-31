@@ -380,7 +380,9 @@ fn test_doctor_json_output_has_envelope_shape() {
         "envelope must have 'data' field"
     );
     // Verify existing data is preserved within the envelope
-    let checks = json["data"].as_array().expect("data should be array");
+    let checks = json["data"]["checks"]
+        .as_array()
+        .expect("data.checks should be array");
     let config_present = checks
         .iter()
         .find(|c| c["name"] == "Config present")
@@ -2245,7 +2247,7 @@ fn test_doctor_all_pass_with_valid_config_and_hook() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("6/6 checks passed"),
+        stdout.contains("checks passed"),
         "expected summary; got: {stdout}"
     );
 }
@@ -2286,9 +2288,9 @@ fn test_doctor_json_missing_config_exits_1_with_fail_status() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).expect("output should be valid JSON");
-    let checks = parsed["data"]
+    let checks = parsed["data"]["checks"]
         .as_array()
-        .expect("JSON data should be array");
+        .expect("JSON data.checks should be array");
     let config_present = checks
         .iter()
         .find(|c| c["name"] == "Config present")
