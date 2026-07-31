@@ -62,6 +62,7 @@ cargo build --release
 |---------|-------------|
 | `pretender init` | Interactive wizard: write `pretender.toml`, install hook, generate CI |
 | `pretender check <paths...>` | Fast pass/fail scan against configured thresholds |
+| `pretender doctor [--json]` | Diagnose configuration, hooks, and plugin health |
 | `pretender complexity <path>` | Show cyclomatic complexity per function, sorted worst-first |
 | `pretender report` | Render cached last check as human, markdown, or HTML |
 | `pretender duplication <paths...>` | Structural clone detection via AST subtree hashing |
@@ -69,6 +70,32 @@ cargo build --release
 | `pretender hooks install\|uninstall` | Install or remove the pre-commit hook |
 | `pretender ci generate github` | Emit `.github/workflows/pretender.yml` |
 | `pretender explain <metric>` | Print definition, threshold, and citation for a metric |
+| `pretender feedback [--dry-run] [--from-last-error]` | File a structured issue against upstream repo |
+| `pretender completions <shell>` | Generate shell completion scripts (bash, zsh, fish, etc.) |
+
+## Global flags
+
+These flags are accepted before or after any subcommand:
+
+```
+  --verbose, -v     Increase output verbosity
+  --quiet, -q       Suppress non-error output
+  --json, -j        Machine-readable JSON output (auto-detected for non-TTY stdout)
+  --human           Human-readable text output (default for TTY)
+```
+
+## Check flags
+
+```
+pretender check <paths...> [flags]
+
+  --format human|json|sarif     Output format (default: human)
+  --output <path>               Write report to file instead of stdout
+  --mode guidance|tiered|gate   Override pretender.toml mode
+  --staged                      Check only git-staged files
+  --diff-only                   Check only files changed vs --diff-base
+  --diff-base <ref>             Base ref for --diff-only (default: origin/main)
+```
 
 ## Check flags
 

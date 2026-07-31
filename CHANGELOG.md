@@ -4,6 +4,35 @@ All notable changes to Pretender are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Global `--verbose`/`--quiet` flags** — progressive disclosure via genesis `CliVerbosity` conventions
+- **Global `--json`/`--human` flags** — format selection with TTY auto-detect via genesis `CliFormat`
+- **`pretender completions <shell>`** — shell completion generation via genesis `cli::generate_completions`
+- **`pretender doctor --json`** — JSON output for diagnostics (replaces `--format json`)
+- **`pretender feedback --from-last-error`** — auto-populates issue body from last error scratch
+- **`--version --json`** — structured version output in genesis envelope format
+- **Genesis discovery manifest** — `pretender init` registers in `.genesis/tools.toml`
+- **Status contributor** — pretender reports health status for cross-tool dashboard
+
+### Changed
+
+- **Adopted genesis v0.4.0 modules**: `doctor` (DoctorCheck trait + DoctorRunner),
+  `feedback` (handle_feedback), `cli` (completions + version-json), `scaffold`
+  (init), `status` (StatusContributor), `discovery` (manifest registration)
+- **Doctor checks rewritten** using `DoctorCheck` trait — 6 diagnostic checks
+  with proper skip/dependency logic via `Severity::Warning`
+- **Doctor JSON output** now uses genesis envelope shape (`data.checks` array)
+- **Feedback subcommand** delegates to genesis `handle_feedback()` (unified
+  across all charly-vibes tools)
+- **Init command** uses genesis `Scaffold` builder and registers in tool manifest
+
+### Removed
+
+- Custom `DoctorFormat` enum (replaced by genesis `OutputFormat`)
+- Custom `build_feedback_body()` (replaced by genesis `handle_feedback`)
+- Redundant `create_issue`/`redactor` imports (handled by genesis)
+
 ## [0.3.1] — 2026-07-28
 
 ### Fixed

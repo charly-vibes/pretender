@@ -16,9 +16,17 @@ TypeScript, Java, Ruby, C, and C++ via tree-sitter grammars.
 - `pretender mutation <paths...>` — wrap mutmut / cargo-mutants / Stryker and report mutation score
 - `pretender report` — render last check as human / markdown / HTML
 - `pretender duplication <paths...>` — detect structural clones via AST subtree hashing
+- `pretender doctor` — diagnose configuration, hooks, and plugin health (use `--json` for machine output)
+- `pretender feedback [--dry-run] [--from-last-error]` — file a structured issue against the upstream repo
+- `pretender completions <shell>` — generate shell completion scripts (bash, zsh, fish, etc.)
+- `pretender init` — interactive wizard: write config, install hook, generate CI
 - `pretender hooks install` — install pre-commit shim
 - `pretender ci generate github` — emit `.github/workflows/pretender.yml`
 - `pretender explain <metric>` — print metric definition and citation
+
+Global flags (accepted before or after any subcommand):
+- `--verbose`, `--quiet` — output verbosity
+- `--json`, `--human` — output format (JSON auto-detected for non-TTY stdout)
 
 ## Configuration
 
