@@ -2,7 +2,7 @@
 
 All notable changes to Pretender are documented here.
 
-## [Unreleased]
+## [0.4.0] — 2026-07-31
 
 ### Added
 
@@ -14,12 +14,15 @@ All notable changes to Pretender are documented here.
 - **`--version --json`** — structured version output in genesis envelope format
 - **Genesis discovery manifest** — `pretender init` registers in `.genesis/tools.toml`
 - **Status contributor** — pretender reports health status for cross-tool dashboard
+- **Compile tests for all 14 genesis modules** — cli, scaffold, discovery, fixture, aix
+  coverage merged into `genesis_compile_test.rs` (now 12 tests)
 
 ### Changed
 
 - **Adopted genesis v0.4.0 modules**: `doctor` (DoctorCheck trait + DoctorRunner),
   `feedback` (handle_feedback), `cli` (completions + version-json), `scaffold`
-  (init), `status` (StatusContributor), `discovery` (manifest registration)
+  (init), `status` (StatusContributor), `discovery` (manifest registration),
+  `fixture` (Fixture/FixtureBuilder), `aix` (agents_block helper)
 - **Doctor checks rewritten** using `DoctorCheck` trait — 6 diagnostic checks
   with proper skip/dependency logic via `Severity::Warning`
 - **Doctor JSON output** now uses genesis envelope shape (`data.checks` array)

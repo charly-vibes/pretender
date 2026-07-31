@@ -166,12 +166,12 @@ fn genesis_guide_accessible() {
     use genesis::guide::{Guide, Output, Verbosity};
 
     // Guide builder assembles a CLI scaffold.
-    let guide = Guide::builder("pretender", "0.3.1")
+    let guide = Guide::builder("pretender", "0.4.0")
         .commands(&["check", "doctor"])
         .max_verbosity(2)
         .build();
     assert_eq!(guide.name(), "pretender");
-    assert_eq!(guide.version(), "0.3.1");
+    assert_eq!(guide.version(), "0.4.0");
     assert_eq!(guide.verbosity(), Verbosity::Verbose);
     assert!(guide.registry().all().contains(&"check"));
 
