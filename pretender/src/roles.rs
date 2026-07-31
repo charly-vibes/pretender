@@ -10,6 +10,8 @@ pub enum Role {
     Script,
     Generated,
     Vendor,
+    UnitTest,
+    IntegrationTest,
 }
 
 pub struct RoleDetector {
@@ -28,6 +30,8 @@ impl RoleDetector {
             &config.roles.generated.paths,
         )?;
         add_patterns(&mut patterns, Role::Vendor, &config.roles.vendor.paths)?;
+        add_patterns(&mut patterns, Role::UnitTest, &config.roles.unit_test.paths)?;
+        add_patterns(&mut patterns, Role::IntegrationTest, &config.roles.integration_test.paths)?;
         Ok(Self { patterns })
     }
 
@@ -112,6 +116,8 @@ impl Role {
             "script" | "scripts" => Some(Self::Script),
             "generated" => Some(Self::Generated),
             "vendor" => Some(Self::Vendor),
+            "unit-test" | "unit_test" | "unit" => Some(Self::UnitTest),
+            "integration-test" | "integration_test" | "integration" => Some(Self::IntegrationTest),
             _ => None,
         }
     }
@@ -141,6 +147,18 @@ fn heuristic_role(path: &Path) -> Option<Role> {
         || file_name.ends_with(".pb.go")
     {
         Some(Role::Generated)
+    } else if normalized.starts_with("tests/unit/")
+        || normalized.contains("/tests/unit/")
+        || normalized.starts_with("test/unit/")
+        || normalized.contains("/test/unit/")
+    {
+        Some(Role::UnitTest)
+    } else if normalized.starts_with("tests/integration/")
+        || normalized.contains("/tests/integration/")
+        || normalized.starts_with("test/integration/")
+        || normalized.contains("/test/integration/")
+    {
+        Some(Role::IntegrationTest)
     } else if normalized.starts_with("tests/")
         || normalized.contains("/tests/")
         || normalized.starts_with("spec/")
@@ -182,6 +200,7 @@ pub struct EffectiveThresholds {
     pub require_docstring: bool,
     pub void_mutators_max: u32,
     pub unwrap_max: u32,
+    pub duration_max_ms: u32,
 }
 
 impl EffectiveThresholds {
@@ -199,6 +218,30 @@ impl EffectiveThresholds {
                 effective.min_assertions = thresholds.test.min_assertions;
                 effective.void_mutators_max = thresholds.test.void_mutators_max;
                 effective.unwrap_max = thresholds.test.unwrap_max;
+            }
+            Role::UnitTest => {
+                effective.cyclomatic_max = thresholds.test.cyclomatic_max;
+                effective.cognitive_max = thresholds.test.cognitive_max;
+                effective.function_lines_max = thresholds.test.function_lines_max;
+                effective.nesting_max = thresholds.test.nesting_max;
+                effective.params_max = thresholds.test.params_max;
+                effective.duplication_pct_max = thresholds.test.duplication_pct_max;
+                effective.min_assertions = thresholds.test.min_assertions;
+                effective.void_mutators_max = thresholds.test.void_mutators_max;
+                effective.unwrap_max = thresholds.test.unwrap_max;
+                effective.duration_max_ms = thresholds.unit_test.duration_max_ms;
+            }
+            Role::IntegrationTest => {
+                effective.cyclomatic_max = thresholds.test.cyclomatic_max;
+                effective.cognitive_max = thresholds.test.cognitive_max;
+                effective.function_lines_max = thresholds.test.function_lines_max;
+                effective.nesting_max = thresholds.test.nesting_max;
+                effective.params_max = thresholds.test.params_max;
+                effective.duplication_pct_max = thresholds.test.duplication_pct_max;
+                effective.min_assertions = thresholds.test.min_assertions;
+                effective.void_mutators_max = thresholds.test.void_mutators_max;
+                effective.unwrap_max = thresholds.test.unwrap_max;
+                effective.duration_max_ms = thresholds.integration_test.duration_max_ms;
             }
             Role::Library => {
                 effective.exported_params_max = Some(thresholds.library.exported_params_max);
@@ -232,6 +275,7 @@ impl EffectiveThresholds {
             require_docstring: false,
             void_mutators_max: thresholds.app.void_mutators_max,
             unwrap_max: thresholds.app.unwrap_max,
+            duration_max_ms: 0,
         }
     }
 }

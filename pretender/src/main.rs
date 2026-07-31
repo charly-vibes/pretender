@@ -2102,6 +2102,8 @@ fn role_name(role: Role) -> &'static str {
         Role::Script => "script",
         Role::Generated => "generated",
         Role::Vendor => "vendor",
+        Role::UnitTest => "unit-test",
+        Role::IntegrationTest => "integration-test",
     }
 }
 

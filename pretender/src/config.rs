@@ -5,7 +5,7 @@
 //! this module only owns the struct shape and the domain validation rules.
 
 use genesis::config::{ConfigFile, ConfigRegistry, ConfigValidation, ValidationSeverity};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 // ── Config struct ─────────────────────────────────────────────────────
@@ -111,6 +111,8 @@ pub struct Thresholds {
     pub library: LibraryThresholds,
     pub script: ScriptThresholds,
     pub coupling: CouplingThresholds,
+    pub unit_test: DurationThresholds,
+    pub integration_test: DurationThresholds,
 }
 
 impl Thresholds {
@@ -149,6 +151,12 @@ impl Thresholds {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default)]
+pub struct DurationThresholds {
+    pub duration_max_ms: u32,
+}
+
 fn validate_percent(out: &mut Vec<ConfigValidation>, field: &'static str, value: u32) {
     if value > 100 {
         out.push(ConfigValidation::error(
@@ -156,6 +164,14 @@ fn validate_percent(out: &mut Vec<ConfigValidation>, field: &'static str, value:
             "expected percentage value <= 100",
         ));
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum TimeUnit {
+    #[default]
+    Seconds,
+    Milliseconds,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -366,12 +382,30 @@ impl Default for Scope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct Execute {
     pub enabled: bool,
     pub coverage_cmd: Option<String>,
     pub mutation_cmd: Option<String>,
+    pub test_cmd: Option<String>,
+    pub test_report_path: Option<String>,
+    pub test_timeout_s: u32,
+    pub test_time_unit: TimeUnit,
+}
+
+impl Default for Execute {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            coverage_cmd: None,
+            mutation_cmd: None,
+            test_cmd: None,
+            test_report_path: None,
+            test_timeout_s: 600,
+            test_time_unit: TimeUnit::Seconds,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -446,6 +480,8 @@ pub struct Roles {
     pub script: RoleMatcher,
     pub generated: RoleMatcher,
     pub vendor: RoleMatcher,
+    pub unit_test: RoleMatcher,
+    pub integration_test: RoleMatcher,
 }
 
 impl Default for Roles {
@@ -457,18 +493,31 @@ impl Default for Roles {
                     "**/*_test.*".to_string(),
                     "spec/**".to_string(),
                 ],
+                classname_root: "tests".to_string(),
             },
             library: RoleMatcher {
                 paths: vec!["pkg/**".to_string(), "lib/**".to_string()],
+                classname_root: String::new(),
             },
             script: RoleMatcher {
                 paths: vec!["scripts/**".to_string(), "examples/**".to_string()],
+                classname_root: String::new(),
             },
             generated: RoleMatcher {
                 paths: vec!["**/*.pb.go".to_string(), "**/*_generated.*".to_string()],
+                classname_root: String::new(),
             },
             vendor: RoleMatcher {
                 paths: vec!["vendor/**".to_string(), "node_modules/**".to_string()],
+                classname_root: String::new(),
+            },
+            unit_test: RoleMatcher {
+                paths: vec!["tests/unit/**".to_string()],
+                classname_root: String::new(),
+            },
+            integration_test: RoleMatcher {
+                paths: vec!["tests/integration/**".to_string()],
+                classname_root: String::new(),
             },
         }
     }
@@ -478,6 +527,7 @@ impl Default for Roles {
 #[serde(default)]
 pub struct RoleMatcher {
     pub paths: Vec<String>,
+    pub classname_root: String,
 }
 
 #[cfg(test)]
@@ -540,6 +590,10 @@ mod tests {
             enabled = true
             coverage_cmd = "pytest --cov --cov-report=xml"
             mutation_cmd = "mutmut run"
+            test_cmd = "cargo test"
+            test_report_path = "target/test-report.xml"
+            test_timeout_s = 300
+            test_time_unit = "seconds"
 
             [plugins]
             languages = ["python", "javascript"]
@@ -550,11 +604,13 @@ mod tests {
             sarif_path = "pretender.sarif"
 
             [roles]
-            test = { paths = ["tests/**"] }
+            test = { paths = ["tests/**"], classname_root = "tests" }
             library = { paths = ["lib/**"] }
             script = { paths = ["scripts/**"] }
             generated = { paths = ["**/*_generated.*"] }
             vendor = { paths = ["vendor/**"] }
+            unit_test = { paths = ["tests/unit/**"] }
+            integration_test = { paths = ["tests/integration/**"] }
             "#,
         )
         .expect("config should parse");
@@ -567,12 +623,25 @@ mod tests {
         assert_eq!(config.bands.cyclomatic.unwrap().red, 20);
         assert!(config.scope.diff_only);
         assert!(config.execute.enabled);
+        assert_eq!(config.execute.test_cmd, Some("cargo test".to_string()));
+        assert_eq!(
+            config.execute.test_report_path,
+            Some("target/test-report.xml".to_string())
+        );
+        assert_eq!(config.execute.test_timeout_s, 300);
+        assert_eq!(config.execute.test_time_unit, TimeUnit::Seconds);
         assert_eq!(config.plugins.metrics, vec!["ruff", "eslint"]);
         assert_eq!(
             config.output.formats,
             vec![OutputFormat::Human, OutputFormat::Sarif]
         );
         assert_eq!(config.roles.test.paths, vec!["tests/**"]);
+        assert_eq!(config.roles.test.classname_root, "tests");
+        assert_eq!(config.roles.unit_test.paths, vec!["tests/unit/**"]);
+        assert_eq!(
+            config.roles.integration_test.paths,
+            vec!["tests/integration/**"]
+        );
 
         let validations = config.validate().expect("validate");
         assert!(!has_errors(&validations), "valid config has no errors");
@@ -615,6 +684,16 @@ mod tests {
             config.roles.vendor.paths,
             vec!["vendor/**", "node_modules/**"]
         );
+        assert_eq!(config.roles.test.classname_root, "tests");
+        assert_eq!(config.roles.library.classname_root, "");
+        assert_eq!(config.roles.unit_test.classname_root, "");
+        assert_eq!(config.roles.integration_test.classname_root, "");
+        assert_eq!(config.execute.test_timeout_s, 600);
+        assert_eq!(config.execute.test_time_unit, TimeUnit::Seconds);
+        assert_eq!(config.execute.test_cmd, None);
+        assert_eq!(config.execute.test_report_path, None);
+        assert_eq!(config.thresholds.unit_test.duration_max_ms, 0);
+        assert_eq!(config.thresholds.integration_test.duration_max_ms, 0);
     }
 
     #[test]
@@ -664,5 +743,63 @@ mod tests {
         let registry = build_registry();
         assert!(registry.is_registered("pretender"));
         assert_eq!(registry.marker("pretender"), Some("pretender.toml"));
+    }
+
+    #[test]
+    fn validation_passes_for_duration_thresholds_zero() {
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 0
+            [thresholds.integration-test]
+            duration_max_ms = 0
+            "#,
+        )
+        .expect("config should parse");
+        let validations = config.validate().expect("validate");
+        assert!(!has_errors(&validations), "zero duration is valid");
+    }
+
+    #[test]
+    fn execute_time_unit_defaults_to_seconds() {
+        let config = Config::default();
+        assert_eq!(config.execute.test_time_unit, TimeUnit::Seconds);
+    }
+
+    #[test]
+    fn execute_parses_time_unit_kebab_case() {
+        let config = Config::parse_str(
+            r#"
+            [execute]
+            test_time_unit = "milliseconds"
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(config.execute.test_time_unit, TimeUnit::Milliseconds);
+    }
+
+    #[test]
+    fn role_matcher_classname_root_defaults_to_empty() {
+        let config = Config::parse_str(
+            r#"
+            [roles.unit-test]
+            paths = ["tests/unit/**"]
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(config.roles.unit_test.classname_root, "");
+    }
+
+    #[test]
+    fn role_matcher_classname_root_can_be_set() {
+        let config = Config::parse_str(
+            r#"
+            [roles.test]
+            paths = ["tests/**"]
+            classname_root = "spec"
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(config.roles.test.classname_root, "spec");
     }
 }
