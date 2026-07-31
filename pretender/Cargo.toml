@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-genesis-vibes = "0.2"
+genesis-vibes = "0.4"
 git2 = { version = "0.21", default-features = false }
 clap = { version = "4", features = ["derive"] }
 globset = "0.4"

@@ -1,23 +1,30 @@
 mod c;
 mod clojure;
+mod cluster_detector;
 mod config;
+mod coupling;
 mod cpp;
 mod csharp;
 mod doctor;
 mod duplication;
 mod engine;
+mod error_metrics;
 mod explain;
 mod external_plugin;
 mod git;
 mod go;
 mod history;
+mod inheritance_depth;
 mod java;
 mod javascript;
 mod julia;
 mod metrics;
+mod mock_detector;
 mod model;
 mod mutation;
+mod mutability_metrics;
 mod plugin;
+mod primitive_obsession;
 mod python;
 mod r;
 mod roles;
@@ -26,7 +33,7 @@ mod rust;
 mod typescript;
 
 use crate::config::{Band, Bands, Config, Mode};
-use crate::model::Metric;
+use crate::model::{Metric, Module};
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -602,6 +609,8 @@ impl Executable for CheckArgs {
                 return Ok(decide_exit_code(
                     &CheckReport {
                         files: vec![],
+                        modules: Vec::new(),
+                        cycles: Vec::new(),
                         history: None,
                     },
                     config.pretender.mode,
@@ -626,11 +635,20 @@ impl Executable for CheckArgs {
             );
         }
 
-        let mut reports: Vec<FileReport> = files
+        let mut reports_and_modules: Vec<(FileReport, Module)> = files
             .par_iter()
             .filter_map(|path| analyze_path(path, &detector, &config).transpose())
             .collect::<Result<_>>()?;
-        reports.sort_by(|a, b| a.path.cmp(&b.path));
+        reports_and_modules.sort_by(|a, b| a.0.path.cmp(&b.0.path));
+
+        // Extract reports and modules for coupling analysis
+        let mut reports: Vec<FileReport> = Vec::with_capacity(reports_and_modules.len());
+        let mut modules: Vec<(PathBuf, Module)> = Vec::with_capacity(reports_and_modules.len());
+        for (report, module) in reports_and_modules {
+            let path = PathBuf::from(&report.path);
+            reports.push(report);
+            modules.push((path, module));
+        }
 
         let plugins = external_plugin::load_plugins(&external_plugin::default_metrics_dir());
         if !plugins.is_empty() {
@@ -644,8 +662,37 @@ impl Executable for CheckArgs {
 
         let mut report = CheckReport {
             files: reports,
+            modules: Vec::new(),
+            cycles: Vec::new(),
             history: None,
         };
+
+        // Run coupling analysis if thresholds are configured
+        let coupling_result = coupling::analyze(
+            &modules.iter().map(|(p, m)| (p.clone(), m)).collect::<Vec<_>>(),
+            &config.thresholds.coupling,
+        );
+        report.modules = coupling_result
+            .modules
+            .iter()
+            .map(|m| ModuleReport {
+                path: m.path.clone(),
+                coupling_violations: m
+                    .violations
+                    .iter()
+                    .map(|v| CouplingViolationReport {
+                        metric: v.metric.clone(),
+                        actual: v.actual,
+                        limit: v.limit,
+                    })
+                    .collect(),
+            })
+            .collect();
+        report.cycles = coupling_result
+            .cycles
+            .iter()
+            .map(|c| c.participants.clone())
+            .collect();
         let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
         // Attach history before writing output so JSON format includes it
@@ -872,12 +919,17 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
         !file.file_violations.is_empty()
             || file.units.iter().any(|unit| !unit.violations.is_empty())
     });
+    let has_coupling_violation = report
+        .modules
+        .iter()
+        .any(|m| !m.coupling_violations.is_empty());
+    let has_cycle = !report.cycles.is_empty();
 
     match mode {
         Mode::Guidance => ExitCode::SUCCESS,
         Mode::Tiered => ExitCode::SUCCESS,
         Mode::Gate => {
-            if has_violation || has_skipped {
+            if has_violation || has_skipped || has_coupling_violation || has_cycle {
                 ExitCode::FAILURE
             } else {
                 ExitCode::SUCCESS
@@ -1159,7 +1211,7 @@ fn analyze_path(
     path: &Path,
     detector: &RoleDetector,
     config: &Config,
-) -> Result<Option<FileReport>> {
+) -> Result<Option<(FileReport, Module)>> {
     let source = match fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Ok(None),
@@ -1191,14 +1243,146 @@ fn analyze_path(
         thresholds.file_lines_max,
     );
 
-    Ok(Some(FileReport {
+    // Mock-overuse detection for test-role files
+    let mock_analysis = if role == Role::Test && config.thresholds.test.mock_count_max > 0 {
+        let analysis = mock_detector::detect_mocks(
+            &source,
+            &module.language,
+            &config.patterns.mock.extra,
+            path,
+        );
+        if analysis.total_usage > config.thresholds.test.mock_count_max {
+            file_violations.push(ViolationReport {
+                metric: "mock_count".to_string(),
+                actual: analysis.total_usage as f64,
+                limit: config.thresholds.test.mock_count_max as f64,
+            });
+        }
+        analysis
+    } else {
+        mock_detector::MockAnalysis::default()
+    };
+
+    // Void-mutator detection (non-test roles by default, role-specific threshold)
+    if thresholds.void_mutators_max > 0 {
+        let mutators = mutability_metrics::detect_void_mutators(
+            &source,
+            &module.language,
+            &module.units,
+            path,
+        );
+        if mutators.len() as u32 > thresholds.void_mutators_max {
+            file_violations.push(ViolationReport {
+                metric: "void_mutator".to_string(),
+                actual: mutators.len() as f64,
+                limit: thresholds.void_mutators_max as f64,
+            });
+        }
+    }
+
+    // Mutable-state ratio check
+    if config.thresholds.app.mut_ratio_max > 0.0 {
+        let binding_analysis =
+            mutability_metrics::count_mutable_bindings(&source, &module.language);
+        let ratio = binding_analysis.ratio();
+        if ratio > config.thresholds.app.mut_ratio_max {
+            file_violations.push(ViolationReport {
+                metric: "mut_ratio".to_string(),
+                actual: ratio,
+                limit: config.thresholds.app.mut_ratio_max,
+            });
+        }
+    }
+
+    // Unwrap-density check
+    if thresholds.unwrap_max > 0 {
+        let sites = error_metrics::detect_unwraps(&source, &module.language);
+        if sites.len() as u32 > thresholds.unwrap_max {
+            file_violations.push(ViolationReport {
+                metric: "unwraps".to_string(),
+                actual: sites.len() as f64,
+                limit: thresholds.unwrap_max as f64,
+            });
+        }
+    }
+
+    // Primitive-obsession check
+    if config.thresholds.app.bool_cluster_max > 0 || config.thresholds.app.primitive_param_check {
+        let po_results = primitive_obsession::analyze(
+            &module.units,
+            &module.language,
+            config.thresholds.app.bool_cluster_max,
+            config.thresholds.app.primitive_param_check,
+            &[],
+        );
+        for result in &po_results {
+            if result.bool_param_count > 0
+                && config.thresholds.app.bool_cluster_max > 0
+                && result.bool_param_count >= config.thresholds.app.bool_cluster_max
+            {
+                file_violations.push(ViolationReport {
+                    metric: "bool_cluster".to_string(),
+                    actual: result.bool_param_count as f64,
+                    limit: config.thresholds.app.bool_cluster_max as f64,
+                });
+            }
+            for v in &result.violations {
+                if v.kind == primitive_obsession::PrimitiveViolationKind::PrimitiveDomainParam {
+                    file_violations.push(ViolationReport {
+                        metric: "primitive_param".to_string(),
+                        actual: 1.0,
+                        limit: 1.0,
+                    });
+                }
+            }
+        }
+    }
+
+    // Inheritance depth check
+    if config.thresholds.app.inheritance_depth_max > 0 {
+        let ih = inheritance_depth::analyze(&source, &module.language);
+        for class in &ih.classes {
+            if class.depth > config.thresholds.app.inheritance_depth_max {
+                file_violations.push(ViolationReport {
+                    metric: "inheritance_depth".to_string(),
+                    actual: class.depth as f64,
+                    limit: config.thresholds.app.inheritance_depth_max as f64,
+                });
+            }
+        }
+    }
+
+    // Lazy test cluster detection
+    if role == Role::Test && config.thresholds.test.lazy_cluster_min > 0 {
+        let clusters = cluster_detector::detect(&module.units, config.thresholds.test.lazy_cluster_min);
+        for cluster in &clusters {
+            file_violations.push(ViolationReport {
+                metric: "lazy_cluster".to_string(),
+                actual: cluster.count as f64,
+                limit: config.thresholds.test.lazy_cluster_min as f64,
+            });
+        }
+    }
+
+    let report = FileReport {
         path: path.display().to_string(),
         role: role_name(role).to_string(),
         diagnostics: diagnostics.into_iter().map(Into::into).collect(),
         file_violations,
         units,
         external_findings: vec![],
-    }))
+        mock_findings: mock_analysis
+            .references
+            .into_iter()
+            .map(|r| MockFindingReport {
+                name: r.name,
+                line: r.line,
+                kind: format!("{:?}", r.kind),
+            })
+            .collect(),
+    };
+
+    Ok(Some((report, module)))
 }
 
 fn load_config() -> Result<Config> {
@@ -1945,6 +2129,10 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
 #[derive(Debug, Serialize, Deserialize)]
 struct CheckReport {
     files: Vec<FileReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    modules: Vec<ModuleReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    cycles: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<history::HistorySummary>,
 }
@@ -1958,6 +2146,8 @@ struct FileReport {
     units: Vec<UnitReport>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     external_findings: Vec<external_plugin::ExternalFinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    mock_findings: Vec<MockFindingReport>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2004,6 +2194,27 @@ struct ViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ModuleReport {
+    path: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    coupling_violations: Vec<CouplingViolationReport>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CouplingViolationReport {
+    metric: String,
+    actual: f64,
+    limit: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MockFindingReport {
+    name: String,
+    line: u32,
+    kind: String,
 }
 
 fn emit_history_events(

@@ -171,13 +171,16 @@ mod tests {
                 Parameter {
                     name: "a".to_string(),
                     span: span(10, 10),
+                    type_name: None,
                 },
                 Parameter {
                     name: "b".to_string(),
                     span: span(10, 10),
+                    type_name: None,
                 },
             ],
             body,
+            parent_class: None,
             is_exported: false,
             assertions: 0,
         }

@@ -180,6 +180,8 @@ pub struct EffectiveThresholds {
     pub exported_cyclomatic_max: Option<u32>,
     pub exported_lines_max: Option<u32>,
     pub require_docstring: bool,
+    pub void_mutators_max: u32,
+    pub unwrap_max: u32,
 }
 
 impl EffectiveThresholds {
@@ -195,6 +197,8 @@ impl EffectiveThresholds {
                 effective.params_max = thresholds.test.params_max;
                 effective.duplication_pct_max = thresholds.test.duplication_pct_max;
                 effective.min_assertions = thresholds.test.min_assertions;
+                effective.void_mutators_max = thresholds.test.void_mutators_max;
+                effective.unwrap_max = thresholds.test.unwrap_max;
             }
             Role::Library => {
                 effective.exported_params_max = Some(thresholds.library.exported_params_max);
@@ -226,6 +230,8 @@ impl EffectiveThresholds {
             exported_cyclomatic_max: None,
             exported_lines_max: None,
             require_docstring: false,
+            void_mutators_max: thresholds.app.void_mutators_max,
+            unwrap_max: thresholds.app.unwrap_max,
         }
     }
 }

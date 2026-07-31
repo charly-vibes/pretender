@@ -43,6 +43,7 @@ impl Span {
 pub struct Parameter {
     pub name: String,
     pub span: Span,
+    pub type_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +113,7 @@ pub struct CodeUnit {
     pub body: Block,
     pub is_exported: bool,
     pub assertions: u32,
+    pub parent_class: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

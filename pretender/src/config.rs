@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 // ── Config struct ─────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub pretender: PretenderSection,
@@ -21,6 +21,7 @@ pub struct Config {
     pub plugins: Plugins,
     pub output: Output,
     pub roles: Roles,
+    pub patterns: Patterns,
 }
 
 impl Config {
@@ -101,7 +102,7 @@ pub enum Mode {
     Gate,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Thresholds {
     #[serde(flatten)]
@@ -109,6 +110,7 @@ pub struct Thresholds {
     pub test: TestThresholds,
     pub library: LibraryThresholds,
     pub script: ScriptThresholds,
+    pub coupling: CouplingThresholds,
 }
 
 impl Thresholds {
@@ -134,6 +136,15 @@ impl Thresholds {
             "thresholds.test.duplication_pct_max",
             self.test.duplication_pct_max,
         );
+        self.coupling.collect_validations("thresholds.coupling", out);
+        if self.app.mut_ratio_max > 0.0
+            && (self.app.mut_ratio_max < 0.0 || self.app.mut_ratio_max > 1.0)
+        {
+            out.push(ConfigValidation::error(
+                "thresholds.mut_ratio_max",
+                "expected value between 0.0 and 1.0",
+            ));
+        }
     }
 }
 
@@ -146,7 +157,7 @@ fn validate_percent(out: &mut Vec<ConfigValidation>, field: &'static str, value:
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct AppThresholds {
     pub cyclomatic_max: u32,
@@ -161,6 +172,12 @@ pub struct AppThresholds {
     pub coverage_line_min: u32,
     pub coverage_branch_min: u32,
     pub mutation_min: u32,
+    pub void_mutators_max: u32,
+    pub mut_ratio_max: f64,
+    pub unwrap_max: u32,
+    pub bool_cluster_max: u32,
+    pub primitive_param_check: bool,
+    pub inheritance_depth_max: u32,
 }
 
 impl Default for AppThresholds {
@@ -178,6 +195,12 @@ impl Default for AppThresholds {
             coverage_line_min: 80,
             coverage_branch_min: 70,
             mutation_min: 60,
+            void_mutators_max: 0,
+            mut_ratio_max: 0.0,
+            unwrap_max: 0,
+            bool_cluster_max: 0,
+            primitive_param_check: false,
+            inheritance_depth_max: 0,
         }
     }
 }
@@ -192,6 +215,10 @@ pub struct TestThresholds {
     pub cognitive_max: u32,
     pub duplication_pct_max: u32,
     pub min_assertions: Option<u32>,
+    pub mock_count_max: u32,
+    pub void_mutators_max: u32,
+    pub unwrap_max: u32,
+    pub lazy_cluster_min: u32,
 }
 
 impl Default for TestThresholds {
@@ -204,6 +231,10 @@ impl Default for TestThresholds {
             cognitive_max: 5,
             duplication_pct_max: 30,
             min_assertions: Some(1),
+            mock_count_max: 0,
+            void_mutators_max: 0,
+            unwrap_max: 0,
+            lazy_cluster_min: 0,
         }
     }
 }
@@ -240,6 +271,27 @@ impl Default for ScriptThresholds {
         Self {
             function_lines_max: 100,
             file_lines_max: 300,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default)]
+pub struct CouplingThresholds {
+    pub ce_max: u32,
+    pub ca_max: u32,
+    pub cbo_max: u32,
+    pub lcom_hs_max: u32,
+    pub cycle_detection: bool,
+}
+
+impl CouplingThresholds {
+    fn collect_validations(&self, field: &'static str, out: &mut Vec<ConfigValidation>) {
+        if self.lcom_hs_max > 100 {
+            out.push(ConfigValidation::error(
+                format!("{field}.lcom_hs_max"),
+                "expected percentage value <= 100",
+            ));
         }
     }
 }
@@ -361,6 +413,18 @@ impl Default for Output {
             sarif_path: "pretender.sarif".to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default)]
+pub struct Patterns {
+    pub mock: MockPatterns,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default)]
+pub struct MockPatterns {
+    pub extra: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

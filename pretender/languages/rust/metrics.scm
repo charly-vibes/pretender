@@ -20,3 +20,6 @@
 (compound_assignment_expr) @assign
 (let_declaration
   value: (_)) @assign
+
+; Imports (for coupling analysis)
+(use_declaration) @import

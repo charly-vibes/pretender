@@ -4,8 +4,8 @@ use std::path::Path;
 use streaming_iterator::StreamingIterator;
 
 use crate::model::{
-    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Language,
-    Module, Parameter, Span, UnitKind,
+    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Import,
+    Language, Module, Parameter, Span, UnitKind,
 };
 use crate::plugin::BranchWeights;
 
@@ -22,6 +22,7 @@ pub struct QueryEngine {
     call_idx: Option<u32>,
     call_callee_idx: Option<u32>,
     assign_idx: Option<u32>,
+    import_idx: Option<u32>,
     call_weights: BTreeMap<String, f64>,
 }
 
@@ -117,6 +118,7 @@ impl QueryEngine {
         let call_idx = query.capture_index_for_name("call");
         let call_callee_idx = query.capture_index_for_name("call.callee");
         let assign_idx = query.capture_index_for_name("assign");
+        let import_idx = query.capture_index_for_name("import");
 
         Ok(Self {
             language,
@@ -131,6 +133,7 @@ impl QueryEngine {
             call_idx,
             call_callee_idx,
             assign_idx,
+            import_idx,
             call_weights: call_weights.clone(),
         })
     }
@@ -179,6 +182,7 @@ impl QueryEngine {
         let mut query_cursor = tree_sitter::QueryCursor::new();
         let mut functions: Vec<FunctionCapture> = Vec::new();
         let mut captures = CaptureMap::default();
+        let mut imports: Vec<Import> = Vec::new();
 
         let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
         while let Some(m) = query_matches.next() {
@@ -222,6 +226,15 @@ impl QueryEngine {
                         if let Some((_, slot)) = pending_call.as_mut() {
                             *slot = callee;
                         }
+                    } else if Some(capture.index) == self.import_idx {
+                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                            imports.push(Import {
+                                module: text.to_string(),
+                                name: None,
+                                alias: None,
+                                span: node_span(capture.node),
+                            });
+                        }
                     }
                 }
                 if let Some((id, callee)) = pending_call {
@@ -257,7 +270,7 @@ impl QueryEngine {
                 lines_code,
                 lines_comment,
                 units,
-                imports: Vec::new(),
+                imports,
             },
             diagnostics,
         ))
@@ -303,6 +316,7 @@ impl QueryEngine {
             body,
             is_exported,
             assertions: count_captured_nodes(body_node, &captures.assertions),
+            parent_class: None,
         })
     }
 }
@@ -374,9 +388,15 @@ fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Paramete
             _ => None,
         };
         if let Some(name) = param_name {
+            let type_name = child
+                .child_by_field_name("type")
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(str::to_string);
+
             params.push(Parameter {
                 span: node_span(child),
                 name,
+                type_name,
             });
         }
     }

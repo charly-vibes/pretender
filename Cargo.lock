@@ -173,6 +173,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f84a88507dbd05c695f2cb5e8558e747179134005e9893882dec964190ed89"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -263,11 +272,12 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "genesis-vibes"
-version = "0.2.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bde28eaba5f9787e8952d5637dde4c6a265b52cd479a2afcdfb708ef44e0b13a"
+checksum = "f486c1c0b7b9611e9dfb701ad97ea6a0d71e95f66c90a323d67920b2883d8c22"
 dependencies = [
  "clap",
+ "clap_complete",
  "miette",
  "regex",
  "serde",
