@@ -2505,3 +2505,182 @@ fn test_clojure_complexity() {
         "expected complex-func: 5 in stdout: {stdout}"
     );
 }
+
+/// Helper: set up a temp dir with a pretender.toml, a test file, and a JUnit XML report.
+fn setup_duration_test() -> (PathBuf, PathBuf, PathBuf) {
+    let (dir, _guard) = write_temp_file(
+        "pretender.toml",
+        r#"
+        [thresholds.unit-test]
+        duration_max_ms = 50
+        [roles]
+        test = { paths = [] }
+        unit-test = { paths = [] }
+        integration-test = { paths = [] }
+        "#,
+    );
+    // Create the test file so role detection can find it
+    let test_file = dir.join("tests/unit/test_math.py");
+    std::fs::create_dir_all(test_file.parent().unwrap()).expect("create dirs");
+    std::fs::write(&test_file, "def test_addition(): pass").expect("write test file");
+
+    let junit_xml = format!(
+        r#"<?xml version="1.0"?>
+    <testsuite name="ts" tests="1">
+        <testcase classname="test_math" name="test_addition" file="{}" time="0.1"/>
+    </testsuite>"#,
+        test_file.display()
+    );
+    let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
+    (dir, test_file, report_path)
+}
+
+#[test]
+fn test_duration_report_human_output() {
+    let (dir, _test_file, report_path) = setup_duration_test();
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg("--test-report")
+        .arg(&report_path)
+        .arg("--format")
+        .arg("human")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
+        .output()
+        .expect("pretender check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Test duration findings"),
+        "expected 'Test duration findings' in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("test_addition"),
+        "expected test name in stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("100ms > 50ms"),
+        "expected duration violation in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_duration_report_json_contains_findings() {
+    let (dir, _test_file, report_path) = setup_duration_test();
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg("--test-report")
+        .arg(&report_path)
+        .arg("--format")
+        .arg("json")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
+        .output()
+        .expect("pretender check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("test_findings"),
+        "expected 'test_findings' in JSON output: {stdout}"
+    );
+    assert!(
+        stdout.contains("test_addition"),
+        "expected test name in JSON: {stdout}"
+    );
+}
+
+#[test]
+fn test_duration_report_sarif_contains_findings() {
+    let (dir, _test_file, report_path) = setup_duration_test();
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg("--test-report")
+        .arg(&report_path)
+        .arg("--format")
+        .arg("sarif")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
+        .output()
+        .expect("pretender check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("pretender/test-duration"),
+        "expected 'pretender/test-duration' rule id in SARIF: {stdout}"
+    );
+    assert!(
+        stdout.contains("test_addition"),
+        "expected test name in SARIF: {stdout}"
+    );
+}
+
+#[test]
+fn test_duration_no_threshold_no_findings() {
+    let (dir, _guard) = write_temp_file(
+        "pretender.toml",
+        r#"
+        [roles]
+        test = { paths = [] }
+        unit-test = { paths = [] }
+        integration-test = { paths = [] }
+        "#,
+    );
+    let test_file = dir.join("tests/unit/test_math.py");
+    std::fs::create_dir_all(test_file.parent().unwrap()).expect("create dirs");
+    std::fs::write(&test_file, "def test_addition(): pass").expect("write test file");
+
+    let junit_xml = format!(
+        r#"<?xml version="1.0"?>
+    <testsuite name="ts" tests="1">
+        <testcase classname="test_math" name="test_addition" file="{}" time="0.1"/>
+    </testsuite>"#,
+        test_file.display()
+    );
+    let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg("--test-report")
+        .arg(&report_path)
+        .arg("--format")
+        .arg("json")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
+        .output()
+        .expect("pretender check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("test_findings"),
+        "expected no test_findings when no threshold configured: {stdout}"
+    );
+}
+
+#[test]
+fn test_duration_cache_persisted() {
+    let (dir, _test_file, report_path) = setup_duration_test();
+
+    let output = Command::new(pretender_bin())
+        .arg("check")
+        .arg("--test-report")
+        .arg(&report_path)
+        .arg("--format")
+        .arg("json")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
+        .output()
+        .expect("pretender check");
+    assert!(output.status.success());
+
+    // Check that the cache file contains test_findings
+    let cache_path = dir.join(".pretender/last-check.json");
+    assert!(cache_path.exists(), "cache file should exist");
+    let cache_content = std::fs::read_to_string(&cache_path).expect("read cache");
+    assert!(
+        cache_content.contains("test_findings"),
+        "expected test_findings in cache: {cache_content}"
+    );
+}

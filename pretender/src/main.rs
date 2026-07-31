@@ -2217,6 +2217,44 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
         }
     }
 
+    // ── SARIF: duration findings ───────────────────────────────────
+    let duration_rule_id = "pretender/test-duration";
+    let duration_rule_idx = rules.len() as i64;
+    rules.push(
+        sarif::ReportingDescriptor::builder()
+            .id(duration_rule_id)
+            .build(),
+    );
+    for finding in &report.test_findings {
+        let file_uri = finding
+            .file
+            .as_ref()
+            .map(|f| f.display().to_string())
+            .unwrap_or_else(|| "?".to_string());
+        let message_text = format!(
+            "{} {}: {}ms exceeds {}ms threshold",
+            finding.role, finding.test_name, finding.observed_ms, finding.threshold_ms
+        );
+        let location = sarif::Location::builder()
+            .physical_location(
+                sarif::PhysicalLocation::builder()
+                    .artifact_location(
+                        sarif::ArtifactLocation::builder().uri(&file_uri).build(),
+                    )
+                    .build(),
+            )
+            .build();
+        results.push(
+            sarif::Result::builder()
+                .rule_id(duration_rule_id)
+                .rule_index(duration_rule_idx)
+                .message(sarif::Message::builder().text(message_text).build())
+                .locations(vec![location])
+                .level(sarif::ResultLevel::Warning)
+                .build(),
+        );
+    }
+
     let tool_component = sarif::ToolComponent::builder()
         .name("pretender")
         .rules(rules)
