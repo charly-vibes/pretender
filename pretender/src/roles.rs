@@ -31,7 +31,11 @@ impl RoleDetector {
         )?;
         add_patterns(&mut patterns, Role::Vendor, &config.roles.vendor.paths)?;
         add_patterns(&mut patterns, Role::UnitTest, &config.roles.unit_test.paths)?;
-        add_patterns(&mut patterns, Role::IntegrationTest, &config.roles.integration_test.paths)?;
+        add_patterns(
+            &mut patterns,
+            Role::IntegrationTest,
+            &config.roles.integration_test.paths,
+        )?;
         Ok(Self { patterns })
     }
 
@@ -366,20 +370,14 @@ mod tests {
     #[test]
     fn pragma_unit_test_underscore_form() {
         let detector = RoleDetector::new(&Config::default()).expect("valid default role globs");
-        let role = detector.detect(
-            Path::new("src/random.py"),
-            "// pretender: role=unit_test\n",
-        );
+        let role = detector.detect(Path::new("src/random.py"), "// pretender: role=unit_test\n");
         assert_eq!(role, Role::UnitTest);
     }
 
     #[test]
     fn pragma_unit_test_bare_form() {
         let detector = RoleDetector::new(&Config::default()).expect("valid default role globs");
-        let role = detector.detect(
-            Path::new("src/random.py"),
-            "// pretender: role=unit\n",
-        );
+        let role = detector.detect(Path::new("src/random.py"), "// pretender: role=unit\n");
         assert_eq!(role, Role::UnitTest);
     }
 

@@ -1,8 +1,8 @@
 use crate::config;
 use crate::external_plugin;
-use crate::DoctorFormat;
 use anyhow::Result;
 use genesis::config::ValidationSeverity;
+use genesis::guide::OutputFormat;
 use serde::Serialize;
 use std::process::{Command, ExitCode};
 
@@ -47,11 +47,11 @@ fn skip(name: &'static str, message: impl Into<String>) -> CheckResult {
     }
 }
 
-pub fn run_doctor(format: DoctorFormat) -> Result<ExitCode> {
+pub fn run_doctor(format: OutputFormat) -> Result<ExitCode> {
     let results = run_checks();
     match format {
-        DoctorFormat::Human => print_human(&results),
-        DoctorFormat::Json => print_json(&results)?,
+        OutputFormat::Human => print_human(&results),
+        OutputFormat::Json => print_json(&results)?,
     }
     let any_failed = results.iter().any(|r| r.status == CheckStatus::Fail);
     Ok(if any_failed {

@@ -28,20 +28,19 @@ mod primitive_obsession;
 mod python;
 mod r;
 mod roles;
-mod test_report;
 mod ruby;
 mod rust;
+mod test_report;
 mod typescript;
 
 use crate::config::{Band, Bands, Config, Mode};
 use crate::model::{Metric, Module};
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum, CommandFactory};
 use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
 use genesis::envelope::{Envelope, EnvelopeKind};
-use genesis::feedback::gh::{create_issue, CreateIssueOptions};
-use genesis::feedback::redactor;
+use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
 use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::guide::Guide;
 use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
@@ -62,6 +61,51 @@ const NOT_IMPLEMENTED_EXIT: u8 = 2;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Increase output verbosity
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+
+    /// Suppress non-error output
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
+    /// Output machine-readable JSON (default when stdout is not a TTY)
+    #[arg(short = 'j', long, global = true)]
+    pub json: bool,
+
+    /// Output human-readable text (default when stdout is a TTY)
+    #[arg(long, global = true, conflicts_with = "json")]
+    pub human: bool,
+}
+
+impl Cli {
+    /// Resolve the effective verbosity level from the clap args.
+    fn verbosity(&self) -> genesis::guide::Verbosity {
+        if self.quiet {
+            genesis::guide::Verbosity::Quiet
+        } else if self.verbose {
+            genesis::guide::Verbosity::Verbose
+        } else {
+            genesis::guide::Verbosity::Normal
+        }
+    }
+
+    /// Resolve the effective output format.
+    fn output_format(&self) -> genesis::guide::OutputFormat {
+        if self.json {
+            genesis::guide::OutputFormat::Json
+        } else if self.human {
+            genesis::guide::OutputFormat::Human
+        } else {
+            use std::io::IsTerminal;
+            if std::io::stdout().is_terminal() {
+                genesis::guide::OutputFormat::Human
+            } else {
+                genesis::guide::OutputFormat::Json
+            }
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -93,6 +137,11 @@ enum Commands {
     Doctor(DoctorArgs),
     /// File a structured issue against pretender's upstream repo
     Feedback(FeedbackArgs),
+    /// Generate shell completion scripts
+    Completions {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 /// All valid pretender commands, kept in sync with the `Commands` enum.
@@ -110,6 +159,7 @@ const PRETENDER_COMMANDS: &[&str] = &[
     "plugins",
     "explain",
     "feedback",
+    "completions",
 ];
 
 #[test]
@@ -119,7 +169,7 @@ fn test_pretender_commands_list_is_complete() {
     // Keep this count in sync with the number of Commands variants.
     assert_eq!(
         PRETENDER_COMMANDS.len(),
-        12,
+        13,
         "PRETENDER_COMMANDS must have one entry per Commands variant"
     );
 }
@@ -250,16 +300,7 @@ struct ExplainArgs {
 }
 
 #[derive(Parser)]
-struct DoctorArgs {
-    #[arg(long, value_enum, default_value_t = DoctorFormat::Human)]
-    format: DoctorFormat,
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum)]
-pub enum DoctorFormat {
-    Human,
-    Json,
-}
+struct DoctorArgs {}
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ReportFormat {
@@ -310,15 +351,6 @@ struct FeedbackArgs {
     /// Read error context from last error scratch
     #[arg(long)]
     from_last_error: bool,
-    /// Override issue title (default: auto-generated from kind)
-    #[arg(long)]
-    title: Option<String>,
-    /// Override issue body (default: auto-generated)
-    #[arg(long)]
-    body: Option<String>,
-    /// Skip confirmation prompt
-    #[arg(long)]
-    yes: bool,
 }
 
 trait Executable {
@@ -340,6 +372,11 @@ impl Executable for Commands {
             Commands::Explain(args) => args.run(),
             Commands::Doctor(args) => args.run(),
             Commands::Feedback(args) => args.run(),
+            Commands::Completions { shell } => {
+                let mut cmd = Cli::command();
+                genesis::cli::generate_completions(&mut cmd, *shell)?;
+                Ok(ExitCode::SUCCESS)
+            }
         }
     }
 }
@@ -353,7 +390,9 @@ impl Executable for ExplainArgs {
 
 impl Executable for DoctorArgs {
     fn run(&self) -> Result<ExitCode> {
-        doctor::run_doctor(self.format)
+        // Doctor format from global CLI flags (--json/--human or TTY auto-detect)
+        let format = resolve_doctor_format();
+        doctor::run_doctor(format)
     }
 }
 
@@ -395,53 +434,25 @@ impl Executable for InitArgs {
 impl Executable for FeedbackArgs {
     fn run(&self) -> Result<ExitCode> {
         let repo = extract_repo_from_cargo_toml()?;
-        let (kind_label, title_suffix) = match self.kind {
-            FeedbackKind::Bug => ("bug", "Bug report"),
-            FeedbackKind::Feature => ("feature", "Feature request"),
-            FeedbackKind::Question => ("question", "Question"),
+        let project_root = std::env::current_dir().context("failed to get current directory")?;
+
+        let kind_str = match self.kind {
+            FeedbackKind::Bug => "bug",
+            FeedbackKind::Feature => "feature",
+            FeedbackKind::Question => "question",
         };
 
+        let genesis_args = GenesisFeedbackArgs::new(kind_str, self.dry_run, self.from_last_error);
         let tool_name = env!("CARGO_PKG_NAME");
-        let title = self
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("[{tool_name}] {title_suffix}"));
+        let tool_version = env!("CARGO_PKG_VERSION");
 
-        let body = self
-            .body
-            .clone()
-            .unwrap_or_else(|| build_feedback_body(self.from_last_error));
-
-        // Redact the body
-        let body = redactor::redact(&body, None, None);
-
-        if self.dry_run {
-            let labels = ["agent-reported", kind_label, "has-repro"];
-            let labels_str = labels
-                .iter()
-                .map(|l| format!("--label '{}'", l))
-                .collect::<Vec<_>>()
-                .join(" ");
-            println!(
-                "DRY RUN: would run: gh issue create --repo '{}' --title '{}' {} --body-file -",
-                repo, title, labels_str
-            );
-            return Ok(ExitCode::SUCCESS);
-        }
-
-        let opts = CreateIssueOptions {
-            repo: repo.clone(),
-            title: title.clone(),
-            body,
-            labels: vec![
-                "agent-reported".to_string(),
-                kind_label.to_string(),
-                "has-repro".to_string(),
-            ],
-            dry_run: false,
-        };
-
-        match create_issue(&opts) {
+        match genesis_feedback::handle_feedback(
+            &genesis_args,
+            tool_name,
+            tool_version,
+            &repo,
+            &project_root,
+        ) {
             Ok(result) => match result {
                 genesis::feedback::gh::GhResult::Created { url, number } => {
                     println!("Created issue #{number}: {url}");
@@ -462,25 +473,7 @@ impl Executable for FeedbackArgs {
     }
 }
 
-/// Build a default feedback issue body.
-fn build_feedback_body(from_last_error: bool) -> String {
-    let mut b = String::new();
-    b.push_str("## Description\n\n");
-    b.push_str("<!-- Please describe the issue -->\n\n");
-    if from_last_error {
-        b.push_str("## Error context\n\n");
-        if let Some(record) = scratch::read_last_error("pretender") {
-            b.push_str(&format!("Command: `{}`\n", record.argv.join(" ")));
-            b.push_str(&format!("Exit code: {}\n", record.exit));
-            if let Some(footer) = &record.footer {
-                b.push_str(&format!("Footer: {footer}\n"));
-            }
-        } else {
-            b.push_str("No recent error found.\n");
-        }
-    }
-    b
-}
+
 
 /// Extract the repository string from Cargo.toml's [package] repository field.
 fn extract_repo_from_cargo_toml() -> Result<String> {
@@ -711,14 +704,9 @@ impl Executable for CheckArgs {
         if let Some(report_path) = test_report_path {
             let timings = test_report::parse_junit(&report_path, config.execute.test_time_unit)
                 .context("failed to parse JUnit XML report")?;
-            let search_root = std::env::current_dir()
-                .context("failed to get current directory")?;
-            report.test_findings = test_report::evaluate_duration(
-                &timings,
-                &detector,
-                &config,
-                &search_root,
-            );
+            let search_root = std::env::current_dir().context("failed to get current directory")?;
+            report.test_findings =
+                test_report::evaluate_duration(&timings, &detector, &config, &search_root);
         }
 
         let writing_to_stdout = self.output.is_none();
@@ -973,14 +961,14 @@ fn resolve_test_report_path(args: &CheckArgs, config: &Config) -> Option<PathBuf
         match wait_with_timeout(&mut child, timeout) {
             Ok(Some(status)) => {
                 if !status.success() {
-                    eprintln!(
-                        "warning: test_cmd exited with non-zero status ({})",
-                        status
-                    );
+                    eprintln!("warning: test_cmd exited with non-zero status ({})", status);
                 }
             }
             Ok(None) => {
-                eprintln!("warning: test_cmd timed out after {}s", config.execute.test_timeout_s);
+                eprintln!(
+                    "warning: test_cmd timed out after {}s",
+                    config.execute.test_timeout_s
+                );
                 let _ = child.kill();
                 let _ = child.wait();
                 return None;
@@ -1045,7 +1033,12 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
         Mode::Guidance => ExitCode::SUCCESS,
         Mode::Tiered => ExitCode::SUCCESS,
         Mode::Gate => {
-            if has_violation || has_skipped || has_coupling_violation || has_cycle || has_duration_violation {
+            if has_violation
+                || has_skipped
+                || has_coupling_violation
+                || has_cycle
+                || has_duration_violation
+            {
                 ExitCode::FAILURE
             } else {
                 ExitCode::SUCCESS
@@ -2238,9 +2231,7 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
         let location = sarif::Location::builder()
             .physical_location(
                 sarif::PhysicalLocation::builder()
-                    .artifact_location(
-                        sarif::ArtifactLocation::builder().uri(&file_uri).build(),
-                    )
+                    .artifact_location(sarif::ArtifactLocation::builder().uri(&file_uri).build())
                     .build(),
             )
             .build();
@@ -2535,12 +2526,23 @@ fn write_recurrence_hints(
 }
 
 fn main() -> ExitCode {
-    let guide = Guide::builder("pretender", env!("CARGO_PKG_VERSION"))
+    // Check for --version --json before clap parsing
+    if genesis::cli::maybe_print_version_json(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    ) {
+        return ExitCode::SUCCESS;
+    }
+
+    let mut guide = Guide::builder("pretender", env!("CARGO_PKG_VERSION"))
         .commands(PRETENDER_COMMANDS)
         .build();
 
     let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
+        Ok(cli) => {
+            guide.set_verbosity(cli.verbosity());
+            cli
+        }
         Err(err) => {
             if err.kind() == clap::error::ErrorKind::InvalidSubcommand {
                 let err_msg = err.to_string();
@@ -2611,4 +2613,18 @@ fn extract_bad_subcommand(msg: &str) -> Option<String> {
     let rest = &msg[quote_start + 1..];
     let quote_end = rest.find('\'')?;
     Some(rest[..quote_end].to_string())
+}
+
+/// Resolve the doctor output format from global CLI args or TTY auto-detect.
+fn resolve_doctor_format() -> genesis::guide::OutputFormat {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--json" || a == "-j") {
+        genesis::guide::OutputFormat::Json
+    } else if args.iter().any(|a| a == "--human") {
+        genesis::guide::OutputFormat::Human
+    } else if std::io::stdout().is_terminal() {
+        genesis::guide::OutputFormat::Human
+    } else {
+        genesis::guide::OutputFormat::Json
+    }
 }

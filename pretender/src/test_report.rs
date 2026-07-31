@@ -482,12 +482,7 @@ mod tests {
         std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
         std::fs::write(&src, "def test_foo(): pass").expect("write");
 
-        let resolved = resolve_testcase_file(
-            Some(&src),
-            "test_foo",
-            "tests",
-            dir.path(),
-        );
+        let resolved = resolve_testcase_file(Some(&src), "test_foo", "tests", dir.path());
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap(), src);
     }
@@ -499,12 +494,7 @@ mod tests {
         std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
         std::fs::write(&src, "fn test_math() {}").expect("write");
 
-        let resolved = resolve_testcase_file(
-            None,
-            "test_math",
-            "tests",
-            dir.path(),
-        );
+        let resolved = resolve_testcase_file(None, "test_math", "tests", dir.path());
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap(), PathBuf::from("tests/test_math.rs"));
     }
@@ -516,12 +506,7 @@ mod tests {
         std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
         std::fs::write(&src, "def test_widget(): pass").expect("write");
 
-        let resolved = resolve_testcase_file(
-            None,
-            "com.example.widget_test",
-            "tests",
-            dir.path(),
-        );
+        let resolved = resolve_testcase_file(None, "com.example.widget_test", "tests", dir.path());
         assert!(resolved.is_some());
         assert_eq!(
             resolved.unwrap(),
@@ -532,12 +517,7 @@ mod tests {
     #[test]
     fn classname_unresolved_returns_none() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let resolved = resolve_testcase_file(
-            None,
-            "nonexistent.test",
-            "tests",
-            dir.path(),
-        );
+        let resolved = resolve_testcase_file(None, "nonexistent.test", "tests", dir.path());
         assert!(resolved.is_none());
     }
 
@@ -680,7 +660,11 @@ mod tests {
         }];
 
         let findings = evaluate_duration(&timings, &detector, &config, dir.path());
-        assert_eq!(findings.len(), 0, "strict > comparison, exactly at threshold is not a violation");
+        assert_eq!(
+            findings.len(),
+            0,
+            "strict > comparison, exactly at threshold is not a violation"
+        );
     }
 
     #[test]
@@ -741,7 +725,11 @@ mod tests {
         }];
 
         let findings = evaluate_duration(&timings, &detector, &config, dir.path());
-        assert_eq!(findings.len(), 0, "base test role has no duration threshold");
+        assert_eq!(
+            findings.len(),
+            0,
+            "base test role has no duration threshold"
+        );
     }
 
     #[test]
@@ -836,7 +824,11 @@ mod tests {
         }];
 
         let findings = evaluate_duration(&timings, &detector, &config, dir.path());
-        assert_eq!(findings.len(), 1, "failed tests are still evaluated for duration");
+        assert_eq!(
+            findings.len(),
+            1,
+            "failed tests are still evaluated for duration"
+        );
     }
 
     #[test]
@@ -876,6 +868,10 @@ mod tests {
         ];
 
         let findings = evaluate_duration(&timings, &detector, &config, dir.path());
-        assert_eq!(findings.len(), 1, "only the over-threshold rerun entry is flagged");
+        assert_eq!(
+            findings.len(),
+            1,
+            "only the over-threshold rerun entry is flagged"
+        );
     }
 }

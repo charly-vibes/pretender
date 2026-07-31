@@ -356,7 +356,7 @@ fn test_doctor_json_output_has_envelope_shape() {
     let dir = tempdir();
     git_init(&dir);
 
-    let output = doctor_in(&dir, &["--format", "json"])
+    let output = doctor_in(&dir, &["--json"])
         .output()
         .expect("run doctor");
 
@@ -848,19 +848,20 @@ fn test_typo_suggestion_for_misspelled_command() {
 
 #[test]
 fn test_feedback_dry_run_prints_body_and_gh_line() {
+    // First simulate an error so --from-last-error has data
+    let _ = Command::new(pretender_bin())
+        .args(["explain", "not_a_real_metric"])
+        .output();
+
     let output = Command::new(pretender_bin())
-        .args(["feedback", "bug", "--dry-run"])
+        .args(["feedback", "bug", "--dry-run", "--from-last-error"])
         .output()
         .expect("failed to execute process");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.contains("DRY RUN"),
-        "dry run should print DRY RUN; got: {stdout}"
-    );
-    assert!(
-        stdout.contains("gh issue create"),
-        "dry run should print gh command; got: {stdout}"
+        stderr.contains("gh issue create"),
+        "dry run should print gh command; got stderr: {stderr}"
     );
 }
 
@@ -2234,7 +2235,7 @@ fn test_doctor_all_pass_with_valid_config_and_hook() {
     std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
     write_pretender_hook(&dir);
 
-    let output = doctor_in(&dir, &[]).output().expect("run doctor");
+    let output = doctor_in(&dir, &["--human"]).output().expect("run doctor");
 
     assert_eq!(
         output.status.code(),
@@ -2254,7 +2255,7 @@ fn test_doctor_missing_config_exits_1_with_correct_skips() {
     let dir = tempdir();
     git_init(&dir);
 
-    let output = doctor_in(&dir, &[]).output().expect("run doctor");
+    let output = doctor_in(&dir, &["--human"]).output().expect("run doctor");
 
     assert_eq!(output.status.code(), Some(1), "should exit 1");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2277,7 +2278,7 @@ fn test_doctor_json_missing_config_exits_1_with_fail_status() {
     let dir = tempdir();
     git_init(&dir);
 
-    let output = doctor_in(&dir, &["--format", "json"])
+    let output = doctor_in(&dir, &["--json"])
         .output()
         .expect("run doctor");
 
@@ -2314,7 +2315,7 @@ fn test_doctor_unmanaged_hook_fails_installed_skips_executable() {
             .expect("chmod hook");
     }
 
-    let output = doctor_in(&dir, &[]).output().expect("run doctor");
+    let output = doctor_in(&dir, &["--human"]).output().expect("run doctor");
 
     assert_eq!(output.status.code(), Some(1), "should exit 1");
     let stdout = String::from_utf8_lossy(&output.stdout);
