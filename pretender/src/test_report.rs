@@ -6,13 +6,88 @@
 
 #![allow(dead_code)]
 
-use crate::config::TimeUnit;
+use crate::config::{Config, TimeUnit};
+use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{Context, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Timing data for a single test case, extracted from a JUnit XML report.
+/// A finding emitted when a test exceeds its duration threshold.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TestDurationFinding {
+    /// Test name from the JUnit report.
+    pub test_name: String,
+    /// Resolved source file path, if available.
+    pub file: Option<PathBuf>,
+    /// Role applied to this test (unit-test, integration-test, or test).
+    pub role: String,
+    /// Observed duration in milliseconds.
+    pub observed_ms: u32,
+    /// Threshold that was exceeded, in milliseconds.
+    pub threshold_ms: u32,
+}
+
+/// Evaluate test timings against configured duration thresholds.
+///
+/// Each testcase is resolved to a role via the `RoleDetector`. If the
+/// resolved role has a non-zero `duration_max_ms` and the test's elapsed
+/// time strictly exceeds it, a [`TestDurationFinding`] is emitted.
+///
+/// Tests that resolve to the base `test` role (or any role without a
+/// duration threshold) are skipped.
+pub fn evaluate_duration(
+    timings: &[TestTiming],
+    detector: &RoleDetector,
+    config: &Config,
+    search_root: &Path,
+) -> Vec<TestDurationFinding> {
+    let mut findings = Vec::new();
+
+    for timing in timings {
+        // Resolve the source file path
+        let file = resolve_testcase_file(
+            timing.file.as_deref(),
+            &timing.classname,
+            &config.roles.test.classname_root,
+            search_root,
+        );
+
+        // Determine role
+        let role = match &file {
+            Some(path) => detector.detect(path, ""),
+            None => Role::Test,
+        };
+
+        let effective = EffectiveThresholds::for_role(role, &config.thresholds);
+
+        if effective.duration_max_ms > 0 && timing.duration_ms > effective.duration_max_ms {
+            findings.push(TestDurationFinding {
+                test_name: timing.name.clone(),
+                file,
+                role: role_name_str(role),
+                observed_ms: timing.duration_ms,
+                threshold_ms: effective.duration_max_ms,
+            });
+        }
+    }
+
+    findings
+}
+
+fn role_name_str(role: Role) -> String {
+    match role {
+        Role::App => "app".to_string(),
+        Role::Library => "library".to_string(),
+        Role::Test => "test".to_string(),
+        Role::Script => "script".to_string(),
+        Role::Generated => "generated".to_string(),
+        Role::Vendor => "vendor".to_string(),
+        Role::UnitTest => "unit-test".to_string(),
+        Role::IntegrationTest => "integration-test".to_string(),
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestTiming {
     /// Test name from the `name` attribute.
@@ -510,5 +585,297 @@ mod tests {
         );
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap(), PathBuf::from("tests/test_widget.py"));
+    }
+
+    #[test]
+    fn evaluate_over_threshold_unit_test() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 50
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 100,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].test_name, "test_widget");
+        assert_eq!(findings[0].observed_ms, 100);
+        assert_eq!(findings[0].threshold_ms, 50);
+    }
+
+    #[test]
+    fn evaluate_under_threshold_no_finding() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 200
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 100,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 0);
+    }
+
+    #[test]
+    fn evaluate_exactly_at_threshold_no_finding() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 100
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 100,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 0, "strict > comparison, exactly at threshold is not a violation");
+    }
+
+    #[test]
+    fn evaluate_integration_test_threshold() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/integration/test_api.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_api(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.integration-test]
+            duration_max_ms = 500
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_api".to_string(),
+            classname: "test_api".to_string(),
+            file: Some(src),
+            duration_ms: 600,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].threshold_ms, 500);
+    }
+
+    #[test]
+    fn evaluate_base_test_no_threshold_skips() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 9999,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 0, "base test role has no duration threshold");
+    }
+
+    #[test]
+    fn evaluate_zero_threshold_disabled() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 0
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 9999,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 0, "zero threshold means disabled");
+    }
+
+    #[test]
+    fn evaluate_skipped_tests_excluded() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 50
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        // Skipped testcases are excluded from parse_junit output, so they
+        // never reach the evaluator. This test verifies the pipeline.
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 100,
+            status: TestStatus::Passed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn evaluate_failed_still_evaluated() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 50
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![TestTiming {
+            name: "test_widget".to_string(),
+            classname: "test_widget".to_string(),
+            file: Some(src),
+            duration_ms: 100,
+            status: TestStatus::Failed,
+        }];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 1, "failed tests are still evaluated for duration");
+    }
+
+    #[test]
+    fn evaluate_independent_rerun_entries() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let src = dir.path().join("tests/unit/test_widget.py");
+        std::fs::create_dir_all(src.parent().unwrap()).expect("create dir");
+        std::fs::write(&src, "def test_widget(): pass").expect("write");
+
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 50
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid");
+        let timings = vec![
+            TestTiming {
+                name: "flaky_test".to_string(),
+                classname: "test_widget".to_string(),
+                file: Some(src.clone()),
+                duration_ms: 100,
+                status: TestStatus::Passed,
+            },
+            TestTiming {
+                name: "flaky_test".to_string(),
+                classname: "test_widget".to_string(),
+                file: Some(src),
+                duration_ms: 30,
+                status: TestStatus::Passed,
+            },
+        ];
+
+        let findings = evaluate_duration(&timings, &detector, &config, dir.path());
+        assert_eq!(findings.len(), 1, "only the over-threshold rerun entry is flagged");
     }
 }

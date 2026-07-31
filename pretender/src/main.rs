@@ -612,6 +612,7 @@ impl Executable for CheckArgs {
                         files: vec![],
                         modules: Vec::new(),
                         cycles: Vec::new(),
+                        test_findings: Vec::new(),
                         history: None,
                     },
                     config.pretender.mode,
@@ -665,6 +666,7 @@ impl Executable for CheckArgs {
             files: reports,
             modules: Vec::new(),
             cycles: Vec::new(),
+            test_findings: Vec::new(),
             history: None,
         };
 
@@ -928,12 +930,13 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
         .iter()
         .any(|m| !m.coupling_violations.is_empty());
     let has_cycle = !report.cycles.is_empty();
+    let has_duration_violation = !report.test_findings.is_empty();
 
     match mode {
         Mode::Guidance => ExitCode::SUCCESS,
         Mode::Tiered => ExitCode::SUCCESS,
         Mode::Gate => {
-            if has_violation || has_skipped || has_coupling_violation || has_cycle {
+            if has_violation || has_skipped || has_coupling_violation || has_cycle || has_duration_violation {
                 ExitCode::FAILURE
             } else {
                 ExitCode::SUCCESS
@@ -2140,6 +2143,8 @@ struct CheckReport {
     modules: Vec<ModuleReport>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     cycles: Vec<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    test_findings: Vec<test_report::TestDurationFinding>,
     #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<history::HistorySummary>,
 }
