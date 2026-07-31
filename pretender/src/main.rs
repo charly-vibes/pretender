@@ -166,6 +166,12 @@ struct CheckArgs {
     /// Show all functions with metrics, not just violating ones
     #[arg(long)]
     verbose: bool,
+    /// Path to a JUnit XML report for test-duration analysis
+    #[arg(long)]
+    test_report: Option<PathBuf>,
+    /// Execute the configured test_cmd before analyzing test durations
+    #[arg(long)]
+    execute: bool,
 }
 
 #[derive(Parser)]
@@ -699,6 +705,22 @@ impl Executable for CheckArgs {
             .iter()
             .map(|c| c.participants.clone())
             .collect();
+
+        // ── Test duration analysis ──────────────────────────────────
+        let test_report_path = resolve_test_report_path(self, &config);
+        if let Some(report_path) = test_report_path {
+            let timings = test_report::parse_junit(&report_path, config.execute.test_time_unit)
+                .context("failed to parse JUnit XML report")?;
+            let search_root = std::env::current_dir()
+                .context("failed to get current directory")?;
+            report.test_findings = test_report::evaluate_duration(
+                &timings,
+                &detector,
+                &config,
+                &search_root,
+            );
+        }
+
         let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
         // Attach history before writing output so JSON format includes it
@@ -912,6 +934,93 @@ impl Executable for CiCommand {
                 Ok(ExitCode::SUCCESS)
             }
             CiCommand::Generate { .. } => not_implemented("ci generate", "pretender-fb3"),
+        }
+    }
+}
+
+/// Resolve the test report path to use for duration analysis.
+///
+/// Priority:
+/// 1. `--test-report` flag (explicit path from user)
+/// 2. `--execute` flag: run `[execute] test_cmd` and use `test_report_path`
+/// 3. Neither: returns `None` (no duration check)
+fn resolve_test_report_path(args: &CheckArgs, config: &Config) -> Option<PathBuf> {
+    if let Some(ref path) = args.test_report {
+        return Some(path.clone());
+    }
+
+    if args.execute {
+        let cmd = config.execute.test_cmd.as_ref()?;
+        let report_path = config.execute.test_report_path.as_ref()?;
+        let timeout = std::time::Duration::from_secs(config.execute.test_timeout_s as u64);
+
+        eprintln!("Running test command: {}", cmd);
+
+        let mut child = match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("warning: failed to spawn test_cmd '{}': {}", cmd, e);
+                return None;
+            }
+        };
+
+        match wait_with_timeout(&mut child, timeout) {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    eprintln!(
+                        "warning: test_cmd exited with non-zero status ({})",
+                        status
+                    );
+                }
+            }
+            Ok(None) => {
+                eprintln!("warning: test_cmd timed out after {}s", config.execute.test_timeout_s);
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Err(e) => {
+                eprintln!("warning: test_cmd failed: {}", e);
+                return None;
+            }
+        }
+
+        let report_path = PathBuf::from(report_path);
+        if report_path.exists() {
+            return Some(report_path);
+        }
+        eprintln!(
+            "warning: test_report_path '{}' not found after test_cmd execution",
+            report_path.display()
+        );
+    }
+
+    None
+}
+
+/// Wait for a child process with a timeout. Returns `Ok(Some(status))`
+/// if the child exited, `Ok(None)` if it timed out, or `Err` on system error.
+fn wait_with_timeout(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+) -> std::io::Result<Option<std::process::ExitStatus>> {
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(Some(status)),
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    return Ok(None);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(e) => return Err(e),
         }
     }
 }
@@ -1716,6 +1825,35 @@ fn write_human_report(
             )?;
         }
     }
+
+    // ── Test duration findings ─────────────────────────────────────
+    if !report.test_findings.is_empty() {
+        writeln!(sink, "\nTest duration findings:")?;
+        for finding in &report.test_findings {
+            let file_str = finding
+                .file
+                .as_ref()
+                .map(|f| f.display().to_string())
+                .unwrap_or_else(|| "?".to_string());
+            writeln!(
+                sink,
+                "  {red}{violation_icon}{reset} {} {} {}: {}ms > {}ms",
+                finding.role,
+                finding.test_name,
+                file_str,
+                finding.observed_ms,
+                finding.threshold_ms,
+            )?;
+        }
+        if blocking {
+            writeln!(
+                sink,
+                "{violation_color}{violation_label}{reset} {} test duration violation(s)",
+                report.test_findings.len(),
+            )?;
+        }
+    }
+
     Ok(())
 }
 
