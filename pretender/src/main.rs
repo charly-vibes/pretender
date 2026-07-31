@@ -28,6 +28,7 @@ mod primitive_obsession;
 mod python;
 mod r;
 mod roles;
+mod test_report;
 mod ruby;
 mod rust;
 mod typescript;

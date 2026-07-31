@@ -40,3 +40,7 @@ tree-sitter-julia = "0.23.1"
 # Now compatible with tree-sitter 0.25+
 tree-sitter-c-sharp = "0.23"
 tree-sitter-clojure = "0.1"
+quick-xml = "0.37"
+
+[dev-dependencies]
+tempfile = "3"
