@@ -12,3 +12,23 @@ Leer en español: https://charly-vibes.github.io/charly-vibes/
 
 - `docs/agent-integration.md` — templates for making pretender discoverable
   in CLAUDE.md, AGENTS.md, llm.txt, and justfile
+
+## Genesis adoption
+
+pretender adopts all 14 genesis v0.4.0 modules to avoid reimplementing
+shared suite infrastructure:
+
+- `aix` — AIX artifact generation (agents_block helper)
+- `cli` — completions, version-json pre-parse
+- `config` — shared ConfigFile/ConfigStore/ConfigRegistry
+- `discovery` — .genesis/tools.toml manifest registration
+- `doctor` — structured diagnostics (DoctorCheck/DoctorReport/DoctorRunner)
+- `envelope` — structured JSON output (Envelope/EnvelopeKind)
+- `feedback` — agent issue reporting
+- `fixture` — test scratch environments (Fixture/FixtureBuilder)
+- `guide` — CLI scaffold and error handling (Guide/OutputFormat/Verbosity)
+- `managed_block` — AGENTS.md managed block injection
+- `scaffold` — init scaffolding (Scaffold)
+- `status` — cross-tool dashboard (StatusContributor/StatusItem)
+- `suggestions` — typo correction and self-healing error footers
+- `suite_linter` — suite-wide lint checks (LintResult/Severity)

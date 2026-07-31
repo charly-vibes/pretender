@@ -190,3 +190,57 @@ fn genesis_guide_accessible() {
     let exit = guide.run(|| Ok(Output::success("ok")));
     assert_eq!(exit, 0);
 }
+
+#[test]
+fn genesis_cli_accessible() {
+    // Verify the module and its key functions compile
+    // (real usage is at src/main.rs:362 and src/main.rs:2534)
+    let _ = genesis::cli::generate_completions;
+    let _ = genesis::cli::maybe_print_version_json;
+}
+
+#[test]
+fn genesis_scaffold_accessible() {
+    use genesis::scaffold::Scaffold;
+    use std::path::Path;
+
+    // Scaffold::new creates a builder for the given directory
+    let _scaffold = Scaffold::new(Path::new("/tmp"));
+}
+
+#[test]
+fn genesis_discovery_accessible() {
+    use genesis::discovery::register;
+    use std::path::Path;
+
+    // register function signature compiles
+    let _ = register(
+        Path::new("/tmp"),
+        "test-tool",
+        "A test tool",
+        "file",
+        "test.toml",
+    );
+}
+
+#[test]
+fn genesis_fixture_accessible() {
+    use genesis::fixture::Fixture;
+
+    let fixture = Fixture::new()
+        .with_file("hello.txt", "world")
+        .build()
+        .expect("fixture should build");
+
+    let path = fixture.path("hello.txt");
+    assert!(path.exists(), "fixture file should exist on disk");
+    let content = std::fs::read_to_string(&path).expect("should read fixture file");
+    assert_eq!(content, "world", "fixture file content should match");
+}
+
+#[test]
+fn genesis_aix_accessible() {
+    use genesis::aix::agents_block;
+
+    let _block = agents_block("WAI", "Agent instructions for wai");
+}
