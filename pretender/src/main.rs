@@ -414,8 +414,28 @@ impl Executable for InitArgs {
             prompt_init_options(self.mode)?
         };
 
-        fs::write("pretender.toml", render_init_config(&options))
-            .context("failed to write pretender.toml")?;
+        let cwd = std::env::current_dir().context("failed to get current directory")?;
+
+        // Use genesis::scaffold to write the config and set up directories
+        let config_content = render_init_config(&options);
+        let result = genesis::scaffold::Scaffold::new(&cwd)
+            .default_config("pretender.toml", config_content)
+            .build()
+            .context("failed to scaffold init")?;
+
+        if result.created.is_empty() && result.existed.iter().any(|p| p.ends_with("pretender.toml")) {
+            eprintln!("pretender.toml already exists, skipping");
+        }
+
+        // Register in genesis discovery manifest
+        genesis::discovery::register(
+            &cwd,
+            "pretender",
+            "Multi-language structural code-quality checks",
+            "file",
+            "pretender.toml",
+        )
+        .map_err(|e| anyhow::anyhow!("failed to register in genesis manifest: {e}"))?;
 
         // Inject suite managed blocks into AGENTS.md
         inject_managed_blocks()?;
