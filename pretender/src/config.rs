@@ -111,7 +111,9 @@ pub struct Thresholds {
     pub library: LibraryThresholds,
     pub script: ScriptThresholds,
     pub coupling: CouplingThresholds,
+    #[serde(rename = "unit-test")]
     pub unit_test: DurationThresholds,
+    #[serde(rename = "integration-test")]
     pub integration_test: DurationThresholds,
 }
 
@@ -480,7 +482,9 @@ pub struct Roles {
     pub script: RoleMatcher,
     pub generated: RoleMatcher,
     pub vendor: RoleMatcher,
+    #[serde(rename = "unit-test")]
     pub unit_test: RoleMatcher,
+    #[serde(rename = "integration-test")]
     pub integration_test: RoleMatcher,
 }
 
@@ -609,8 +613,8 @@ mod tests {
             script = { paths = ["scripts/**"] }
             generated = { paths = ["**/*_generated.*"] }
             vendor = { paths = ["vendor/**"] }
-            unit_test = { paths = ["tests/unit/**"] }
-            integration_test = { paths = ["tests/integration/**"] }
+            unit-test = { paths = ["tests/unit/**"] }
+            integration-test = { paths = ["tests/integration/**"] }
             "#,
         )
         .expect("config should parse");

@@ -362,4 +362,199 @@ mod tests {
         assert!(library.require_docstring);
         assert_eq!(script.function_lines_max, 100);
     }
+
+    #[test]
+    fn pragma_unit_test_underscore_form() {
+        let detector = RoleDetector::new(&Config::default()).expect("valid default role globs");
+        let role = detector.detect(
+            Path::new("src/random.py"),
+            "// pretender: role=unit_test\n",
+        );
+        assert_eq!(role, Role::UnitTest);
+    }
+
+    #[test]
+    fn pragma_unit_test_bare_form() {
+        let detector = RoleDetector::new(&Config::default()).expect("valid default role globs");
+        let role = detector.detect(
+            Path::new("src/random.py"),
+            "// pretender: role=unit\n",
+        );
+        assert_eq!(role, Role::UnitTest);
+    }
+
+    #[test]
+    fn pragma_integration_test_kebab_form() {
+        let detector = RoleDetector::new(&Config::default()).expect("valid default role globs");
+        let role = detector.detect(
+            Path::new("src/random.py"),
+            "# pretender: role=integration-test\n",
+        );
+        assert_eq!(role, Role::IntegrationTest);
+    }
+
+    #[test]
+    fn pragma_integration_test_underscore_form() {
+        let detector = RoleDetector::new(&Config::default()).expect("valid default role globs");
+        let role = detector.detect(
+            Path::new("src/random.py"),
+            "/* pretender: role = integration_test */\n",
+        );
+        assert_eq!(role, Role::IntegrationTest);
+    }
+
+    #[test]
+    fn glob_configured_unit_test_paths() {
+        let config = Config::parse_str(
+            r#"
+            [roles.unit-test]
+            paths = ["tests/unit/**"]
+            [roles.integration-test]
+            paths = ["tests/integration/**"]
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("valid role globs");
+
+        assert_eq!(
+            detector.detect(Path::new("tests/unit/test_widget.py"), ""),
+            Role::UnitTest
+        );
+        assert_eq!(
+            detector.detect(Path::new("tests/integration/test_api.py"), ""),
+            Role::IntegrationTest
+        );
+    }
+
+    #[test]
+    fn heuristic_unit_test_paths() {
+        let config = Config::parse_str(
+            r#"
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("empty globs are valid");
+
+        assert_eq!(
+            detector.detect(Path::new("tests/unit/test_widget.py"), ""),
+            Role::UnitTest
+        );
+        assert_eq!(
+            detector.detect(Path::new("test/unit/test_widget.py"), ""),
+            Role::UnitTest
+        );
+        assert_eq!(
+            detector.detect(Path::new("src/tests/unit/test_widget.py"), ""),
+            Role::UnitTest
+        );
+    }
+
+    #[test]
+    fn heuristic_integration_test_paths() {
+        let config = Config::parse_str(
+            r#"
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("empty globs are valid");
+
+        assert_eq!(
+            detector.detect(Path::new("tests/integration/test_api.py"), ""),
+            Role::IntegrationTest
+        );
+        assert_eq!(
+            detector.detect(Path::new("test/integration/test_api.py"), ""),
+            Role::IntegrationTest
+        );
+        assert_eq!(
+            detector.detect(Path::new("myapp/tests/integration/test_api.py"), ""),
+            Role::IntegrationTest
+        );
+    }
+
+    #[test]
+    fn src_unit_helper_not_misclassified_as_unit_test() {
+        // Design requirement: Do NOT match the broad **/unit/**
+        let config = Config::parse_str(
+            r#"
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("empty globs are valid");
+
+        // src/unit/helper.rs is NOT a test file, should get App
+        assert_eq!(
+            detector.detect(Path::new("src/unit/helper.rs"), ""),
+            Role::App
+        );
+        // src/tests/unit.rs is a test file (not tests/unit/ subdir), should be Test
+        assert_eq!(
+            detector.detect(Path::new("src/tests/unit.rs"), ""),
+            Role::Test
+        );
+    }
+
+    #[test]
+    fn unit_test_role_overrides_base_test_heuristic() {
+        // tests/unit/ should be UnitTest, not base Test
+        let config = Config::parse_str(
+            r#"
+            [roles]
+            test = { paths = [] }
+            unit-test = { paths = [] }
+            integration-test = { paths = [] }
+            "#,
+        )
+        .expect("config parses");
+        let detector = RoleDetector::new(&config).expect("empty globs are valid");
+
+        assert_eq!(
+            detector.detect(Path::new("tests/unit/test_widget.py"), ""),
+            Role::UnitTest
+        );
+        assert_eq!(
+            detector.detect(Path::new("tests/test_widget.py"), ""),
+            Role::Test
+        );
+    }
+
+    #[test]
+    fn unit_test_effective_thresholds_inherit_test_and_overlay_duration() {
+        let config = Config::parse_str(
+            r#"
+            [thresholds.unit-test]
+            duration_max_ms = 100
+            [thresholds.integration-test]
+            duration_max_ms = 500
+            "#,
+        )
+        .expect("config parses");
+
+        let unit = EffectiveThresholds::for_role(Role::UnitTest, &config.thresholds);
+        let integration = EffectiveThresholds::for_role(Role::IntegrationTest, &config.thresholds);
+        let base_test = EffectiveThresholds::for_role(Role::Test, &config.thresholds);
+
+        // Sub-roles inherit test thresholds
+        assert_eq!(unit.cyclomatic_max, base_test.cyclomatic_max);
+        assert_eq!(unit.min_assertions, base_test.min_assertions);
+
+        // Sub-roles overlay duration_max_ms
+        assert_eq!(unit.duration_max_ms, 100);
+        assert_eq!(integration.duration_max_ms, 500);
+
+        // Base test has no duration threshold
+        assert_eq!(base_test.duration_max_ms, 0);
+    }
 }
