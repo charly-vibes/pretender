@@ -35,6 +35,24 @@ for files not matched by any other role).
 | `coverage_branch_min` | integer | `70` | Minimum branch coverage percentage (0–100) |
 | `mutation_min` | integer | `60` | Minimum mutation score percentage (0–100) |
 
+### `[thresholds.unit-test]`
+
+Overrides for files assigned the `unit-test` sub-role. Inherits all `[thresholds.test]`
+values and overlays the duration threshold.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `duration_max_ms` | integer | `0` | Maximum allowed test duration in milliseconds. `0` disables the check.
+
+### `[thresholds.integration-test]`
+
+Overrides for files assigned the `integration-test` sub-role. Inherits all `[thresholds.test]`
+values and overlays the duration threshold.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `duration_max_ms` | integer | `0` | Maximum allowed test duration in milliseconds. `0` disables the check.
+
 ### `[thresholds.test]`
 
 Overrides for files assigned the `test` role.
@@ -143,6 +161,10 @@ Optional shell commands pretender can run to collect coverage and mutation data.
 | `enabled` | boolean | `false` | Run the coverage and mutation commands automatically during `pretender check` |
 | `coverage_cmd` | string or null | `null` | Shell command that produces a coverage report. pretender checks the exit code; non-zero is treated as a coverage failure |
 | `mutation_cmd` | string or null | `null` | Shell command that runs mutation testing. pretender checks the exit code; use `--score-min` for threshold control instead |
+| `test_cmd` | string or null | `null` | Shell command that runs the test suite and produces a JUnit XML report (used with `--execute`) |
+| `test_report_path` | string or null | `null` | Path to the JUnit XML report produced by `test_cmd` (relative to repo root) |
+| `test_timeout_s` | integer | `600` | Timeout in seconds for `test_cmd`; on timeout pretender emits a `test-cmd-timeout` error |
+| `test_time_unit` | string | `"seconds"` | Unit of the JUnit `time` attribute: `"seconds"` (XSD-conformant) or `"milliseconds"` (non-conformant runners) |
 
 ---
 
@@ -185,12 +207,15 @@ Each role section has a single key:
 | Key | Type | Description |
 |-----|------|-------------|
 | `paths` | array of glob strings | Files matching any glob are assigned this role |
+| `classname_root` | string | For `[roles.test]` only: directory to search when resolving JUnit `classname` to a source file (default `"tests"`) |
 
 Available roles and their defaults:
 
 | Role | Default paths |
 |------|--------------|
 | `test` | `["tests/**", "**/*_test.*", "spec/**"]` |
+| `unit-test` | `["tests/unit/**"]` |
+| `integration-test` | `["tests/integration/**"]` |
 | `library` | `["pkg/**", "lib/**"]` |
 | `script` | `["scripts/**", "examples/**"]` |
 | `generated` | `["**/*.pb.go", "**/*_generated.*"]` |
@@ -214,7 +239,91 @@ pretender assigns the first role that matches, checked in this priority order:
 
 ---
 
-## History and feedback loop
+## Test-duration check
+
+pretender can analyse per-test timing data from a JUnit XML report and flag
+tests that exceed role-appropriate duration budgets. This is the first
+**dynamic** check in pretender — it consumes a runtime artifact rather than
+source text.
+
+### Activation
+
+The check activates when you pass `--test-report <path>` to `pretender check`.
+You can also configure `[execute] test_cmd` and use `--execute` to have
+pretender run the test suite for you:
+
+```sh
+# Analyse an existing report
+pretender check --test-report target/junit-report.xml
+
+# Run tests first, then analyse
+pretender check --execute
+```
+
+### Thresholds
+
+Set duration limits per test sub-role:
+
+```toml
+[thresholds.unit-test]
+duration_max_ms = 100       # unit tests should be fast
+
+[thresholds.integration-test]
+duration_max_ms = 2000      # integration tests can be slower
+```
+
+A finding is emitted when `observed_ms > duration_max_ms` (strict comparison,
+so a test exactly at the threshold does not fail). A threshold of `0`
+(the default) disables the check.
+
+### Sub-role detection
+
+pretender detects `unit-test` and `integration-test` sub-roles using the same
+resolution order as other roles:
+
+1. **Pragma** — `# pretender: role=unit-test` or `// pretender: role=unit`
+2. **Configured glob** — `[roles.unit-test]` with custom `paths`
+3. **Heuristic** — `tests/unit/**` and `test/unit/**` → `unit-test`;
+   `tests/integration/**` and `test/integration/**` → `integration-test`
+4. **Default** — `test` (no duration threshold)
+
+Sub-roles inherit all `[thresholds.test]` values and overlay only
+`duration_max_ms`.
+
+### How timing data is read
+
+pretender parses standard JUnit XML (`<testsuite>` / `<testcase time="...">`).
+The `time` attribute is interpreted as seconds by default (XSD-conformant);
+set `[execute] test_time_unit = "milliseconds"` for non-conformant runners.
+Rounding uses round-half-up to the nearest millisecond.
+
+### JUnit emission incantations per runner
+
+| Runner | Command |
+|--------|---------|
+| pytest | `pytest --junitxml=report.xml` |
+| cargo test | `cargo2junit > report.xml` (requires `cargo2junit` crate) |
+| Maven | `mvn surefire-report:report` (produces `target/surefire-reports/*.xml`) |
+| Gradle | Built-in: `build/reports/tests/test/*.xml` |
+| Jest | `jest --junitOutput=report.xml` (requires `jest-junit` reporter) |
+
+### CLI flags
+
+| Flag | Description |
+|------|-------------|
+| `--test-report <path>` | Path to a JUnit XML report for duration analysis |
+| `--execute` | Run `[execute] test_cmd` before analysing durations |
+
+### Output
+
+Findings appear in all output formats:
+
+- **Human:** `unit-test test_addition tests/unit/test_math.py: 100ms > 50ms`
+- **JSON:** `test_findings` top-level array with `test_name`, `file`, `role`,
+  `observed_ms`, `threshold_ms`
+- **SARIF:** `pretender/test-duration` rule id, `Warning` level
+
+In `gate` mode, any duration finding causes a non-zero exit code.
 
 pretender maintains a local event log that surfaces recurring problem areas
 across runs — useful for calibrating thresholds and identifying structural
