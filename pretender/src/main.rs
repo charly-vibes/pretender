@@ -37,14 +37,14 @@ use crate::config::{Band, Bands, Config, Mode};
 use crate::model::{Metric, Module};
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
-use clap::{Parser, Subcommand, ValueEnum, CommandFactory};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
 use genesis::envelope::{Envelope, EnvelopeKind};
-use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
 use genesis::feedback::scratch::{self, ErrorRecord};
+use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
 use genesis::guide::Guide;
 use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
-use genesis::status::{StatusContributor, StatusItem, StatusLevel, StatusSection};
+use genesis::status::{StatusContributor, StatusItem, StatusSection};
 use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -89,22 +89,6 @@ impl Cli {
             genesis::guide::Verbosity::Verbose
         } else {
             genesis::guide::Verbosity::Normal
-        }
-    }
-
-    /// Resolve the effective output format.
-    fn output_format(&self) -> genesis::guide::OutputFormat {
-        if self.json {
-            genesis::guide::OutputFormat::Json
-        } else if self.human {
-            genesis::guide::OutputFormat::Human
-        } else {
-            use std::io::IsTerminal;
-            if std::io::stdout().is_terminal() {
-                genesis::guide::OutputFormat::Human
-            } else {
-                genesis::guide::OutputFormat::Json
-            }
         }
     }
 }
@@ -424,7 +408,8 @@ impl Executable for InitArgs {
             .build()
             .context("failed to scaffold init")?;
 
-        if result.created.is_empty() && result.existed.iter().any(|p| p.ends_with("pretender.toml")) {
+        if result.created.is_empty() && result.existed.iter().any(|p| p.ends_with("pretender.toml"))
+        {
             eprintln!("pretender.toml already exists, skipping");
         }
 
@@ -493,8 +478,6 @@ impl Executable for FeedbackArgs {
         Ok(ExitCode::SUCCESS)
     }
 }
-
-
 
 /// Extract the repository string from Cargo.toml's [package] repository field.
 fn extract_repo_from_cargo_toml() -> Result<String> {
@@ -2548,10 +2531,7 @@ fn write_recurrence_hints(
 
 fn main() -> ExitCode {
     // Check for --version --json before clap parsing
-    if genesis::cli::maybe_print_version_json(
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION"),
-    ) {
+    if genesis::cli::maybe_print_version_json(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")) {
         return ExitCode::SUCCESS;
     }
 
@@ -2641,12 +2621,8 @@ fn resolve_doctor_format() -> genesis::guide::OutputFormat {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--json" || a == "-j") {
         genesis::guide::OutputFormat::Json
-    } else if args.iter().any(|a| a == "--human") {
-        genesis::guide::OutputFormat::Human
-    } else if std::io::stdout().is_terminal() {
-        genesis::guide::OutputFormat::Human
     } else {
-        genesis::guide::OutputFormat::Json
+        genesis::guide::OutputFormat::Human
     }
 }
 

@@ -356,9 +356,7 @@ fn test_doctor_json_output_has_envelope_shape() {
     let dir = tempdir();
     git_init(&dir);
 
-    let output = doctor_in(&dir, &["--json"])
-        .output()
-        .expect("run doctor");
+    let output = doctor_in(&dir, &["--json"]).output().expect("run doctor");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value =
@@ -2280,9 +2278,7 @@ fn test_doctor_json_missing_config_exits_1_with_fail_status() {
     let dir = tempdir();
     git_init(&dir);
 
-    let output = doctor_in(&dir, &["--json"])
-        .output()
-        .expect("run doctor");
+    let output = doctor_in(&dir, &["--json"]).output().expect("run doctor");
 
     assert_eq!(output.status.code(), Some(1), "should exit 1");
     let stdout = String::from_utf8_lossy(&output.stdout);

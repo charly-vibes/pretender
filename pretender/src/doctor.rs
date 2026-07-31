@@ -74,10 +74,7 @@ impl DoctorCheck for ConfigValidCheck {
             .find(|v| v.severity == ValidationSeverity::Error);
         match first_error {
             None => Ok(vec![]),
-            Some(err) => Ok(vec![LintResult::new(
-                err.message.clone(),
-                Severity::Error,
-            )]),
+            Some(err) => Ok(vec![LintResult::new(err.message.clone(), Severity::Error)]),
         }
     }
 }
@@ -219,7 +216,9 @@ pub fn run_doctor(format: OutputFormat) -> Result<ExitCode> {
     .with_tool_name("pretender");
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let report = runner.run(&cwd, false).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let report = runner
+        .run(&cwd, false)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     match format {
         OutputFormat::Human => print_human(&report),
