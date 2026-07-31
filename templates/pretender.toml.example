@@ -1,0 +1,196 @@
+# ─────────────────────────────────────────────────────────────────────
+# pretender.toml — canonical configuration template for Rust CLI repos
+# ─────────────────────────────────────────────────────────────────────
+#
+# Place this file at the repository root as `pretender.toml`.
+# All sections and keys are optional — omitted keys fall back to
+# sensible defaults documented in https://saxa.xyz/pretender/.
+#
+# This template reflects the recommended baseline for charly-vibes
+# suite repos (Rust CLI tools). Adjust thresholds to match your
+# project's codebase maturity and quality goals.
+
+# ── General settings ────────────────────────────────────────────────
+
+[pretender]
+mode = "tiered"                                       # guidance | tiered | gate
+languages = ["auto"]                                  # "auto" detects from extensions
+exclude = [
+    "vendor/**",
+    "node_modules/**",
+    "**/*_generated.*",
+    "target/**",
+]
+
+# ── Role matchers ───────────────────────────────────────────────────
+#
+# Each role assigns a quality profile to files matching its globs.
+# Files match the first applicable role in this priority order:
+#   1. Pragma comment (e.g. // pretender: role=library)
+#   2. Configured glob (this section)
+#   3. File-name heuristic (built-in)
+#   4. Default: app
+#
+# For a Rust CLI repository, the typical layout is:
+#   src/        → app (default)
+#   tests/      → test
+#   tests/unit/ → unit-test
+#   scripts/    → script
+
+[roles]
+test = { paths = ["tests/**", "**/*_test.*", "spec/**"], classname_root = "tests" }
+library = { paths = ["pkg/**", "lib/**"] }
+script = { paths = ["scripts/**", "examples/**"] }
+generated = { paths = ["**/*_generated.*"] }
+vendor = { paths = ["vendor/**", "node_modules/**"] }
+
+[roles.unit-test]
+paths = ["tests/unit/**"]
+
+[roles.integration-test]
+paths = ["tests/integration/**"]
+
+# ── Thresholds — app role ───────────────────────────────────────────
+#
+# Default role for source files under src/, benchmarks/, benches/, etc.
+# These values are suitable for production Rust CLI code.
+
+[thresholds]
+cyclomatic_max        = 10     # Max cyclomatic complexity per function
+cognitive_max         = 15     # Nesting-weighted cognitive complexity
+function_lines_max    = 40     # Max lines per function body
+file_lines_max        = 400    # Max lines per file
+nesting_max           = 3      # Max control-flow nesting depth
+params_max            = 4      # Max formal parameters per function
+abc_max               = 30     # Max ABC score per function
+duplication_pct_max   = 5      # Max structural duplication (%)
+mi_min                = 20     # Min Maintainability Index
+coverage_line_min     = 80     # Min line coverage (%)
+coverage_branch_min   = 70     # Min branch coverage (%)
+mutation_min          = 60     # Min mutation score (%)
+void_mutators_max     = 0      # Max void-mutator functions (0=disabled)
+mut_ratio_max         = 0.0    # Max mutable-binding ratio (0.0=disabled)
+unwrap_max            = 0      # Max unwrap()/.expect() calls (0=disabled)
+bool_cluster_max      = 0      # Max bool params per function (0=disabled)
+primitive_param_check = false  # Flag String/int params that should be newtypes
+inheritance_depth_max = 0      # Max class inheritance depth (0=disabled)
+
+# ── Thresholds — test role ──────────────────────────────────────────
+#
+# Tests are simpler by design but should still avoid excessive
+# duplication and missing assertions.
+
+[thresholds.test]
+cyclomatic_max      = 3       # Single-condition tests
+cognitive_max       = 5       # Minimal nesting
+function_lines_max  = 80      # Longer test bodies are acceptable
+nesting_max         = 2
+params_max          = 2
+duplication_pct_max = 30      # Shared setup is normal in tests
+min_assertions      = 1       # Each test must assert something
+mock_count_max      = 0       # Max mocks per file (0=disabled)
+void_mutators_max   = 0       # Max void-mutator functions (0=disabled)
+unwrap_max          = 0       # Max unwrap()/.expect() calls (0=disabled)
+lazy_cluster_min    = 0       # Min identical-test-cluster count (0=disabled)
+
+# ── Thresholds — unit-test sub-role ─────────────────────────────────
+#
+# Unit tests should be fast and focused. Uncomment and set thresholds.
+
+[thresholds.unit-test]
+duration_max_ms     = 100     # Max ms per unit test (0=disabled)
+
+# ── Thresholds — integration-test sub-role ──────────────────────────
+#
+# Integration tests can be slower but still bounded.
+
+[thresholds.integration-test]
+duration_max_ms     = 2000    # Max ms per integration test (0=disabled)
+
+# ── Thresholds — library role ────────────────────────────────────────
+#
+# For modules under pkg/ or lib/ that expose public APIs.
+
+[thresholds.library]
+exported_params_max       = 3     # Fewer params on public functions
+exported_cyclomatic_max   = 8     # Keep public functions simple
+exported_lines_max        = 30    # Keep public functions short
+require_docstring         = true  # Every public item needs docs
+
+# ── Thresholds — script role ─────────────────────────────────────────
+#
+# For scripts/ examples/ where longer/larger files are expected.
+
+[thresholds.script]
+function_lines_max = 100
+file_lines_max     = 300
+
+# ── Thresholds — coupling metrics ───────────────────────────────────
+#
+# Structural coupling analysis (uncomment to enable).
+
+[thresholds.coupling]
+ce_max          = 0   # Max efferent coupling (0=disabled)
+ca_max          = 0   # Max afferent coupling (0=disabled)
+cbo_max         = 0   # Max coupling between objects (0=disabled)
+lcom_hs_max     = 0   # Max lack of cohesion (Henderson-Sellers, 0=disabled)
+cycle_detection = false
+
+# ── Severity bands ──────────────────────────────────────────────────
+#
+# In tiered mode, raw metric values map to green/yellow/red.
+# green <= yellow <= red  must hold for each band.
+
+[bands]
+cyclomatic = { green = 10, yellow = 15, red = 20 }
+cognitive  = { green = 15, yellow = 25, red = 40 }
+
+# ── Scope ───────────────────────────────────────────────────────────
+#
+# Controls which files are analysed during `pretender check`.
+# Setting diff_only = true here does NOT activate diff filtering
+# automatically — you must pass --diff-only on the CLI.
+
+[scope]
+diff_only = true
+diff_base = "origin/main"
+
+# ── Execution ───────────────────────────────────────────────────────
+#
+# Optional shell commands for coverage, mutation, and test duration
+# analysis. Uncomment and customise for your project.
+
+[execute]
+enabled = false
+# coverage_cmd   = "cargo llvm-cov --lcov --output-path target/lcov.info"
+# mutation_cmd   = "cargo mutants --in-place"
+# test_cmd       = "cargo test -- --format=junit > target/test-report.xml"
+# test_report_path = "target/test-report.xml"
+test_timeout_s  = 600
+test_time_unit  = "seconds"   # "seconds" | "milliseconds"
+
+# ── Plugins ─────────────────────────────────────────────────────────
+#
+# Built-in language and metric tool plugins to load.
+
+[plugins]
+languages = ["python", "javascript", "typescript", "go", "rust"]
+metrics   = ["eslint", "ruff", "clippy"]
+
+# ── Output ──────────────────────────────────────────────────────────
+
+[output]
+formats     = ["human", "sarif"]   # human | json | sarif | junit | markdown
+sarif_path  = "pretender.sarif"
+
+# ── Mock patterns ───────────────────────────────────────────────────
+#
+# Custom mock/assertion library names to detect (beyond built-in
+# heuristics for each language).
+
+[patterns.mock]
+extra = []
+
+# ─────────────────────────────────────────────────────────────────────
+# End of canonical template.
+# ─────────────────────────────────────────────────────────────────────

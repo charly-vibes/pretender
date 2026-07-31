@@ -157,6 +157,41 @@ impl DoctorCheck for HookExecutableCheck {
     }
 }
 
+struct HooksConfigMismatchCheck;
+impl DoctorCheck for HooksConfigMismatchCheck {
+    fn name(&self) -> &'static str {
+        "Hooks vs config"
+    }
+    fn description(&self) -> &'static str {
+        "Warn when the pre-commit hook is installed but no pretender.toml exists"
+    }
+    fn run(&self, repo_root: &Path) -> Result<Vec<LintResult>, Box<dyn std::error::Error>> {
+        let hook_path = repo_root.join(".git/hooks/pre-commit");
+        // Only relevant when the hook file exists
+        let hook_content = match std::fs::read_to_string(&hook_path) {
+            Ok(c) => c,
+            Err(_) => return Ok(vec![]), // no hook → nothing to warn about
+        };
+        if !hook_content.contains(PRE_COMMIT_HOOK_MARKER) {
+            return Ok(vec![]); // hook not managed by Pretender
+        }
+        if repo_root.join("pretender.toml").exists() {
+            return Ok(vec![]); // both hook and config present → happy path
+        }
+        Ok(vec![LintResult::new(
+            format!(
+                "pretender hook is installed ({}) but no pretender.toml found — \
+                 pretender check runs with library defaults, which may not match \
+                 your project's role layout and quality targets. \
+                 Run `pretender init` to generate a config, or copy \
+                 templates/pretender.toml.example from the pretender repo.",
+                hook_path.display()
+            ),
+            Severity::Warning,
+        )])
+    }
+}
+
 struct PluginManifestsCheck;
 impl DoctorCheck for PluginManifestsCheck {
     fn name(&self) -> &'static str {
@@ -211,6 +246,7 @@ pub fn run_doctor(format: OutputFormat) -> Result<ExitCode> {
         Box::new(ConfigValidCheck),
         Box::new(HookInstalledCheck),
         Box::new(HookExecutableCheck),
+        Box::new(HooksConfigMismatchCheck),
         Box::new(PluginManifestsCheck),
     ])
     .with_tool_name("pretender");

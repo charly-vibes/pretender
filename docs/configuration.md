@@ -5,6 +5,92 @@ keys are optional — omitted keys fall back to the defaults shown here.
 
 ---
 
+## Recommended baseline for Rust CLI repos
+
+For charly-vibes suite repos (Rust CLI tools like pretender, wai, dont,
+espectacular, vampiro, testaruda, crua, livin), we recommend pinning roles
+and overriding the default thresholds to match a typical Rust project layout:
+
+| Role | Paths | Notes |
+|------|-------|-------|
+| `test` | `tests/**`, `**/*_test.*`, `spec/**` | Default — already matches |
+| `unit-test` | `tests/unit/**` | Explicit sub-role for fast unit tests |
+| `integration-test` | `tests/integration/**` | Explicit sub-role for slower integration |
+| `script` | `scripts/**`, `examples/**` | Default — already matches |
+| `generated` | `**/*_generated.*` | Default — pb.go, protobuf, etc. |
+
+### Why pin roles explicitly
+
+Without a `pretender.toml`, pretender uses library defaults: all files get the
+`app` role, tests are detected via heuristics only, and every role's paths use
+convention over configuration. This works, but has two downsides:
+
+1. **No sub-role awareness** — `tests/unit/` and `tests/integration/` are not
+differentiated, so duration thresholds (`duration_max_ms`) never activate.
+2. **No version-controlled baseline** — new team members or CI environments
+must guess which role layout your project uses.
+
+Pinning roles in `pretender.toml` resolves both issues and makes the config
+part of the reviewed, committed project state.
+
+### Baseline threshold values
+
+These values are copied from `templates/pretender.toml.example` and represent
+the recommended starting point for Rust CLI repos:
+
+```toml
+[thresholds]
+cyclomatic_max        = 10
+cognitive_max         = 15
+function_lines_max    = 40
+file_lines_max        = 400
+nesting_max           = 3
+params_max            = 4
+abc_max               = 30
+duplication_pct_max   = 5
+mi_min                = 20
+coverage_line_min     = 80
+coverage_branch_min   = 70
+mutation_min          = 60
+
+[thresholds.test]
+cyclomatic_max      = 3
+cognitive_max       = 5
+function_lines_max  = 80
+nesting_max         = 2
+params_max          = 2
+duplication_pct_max = 30
+min_assertions      = 1
+
+[thresholds.library]
+exported_params_max       = 3
+exported_cyclomatic_max   = 8
+exported_lines_max        = 30
+require_docstring         = true
+
+[thresholds.unit-test]
+duration_max_ms = 100
+
+[thresholds.integration-test]
+duration_max_ms = 2000
+```
+
+### Doctor check for config coverage
+
+`pretender doctor` includes a **Hooks vs config** check that warns when a
+pre-commit hook is installed but no `pretender.toml` exists. This catches the
+common onboarding failure where automation runs but with library defaults
+that may not match the project's quality targets.
+
+### Deploying across the suite
+
+Each suite repo should commit its own `pretender.toml` (start from the
+template at `templates/pretender.toml.example`) and adjust thresholds as
+needed. The canonical template lives in the pretender repo and serves as the
+upstream source of truth for all suite repos.
+
+---
+
 ## `[pretender]`
 
 | Key | Type | Default | Description |

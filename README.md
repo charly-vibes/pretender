@@ -62,7 +62,7 @@ cargo build --release
 |---------|-------------|
 | `pretender init` | Interactive wizard: write `pretender.toml`, install hook, generate CI |
 | `pretender check <paths...>` | Fast pass/fail scan against configured thresholds |
-| `pretender doctor [--json]` | Diagnose configuration, hooks, and plugin health |
+| `pretender doctor [--json]` | Diagnose configuration, hooks, and plugin health (warns if hook installed but no config) |
 | `pretender complexity <path>` | Show cyclomatic complexity per function, sorted worst-first |
 | `pretender report` | Render cached last check as human, markdown, or HTML |
 | `pretender duplication <paths...>` | Structural clone detection via AST subtree hashing |
@@ -160,6 +160,11 @@ exported_lines_max = 30
 cyclomatic = { green = 10, yellow = 15, red = 20 }
 cognitive  = { green = 15, yellow = 25, red = 40 }
 ```
+
+A canonical template with all sections documented (roles, thresholds,
+coupling, duration check, bands, plugins, output) is available at
+[`templates/pretender.toml.example`](templates/pretender.toml.example).
+Start from there when configuring a new project.
 
 ## Development
 
