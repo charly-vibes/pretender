@@ -2178,7 +2178,7 @@ fn test_version_flag_works() {
         "--version should print 'pretender'; got: {stdout}"
     );
     assert!(
-        stdout.contains("0.3."),
+        stdout.contains(env!("CARGO_PKG_VERSION")),
         "--version should include version number; got: {stdout}"
     );
 }
