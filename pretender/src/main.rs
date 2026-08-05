@@ -542,9 +542,10 @@ impl Executable for ComplexityArgs {
     fn run(&self) -> Result<ExitCode> {
         let config = load_config().unwrap_or_default();
         let threshold = config.thresholds.app.cyclomatic_max;
-        let multi = self.paths.len() > 1;
+        let files = collect_input_files(&self.paths, &config)?;
+        let multi = files.len() > 1;
 
-        for path in &self.paths {
+        for path in &files {
             let source = std::fs::read_to_string(path)
                 .with_context(|| format!("failed to read source file: {}", path.display()))?;
             let parser = get_parser(path)?;

@@ -179,6 +179,30 @@ fn test_complexity_multi_path() {
 }
 
 #[test]
+fn test_complexity_directory_path() {
+    // Regression: `pretender complexity <dir>` crashed with
+    // "failed to read source file" because directories were passed to
+    // fs::read_to_string instead of being expanded to files.
+    let dir = source_fixture("");
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(&dir)
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "complexity should succeed on a directory; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("simple: 1"),
+        "should have analyzed fixture files; stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_complexity_shows_threshold_marker_on_violation() {
     // Write a fixture with a function that exceeds cyclomatic_max=10
     // 11 branches → cyclomatic=12
