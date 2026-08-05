@@ -179,6 +179,5 @@ check step and a mutation gate step:
   run: pretender mutation . --score-min 60
 ```
 
-The `--score-min` value comes from `thresholds.mutation_min` in your
-`pretender.toml` (default: `60`). See the
-[Configuration reference](configuration.md#thresholds) to change it.
+The `--score-min` value defaults to `60` and can be set per invocation or via
+`pretender mutation . --score-min <N>` in your CI workflow.

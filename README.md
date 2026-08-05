@@ -97,19 +97,6 @@ pretender check <paths...> [flags]
   --diff-base <ref>             Base ref for --diff-only (default: origin/main)
 ```
 
-## Check flags
-
-```
-pretender check <paths...> [flags]
-
-  --format human|json|sarif     Output format (default: human)
-  --output <path>               Write report to file instead of stdout
-  --mode guidance|tiered|gate   Override pretender.toml mode
-  --staged                      Check only git-staged files
-  --diff-only                   Check only files changed vs --diff-base
-  --diff-base <ref>             Base ref for --diff-only (default: origin/main)
-```
-
 ## Metrics
 
 | Metric | Formula | Default threshold |

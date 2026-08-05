@@ -85,21 +85,19 @@ pretender check . --diff-only
 ### Reading the output
 
 ```
-src/parser.py  cyclomatic=14  [threshold: 10]  ● HIGH
-  ↳ parse_token()  cyclomatic=14
-
-src/utils.py   cyclomatic=6   cognitive=8      ✓ OK
+⚠ src/parser.py — parse_token(): cyclomatic 14 > 10
+  role: test
+  parse_token: cyclomatic=14, cognitive=8, assertions=0, function_lines=15, params=2, nesting_max=2, abc=3.46
+    ADVISORY cyclomatic 14 > 10
 ```
 
 | Symbol | Meaning |
 |--------|---------|
-| `✓ OK` | All metrics within thresholds |
-| `● HIGH` | One or more metrics exceed the red band |
-| `◐ MEDIUM` | Metrics in the yellow band |
-| `○ LOW` | Guidance-only hint |
+| `⚠` | Advisory — metric exceeds the configured threshold (tiered mode) |
+| `✗` | Violation — metric exceeds the threshold in gate mode |
 
-Severity is determined by the `[bands]` thresholds in `pretender.toml`. In
-`gate` mode every violation fails the run regardless of band.
+In `gate` mode every violation exits non-zero. In the default tiered mode
+advisories are printed but exit is still zero.
 
 ---
 

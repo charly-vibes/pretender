@@ -11,7 +11,7 @@ but have noted gaps.
 | Command | Status | Notes |
 |---------|--------|-------|
 | `pretender init` | ✅ Implemented | Interactive and `--non-interactive` modes |
-| `pretender check` | ✅ Implemented | human, json, sarif output |
+| `pretender check` | ✅ Implemented | human, json, sarif output; `--staged` and `--diff-only` filters |
 | `pretender complexity` | ✅ Implemented | Single-file, worst-first sort |
 | `pretender report` | ✅ Implemented | human, markdown, html |
 | `pretender duplication` | ✅ Implemented | Cross-file and single-file |
@@ -32,7 +32,6 @@ but have noted gaps.
 | `check --format markdown` | ❌ Stub | Tracked: pretender-t2m |
 | `ci generate <non-github>` | ❌ Stub | Only `github` is implemented |
 | Mutation testing — Java | ⚠️ Partial | `--dry-run` works via tree-sitter; PIT is not invoked automatically |
-| `check --staged` | ⚠️ Partial | Pre-commit shim runs `pretender check .`; true staged-file filtering is deferred |
 
 ---
 
