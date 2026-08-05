@@ -796,14 +796,17 @@ impl Executable for DuplicationArgs {
 
 impl Executable for MutationArgs {
     fn run(&self) -> Result<ExitCode> {
-        let lang = mutation::primary_lang(&self.paths)
+        let config = load_config()?;
+        let files = collect_input_files(&self.paths, &config)?;
+
+        let lang = mutation::primary_lang(&files)
             .ok_or_else(|| anyhow!("no supported source files found in provided paths"))?;
 
         if self.dry_run {
-            return run_mutation_dry_run(&lang, &self.paths);
+            return run_mutation_dry_run(&lang, &files);
         }
 
-        let report = mutation::run_mutation(&lang, &self.paths)?;
+        let report = mutation::run_mutation(&lang, &files)?;
 
         match self.format {
             ReportFormat::Json => {

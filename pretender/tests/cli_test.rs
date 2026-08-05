@@ -835,6 +835,24 @@ fn test_mutation_dry_run_python() {
 }
 
 #[test]
+fn test_mutation_dry_run_directory() {
+    // Regression: `mutation --dry-run <dir>` failed with
+    // "no supported source files found" because directories were passed
+    // to detect_language() which checks file extensions.
+    let dir = source_fixture("");
+    let output = Command::new(pretender_bin())
+        .args(["mutation", "--dry-run", dir.to_str().unwrap()])
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "mutation --dry-run should succeed on a directory; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn test_stub_subcommands_exit_two() {
     let cmd = vec!["plugins", "list"];
     let output = Command::new(pretender_bin())
