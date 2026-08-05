@@ -200,7 +200,7 @@ struct CheckArgs {
     mode: Option<ModeArg>,
     /// Show all functions with metrics, not just violating ones
     #[arg(long)]
-    verbose: bool,
+    show_all: bool,
     /// Path to a JUnit XML report for test-duration analysis
     #[arg(long)]
     test_report: Option<PathBuf>,
@@ -743,7 +743,7 @@ impl Executable for CheckArgs {
                     color,
                     &config.bands,
                     config.pretender.mode,
-                    self.verbose,
+                    self.show_all,
                 )?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,

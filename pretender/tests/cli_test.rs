@@ -2199,14 +2199,14 @@ fn test_check_verbose_shows_all_functions() {
     let output = check(&staged)
         .arg("--mode")
         .arg("gate")
-        .arg("--verbose")
+        .arg("--show-all")
         .output()
         .expect("failed to execute process");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.lines().any(|l| l.contains("cyclomatic=")),
-        "--verbose should show per-function metrics; stdout: {stdout}"
+        "--show-all should show per-function metrics; stdout: {stdout}"
     );
 }
 
