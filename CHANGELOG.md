@@ -2,6 +2,50 @@
 
 All notable changes to Pretender are documented here.
 
+## [0.5.0] — 2026-08-05
+
+### Fixed
+
+- **`complexity` crashes on directory paths** — `pretender complexity .` now
+  expands directories via `collect_input_files()` instead of calling
+  `fs::read_to_string` on a directory.
+- **`mutation` fails on directory paths** — `pretender mutation <dir>` now
+  expands directories before language detection, fixing
+  "no supported source files found" errors.
+- **Nested definitions inflate enclosing-function complexity** — branches inside
+  nested functions and closures are no longer counted against the parent in all
+  13 non-Python languages. `walk_block()` and `collect_nested_blocks()` now use
+  the language-aware `is_nested_definition()` predicate (covers Rust
+  `function_item`, Go/Java/C# `method_declaration`, Go `func_literal`, Rust
+  `closure_expression`, and lambda kinds).
+- **Global `--json` flag ignored by `check`** — `pretender --json check .` now
+  emits JSON output, matching `doctor`.
+- **Generated CI workflow had wrong GitHub org URL** — `ci generate github` now
+  emits `charly-vibes/pretender`, matching the `Cargo.toml` `repository` field.
+- **Hooks written to CWD-relative `.git` paths** — `hooks install|uninstall` now
+  discover the repository root by walking up from the current directory,
+  preventing bogus nested `.git` directories when invoked from a subdirectory.
+  Running hooks outside a git repo fails clearly.
+- **`-v` short flag unusable after `check` subcommand** — check's local `--verbose`
+  (no short form) shadowed the global `-v`. Renamed to `--show-all`.
+- **Phantom config thresholds removed** — `mi_min`, `coverage_line_min`,
+  `coverage_branch_min`, `mutation_min` were documented as enforced but never
+  read by `check`. Removed from the schema and docs (existing configs with these
+  keys are silently ignored). Mutation score remains gateable via
+  `pretender mutation --score-min N`.
+- **`plugins` subcommand marked as not yet implemented** in `--help` output.
+
+### Docs
+
+- **Falsifiable value proposition** added to README, AGENTS.md, and
+  `openspec/project.md`.
+- **Behavioral guardrails** (Goal Sandwich, prohibitions, escalation triggers,
+  Minimal Footprint, drift detection) added to AGENTS.md.
+- `docs/getting-started.md` output example matches actual `check` human format.
+- `docs/status.md` marks `check --staged` as fully implemented.
+- Removed duplicate "Check flags" section from README.
+- `docs/mutation.md` `--score-min` reference updated after threshold removal.
+
 ## [0.4.0] — 2026-07-31
 
 ### Added
