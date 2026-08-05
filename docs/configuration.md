@@ -48,10 +48,6 @@ nesting_max           = 3
 params_max            = 4
 abc_max               = 30
 duplication_pct_max   = 5
-mi_min                = 20
-coverage_line_min     = 80
-coverage_branch_min   = 70
-mutation_min          = 60
 
 [thresholds.test]
 cyclomatic_max      = 3
@@ -116,10 +112,13 @@ for files not matched by any other role).
 | `params_max` | integer | `4` | Maximum formal parameters per function |
 | `abc_max` | integer | `30` | Maximum ABC score (√(A²+B²+C²)) per function |
 | `duplication_pct_max` | integer | `5` | Maximum structural duplication percentage (0–100) |
-| `mi_min` | integer | `20` | Minimum Maintainability Index per file |
-| `coverage_line_min` | integer | `80` | Minimum line coverage percentage (0–100) |
-| `coverage_branch_min` | integer | `70` | Minimum branch coverage percentage (0–100) |
-| `mutation_min` | integer | `60` | Minimum mutation score percentage (0–100) |
+
+> **Planned (not yet enforced):** Maintainability Index (`mi_min`), coverage
+> (`coverage_line_min` / `coverage_branch_min`), and mutation score (`mutation_min`)
+> thresholds are not currently configurable. They were removed from the schema in
+> v0.5.0 because they were never enforced — passing a config that sets these keys
+> silently ignored them. Mutation score is already gateable via
+> `pretender mutation --score-min N`; coverage and MI enforcement are future work.
 
 ### `[thresholds.unit-test]`
 
@@ -244,9 +243,9 @@ Optional shell commands pretender can run to collect coverage and mutation data.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | boolean | `false` | Run the coverage and mutation commands automatically during `pretender check` |
-| `coverage_cmd` | string or null | `null` | Shell command that produces a coverage report. pretender checks the exit code; non-zero is treated as a coverage failure |
-| `mutation_cmd` | string or null | `null` | Shell command that runs mutation testing. pretender checks the exit code; use `--score-min` for threshold control instead |
+| `enabled` | boolean | `false` | Run external commands (test, coverage, mutation) during `pretender check` |
+| `coverage_cmd` | string or null | `null` | **Planned:** Shell command that produces a coverage report. Not yet executed by `pretender check` |
+| `mutation_cmd` | string or null | `null` | **Planned:** Shell command that runs mutation testing. Mutation score is already gateable via `pretender mutation --score-min N` |
 | `test_cmd` | string or null | `null` | Shell command that runs the test suite and produces a JUnit XML report (used with `--execute`) |
 | `test_report_path` | string or null | `null` | Path to the JUnit XML report produced by `test_cmd` (relative to repo root) |
 | `test_timeout_s` | integer | `600` | Timeout in seconds for `test_cmd`; on timeout pretender emits a `test-cmd-timeout` error |

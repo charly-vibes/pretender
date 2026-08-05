@@ -126,17 +126,6 @@ impl Thresholds {
         );
         validate_percent(
             out,
-            "thresholds.coverage_line_min",
-            self.app.coverage_line_min,
-        );
-        validate_percent(
-            out,
-            "thresholds.coverage_branch_min",
-            self.app.coverage_branch_min,
-        );
-        validate_percent(out, "thresholds.mutation_min", self.app.mutation_min);
-        validate_percent(
-            out,
             "thresholds.test.duplication_pct_max",
             self.test.duplication_pct_max,
         );
@@ -187,10 +176,6 @@ pub struct AppThresholds {
     pub params_max: u32,
     pub abc_max: u32,
     pub duplication_pct_max: u32,
-    pub mi_min: u32,
-    pub coverage_line_min: u32,
-    pub coverage_branch_min: u32,
-    pub mutation_min: u32,
     pub void_mutators_max: u32,
     pub mut_ratio_max: f64,
     pub unwrap_max: u32,
@@ -210,10 +195,6 @@ impl Default for AppThresholds {
             params_max: 4,
             abc_max: 30,
             duplication_pct_max: 5,
-            mi_min: 20,
-            coverage_line_min: 80,
-            coverage_branch_min: 70,
-            mutation_min: 60,
             void_mutators_max: 0,
             mut_ratio_max: 0.0,
             unwrap_max: 0,
@@ -558,10 +539,6 @@ mod tests {
             nesting_max = 2
             params_max = 3
             duplication_pct_max = 4
-            mi_min = 21
-            coverage_line_min = 81
-            coverage_branch_min = 71
-            mutation_min = 61
 
             [thresholds.test]
             cyclomatic_max = 3
@@ -664,10 +641,6 @@ mod tests {
         assert_eq!(config.thresholds.app.nesting_max, 3);
         assert_eq!(config.thresholds.app.params_max, 4);
         assert_eq!(config.thresholds.app.duplication_pct_max, 5);
-        assert_eq!(config.thresholds.app.mi_min, 20);
-        assert_eq!(config.thresholds.app.coverage_line_min, 80);
-        assert_eq!(config.thresholds.app.coverage_branch_min, 70);
-        assert_eq!(config.thresholds.app.mutation_min, 60);
         assert_eq!(
             config.bands.cyclomatic.unwrap(),
             Band {
@@ -724,7 +697,7 @@ mod tests {
         let config = Config::parse_str(
             r#"
             [thresholds]
-            coverage_line_min = 101
+            duplication_pct_max = 101
             "#,
         )
         .expect("config should parse");
@@ -732,7 +705,7 @@ mod tests {
         let validations = config.validate().expect("validate");
         assert!(validations
             .iter()
-            .any(|v| v.field == "thresholds.coverage_line_min"
+            .any(|v| v.field == "thresholds.duplication_pct_max"
                 && v.severity == ValidationSeverity::Error));
     }
 
