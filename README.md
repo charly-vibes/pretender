@@ -14,6 +14,12 @@
 
 [![tracked with wai](https://img.shields.io/badge/tracked%20with-wai-blue)](https://github.com/charly-vibes/wai)
 
+> **pretender will enable development teams using CI to detect structural quality
+> regressions before merge by reducing the rate of undetected complexity increases
+> to <5% of all PRs within 3 months of adoption, as measured by the ratio of
+> CI-pretender-flagged issues vs. post-merge quality incidents, compared to
+> baseline (no pretender).**
+
 Pretender is a Rust CLI for structural code-quality checks across multiple languages.
 
 ## Installation

@@ -90,6 +90,15 @@ Keep this managed block so `wai init` can refresh the instructions.
 
 ## Behavioral Constraints
 
+> **Falsifiable value proposition:** pretender will enable development teams using
+> CI to detect structural quality regressions before merge by reducing the rate of
+> undetected complexity increases to <5% of all PRs within 3 months of adoption, as
+> measured by the ratio of CI-pretender-flagged issues vs. post-merge quality
+> incidents, compared to baseline (no pretender).
+> **Kill criterion (owner: charly vibes):** if after 3 months the ratio of
+> post-merge quality incidents to CI-pretender-flagged issues has not fallen below
+> 5%, the value proposition is falsified and the tool direction must be revisited.
+
 These constraints are **persistent** — they live outside the WAI managed
 block so they survive `wai init`. Do not remove or edit them without
 deliberate intent.

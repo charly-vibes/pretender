@@ -2,6 +2,12 @@
 
 ## Purpose
 
+> **pretender will enable development teams using CI to detect structural quality
+> regressions before merge by reducing the rate of undetected complexity increases
+> to <5% of all PRs within 3 months of adoption, as measured by the ratio of
+> CI-pretender-flagged issues vs. post-merge quality incidents, compared to
+> baseline (no pretender).**
+
 **Pretender** is a language-aware code quality CLI that flags structural issues such as high complexity, missing assertions in tests, and risky call patterns.
 
 Binary: `pretender` · Config: `pretender.toml` · License: Apache 2.0
