@@ -1326,7 +1326,7 @@ fn test_init_interactive_can_install_hook_and_ci() {
         .expect("workflow exists");
     assert!(
         workflow
-            .contains("cargo install --git https://github.com/charly/pretender --locked pretender"),
+            .contains("cargo install --git https://github.com/charly-vibes/pretender --locked pretender"),
         "workflow: {workflow}"
     );
 }
@@ -1360,7 +1360,7 @@ fn test_ci_generate_github_writes_workflow() {
     );
     assert!(
         workflow
-            .contains("cargo install --git https://github.com/charly/pretender --locked pretender"),
+            .contains("cargo install --git https://github.com/charly-vibes/pretender --locked pretender"),
         "workflow: {workflow}"
     );
     assert!(

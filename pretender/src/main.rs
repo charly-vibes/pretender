@@ -1272,7 +1272,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Pretender
-        run: cargo install --git https://github.com/charly/pretender --locked pretender
+        run: cargo install --git https://github.com/charly-vibes/pretender --locked pretender
       - name: Run Pretender
         id: pretender
         continue-on-error: true
