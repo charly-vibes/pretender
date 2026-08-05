@@ -113,7 +113,7 @@ enum Commands {
     /// CI workflow generator
     #[command(subcommand)]
     Ci(CiCommand),
-    /// Manage language and metric plugins
+    /// Manage language and metric plugins [not yet implemented]
     #[command(subcommand)]
     Plugins(PluginsCommand),
     /// Print metric definition and threshold citation
