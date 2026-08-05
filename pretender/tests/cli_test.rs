@@ -1064,6 +1064,32 @@ fn test_rust_complexity() {
 }
 
 #[test]
+fn test_rust_nested_function_complexity() {
+    // Nested definitions (Rust function_item) must not contribute branches
+    // to the enclosing function. outer has one if; inner's if belongs to inner.
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("rust_nested.rs"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("outer: 2"),
+        "expected outer: 2 (nested fn branches excluded); got stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("inner: 2"),
+        "expected inner: 2; got stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_javascript_complexity() {
     let output = Command::new(pretender_bin())
         .arg("complexity")
@@ -1088,6 +1114,31 @@ fn test_javascript_complexity() {
     assert!(
         stdout.contains("complexFunc: 5"),
         "expected complexFunc: 5 in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_javascript_nested_function_complexity() {
+    // Nested function_declaration branches must not count toward outer.
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("js_nested.js"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("outer: 2"),
+        "expected outer: 2 (nested fn branches excluded); got stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("inner: 2"),
+        "expected inner: 2; got stdout: {stdout}"
     );
 }
 
@@ -1689,6 +1740,28 @@ fn test_go_complexity() {
     assert!(
         stdout.contains("complex_func: 5"),
         "expected complex_func: 5 in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_go_nested_function_complexity() {
+    // Anonymous function literal (func_literal) branches must not count
+    // toward the enclosing function.
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(source_fixture("go_nested.go"))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("outer: 2"),
+        "expected outer: 2 (closure branches excluded); got stdout: {stdout}"
     );
 }
 

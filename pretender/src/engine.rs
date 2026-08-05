@@ -492,7 +492,7 @@ fn walk_block(
 ) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "function_definition" || child.kind() == "class_definition" {
+        if is_nested_definition(child) {
             continue;
         }
         if !visit_child(node, child, source, captures, nesting, out, call_weights) {
@@ -511,6 +511,9 @@ fn collect_nested_blocks(
 ) {
     let mut cursor = branch_node.walk();
     for child in branch_node.children(&mut cursor) {
+        if is_nested_definition(child) {
+            continue;
+        }
         if !visit_child(
             branch_node,
             child,
@@ -604,9 +607,17 @@ fn is_nested_definition(node: tree_sitter::Node) -> bool {
             | "class_definition"
             | "function_declaration"
             | "method_definition"
+            | "method_declaration"
             | "generator_function_declaration"
             | "arrow_function"
+            | "function_item"
             | "class"
+            // Anonymous function literals / closures across languages
+            | "func_literal"           // Go
+            | "closure_expression"     // Rust
+            | "lambda"                 // Python
+            | "lambda_expression"       // Java, C++, C#
+            | "anonymous_method_expression"  // C#
     )
 }
 
