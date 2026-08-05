@@ -1195,8 +1195,23 @@ fn render_init_config(options: &InitOptions) -> String {
 
 const PRE_COMMIT_HOOK_MARKER: &str = "# Installed by Pretender.";
 
+fn repo_root() -> Result<PathBuf> {
+    let cwd = std::env::current_dir().context("failed to get current directory")?;
+    let mut current = Some(cwd.as_path());
+    while let Some(dir) = current {
+        if dir.join(".git").exists() {
+            return Ok(dir.to_path_buf());
+        }
+        current = dir.parent();
+    }
+    Err(anyhow!(
+        "not inside a git repository — no .git directory found in any parent"
+    ))
+}
+
 fn install_pre_commit_hook() -> Result<()> {
-    let path = PathBuf::from(".git/hooks/pre-commit");
+    let root = repo_root()?;
+    let path = root.join(".git/hooks/pre-commit");
     if path.exists() {
         let existing = fs::read_to_string(&path)
             .with_context(|| format!("failed to read hook: {}", path.display()))?;
@@ -1227,7 +1242,8 @@ fn install_pre_commit_hook() -> Result<()> {
 }
 
 fn uninstall_pre_commit_hook() -> Result<()> {
-    let path = PathBuf::from(".git/hooks/pre-commit");
+    let root = repo_root()?;
+    let path = root.join(".git/hooks/pre-commit");
     if !path.exists() {
         return Ok(());
     }

@@ -1545,6 +1545,52 @@ fn test_hooks_install_is_idempotent() {
 }
 
 #[test]
+fn test_hooks_install_from_subdirectory() {
+    // Hooks must be installed at the repo root, not the CWD.
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+    let subdir = dir.join("src/sub/deep");
+    std::fs::create_dir_all(&subdir).expect("create subdir");
+
+    let install = hooks_in(&subdir, "install")
+        .output()
+        .expect("run hooks install from subdir");
+    assert!(
+        install.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+    // Hook must be at repo root, not in the subdir
+    assert!(
+        dir.join(".git/hooks/pre-commit").exists(),
+        "hook should be at repo root, not subdir"
+    );
+    assert!(
+        !subdir.join(".git/hooks/pre-commit").exists(),
+        "hook should NOT be created in subdirectory"
+    );
+}
+
+#[test]
+fn test_hooks_uninstall_outside_repo_fails_cleanly() {
+    // Running hooks outside a git repo must fail clearly.
+    let dir = tempdir();
+
+    let uninstall = hooks_in(&dir, "uninstall")
+        .output()
+        .expect("run hooks uninstall outside repo");
+    assert!(
+        !uninstall.status.success(),
+        "should fail outside a git repo"
+    );
+    let stderr = String::from_utf8_lossy(&uninstall.stderr);
+    assert!(
+        stderr.contains("git") || stderr.contains("repository"),
+        "error should mention git/repository; got: {stderr}"
+    );
+}
+
+#[test]
 fn test_report_markdown_reads_last_json_check() {
     let dir = tempdir();
     let staged = dir.join("python_violator.py");
