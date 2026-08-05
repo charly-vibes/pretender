@@ -617,7 +617,7 @@ fn is_nested_definition(node: tree_sitter::Node) -> bool {
             | "closure_expression"     // Rust
             | "lambda"                 // Python
             | "lambda_expression"       // Java, C++, C#
-            | "anonymous_method_expression"  // C#
+            | "anonymous_method_expression" // C#
     )
 }
 

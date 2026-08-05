@@ -1325,8 +1325,9 @@ fn test_init_interactive_can_install_hook_and_ci() {
     let workflow = std::fs::read_to_string(dir.join(".github/workflows/pretender.yml"))
         .expect("workflow exists");
     assert!(
-        workflow
-            .contains("cargo install --git https://github.com/charly-vibes/pretender --locked pretender"),
+        workflow.contains(
+            "cargo install --git https://github.com/charly-vibes/pretender --locked pretender"
+        ),
         "workflow: {workflow}"
     );
 }
@@ -1359,8 +1360,9 @@ fn test_ci_generate_github_writes_workflow() {
         "workflow: {workflow}"
     );
     assert!(
-        workflow
-            .contains("cargo install --git https://github.com/charly-vibes/pretender --locked pretender"),
+        workflow.contains(
+            "cargo install --git https://github.com/charly-vibes/pretender --locked pretender"
+        ),
         "workflow: {workflow}"
     );
     assert!(
