@@ -594,6 +594,16 @@ impl Executable for CheckArgs {
             config.pretender.mode = mode.into();
         }
 
+        // Respect global --json / --human flags
+        let args: Vec<String> = std::env::args().collect();
+        let format = if args.iter().any(|a| a == "--json" || a == "-j") {
+            ReportFormat::Json
+        } else if args.iter().any(|a| a == "--human") {
+            ReportFormat::Human
+        } else {
+            self.format
+        };
+
         let detector = RoleDetector::new(&config).context("failed to initialize role detector")?;
 
         let files = if self.staged || self.diff_only || self.diff_base.is_some() {
@@ -720,11 +730,11 @@ impl Executable for CheckArgs {
         emit_history_events(
             &mut report,
             &config,
-            self.format,
+            format,
             writing_to_stdout,
             sink.as_mut(),
         );
-        match self.format {
+        match format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
                 write_human_report(
