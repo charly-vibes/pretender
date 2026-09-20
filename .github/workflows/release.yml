@@ -56,7 +56,7 @@ jobs:
           cp target/x86_64-unknown-linux-gnu/release/pretender bins/linux_amd64/pretender
           cp target/aarch64-unknown-linux-gnu/release/pretender bins/linux_arm64/pretender
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bins-linux
           path: bins/
@@ -88,7 +88,7 @@ jobs:
           cp target/x86_64-apple-darwin/release/pretender bins/darwin_amd64/pretender
           cp target/aarch64-apple-darwin/release/pretender bins/darwin_arm64/pretender
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bins-darwin
           path: bins/
@@ -117,7 +117,7 @@ jobs:
           mkdir -p bins/windows_amd64
           cp target/x86_64-pc-windows-msvc/release/pretender.exe bins/windows_amd64/pretender.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bins-windows
           path: bins/
