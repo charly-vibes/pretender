@@ -201,7 +201,10 @@ fn genesis_cli_accessible() {
     // (real usage in main.rs: Completions variant handler and version-json pre-parse guard)
     let _ = genesis::cli::generate_completions;
     // Real behavior: a no-flag invocation must return false and print nothing.
-    assert!(!genesis::cli::maybe_print_version_json("pretender", "0.2.0"));
+    assert!(!genesis::cli::maybe_print_version_json(
+        "pretender",
+        "0.2.0"
+    ));
 }
 
 #[test]
