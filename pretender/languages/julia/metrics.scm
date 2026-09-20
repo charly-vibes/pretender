@@ -48,3 +48,8 @@
 ; Assignments (ABC A-count)
 (assignment) @assign
 (compound_assignment_expression) @assign
+; Assertions (test role min_assertions)
+; Test/assertion macros — capture the macrocall node, match the macro name.
+(macrocall_expression
+  (macro_identifier) @assertion.macro_name
+  (#match? @assertion.macro_name "^@(test|test_throws|test_broken|test_logs|assert)")) @assert.macrocall

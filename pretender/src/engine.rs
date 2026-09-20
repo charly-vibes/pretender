@@ -647,6 +647,57 @@ mod tests {
         QueryEngine::new(python_language(), Language::Python, python_query_source()).unwrap()
     }
 
+    fn rust_engine() -> QueryEngine {
+        QueryEngine::new(
+            tree_sitter_rust::LANGUAGE.into(),
+            Language::Rust,
+            include_str!("../languages/rust/metrics.scm"),
+        )
+        .unwrap()
+    }
+
+    fn julia_engine() -> QueryEngine {
+        QueryEngine::new(
+            tree_sitter_julia::LANGUAGE.into(),
+            Language::Julia,
+            include_str!("../languages/julia/metrics.scm"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn rust_assertion_macros_count_as_assertions() {
+        let engine = rust_engine();
+        let source = "#[test]\nfn adds() {\n    let a = 2;\n    assert_eq!(a, 2);\n    assert!(a > 0);\n    assert_ne!(a, 3);\n    debug_assert_eq!(a, 2);\n}\n";
+        let (module, _) = engine.parse(Path::new("test.rs"), source).unwrap();
+        assert_eq!(module.units[0].assertions, 4);
+    }
+
+    #[test]
+    fn rust_non_assertion_macros_do_not_count() {
+        let engine = rust_engine();
+        let source = "#[test]\nfn formats() {\n    let s = format!(\"{}\", 1);\n    vec![1, 2];\n    panic_if_bad(s);\n}\n\nfn panic_if_bad<T>(_: T) {}\n";
+        let (module, _) = engine.parse(Path::new("test.rs"), source).unwrap();
+        let unit = module.units.iter().find(|u| u.name == "formats").unwrap();
+        assert_eq!(unit.assertions, 0);
+    }
+
+    #[test]
+    fn julia_test_macros_count_as_assertions() {
+        let engine = julia_engine();
+        let source = "function check(x)\n    @test x > 0\n    @test_throws DomainError sqrt(-1)\n    @test_broken x < 0\n    @test_logs (:info) log_it(x)\n    @assert x > 0\n    return x\nend\n";
+        let (module, _) = engine.parse(Path::new("test.jl"), source).unwrap();
+        assert_eq!(module.units[0].assertions, 5);
+    }
+
+    #[test]
+    fn julia_non_test_macros_do_not_count() {
+        let engine = julia_engine();
+        let source = "function show_it(x)\n    @show x\n    @info \"hello\" x\n    return x\nend\n";
+        let (module, _) = engine.parse(Path::new("test.jl"), source).unwrap();
+        assert_eq!(module.units[0].assertions, 0);
+    }
+
     fn weighted_engine(weights: BTreeMap<String, BranchWeights>) -> QueryEngine {
         QueryEngine::new_with_branch_weights(
             python_language(),
