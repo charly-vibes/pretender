@@ -919,13 +919,21 @@ fn test_typo_suggestion_for_misspelled_command() {
 
 #[test]
 fn test_feedback_dry_run_prints_body_and_gh_line() {
+    // Isolate the error scratch in a private cache dir: tests run in parallel
+    // and share the default ~/.cache/pretender/errors.jsonl otherwise, so a
+    // concurrent write can clobber the record this test just created.
+    let cache = tempdir().join("cache");
+    std::fs::create_dir_all(&cache).expect("create cache dir");
+
     // First simulate an error so --from-last-error has data
     let _ = Command::new(pretender_bin())
         .args(["explain", "not_a_real_metric"])
+        .env("XDG_CACHE_HOME", &cache)
         .output();
 
     let output = Command::new(pretender_bin())
         .args(["feedback", "bug", "--dry-run", "--from-last-error"])
+        .env("XDG_CACHE_HOME", &cache)
         .output()
         .expect("failed to execute process");
 
