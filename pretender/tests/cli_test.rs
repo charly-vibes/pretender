@@ -203,6 +203,35 @@ fn test_complexity_directory_path() {
 }
 
 #[test]
+fn test_complexity_directory_with_non_source_files() {
+    // Regression: `pretender complexity <dir>` exited 1 with
+    // "missing file extension for path: <dir>/.gitignore" because the
+    // directory walk collected every file, not just supported sources.
+    let (dir, _src) = write_temp_file("src_simple.py", "def foo():\n    pass\n");
+    std::fs::write(dir.join(".gitignore"), "target/\n").expect("write gitignore");
+    std::fs::write(dir.join("README.md"), "# docs\n").expect("write readme");
+    std::fs::create_dir_all(dir.join("sub")).expect("mkdir");
+    std::fs::write(dir.join("sub/note.txt"), "hi\n").expect("write note");
+
+    let output = Command::new(pretender_bin())
+        .arg("complexity")
+        .arg(&dir)
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "complexity should skip non-source files in a directory walk; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("foo"),
+        "should have analyzed the python source; stdout: {stdout}"
+    );
+}
+
+#[test]
 fn test_complexity_shows_threshold_marker_on_violation() {
     // Write a fixture with a function that exceeds cyclomatic_max=10
     // 11 branches → cyclomatic=12

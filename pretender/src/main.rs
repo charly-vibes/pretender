@@ -1603,19 +1603,69 @@ fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf
 
     let mut files = Vec::new();
     for path in paths {
-        collect_path(path, &exclude_set, &mut files)?;
+        collect_path(path, &exclude_set, false, &mut files)?;
     }
     files.sort();
     files.dedup();
     Ok(files)
 }
 
-fn collect_path(path: &Path, exclude_set: &globset::GlobSet, out: &mut Vec<PathBuf>) -> Result<()> {
+/// True if `path` has an extension mapped to a parser in `get_parser`.
+fn is_supported_source(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext,
+                "cs" | "clj"
+                    | "cljs"
+                    | "cljc"
+                    | "edn"
+                    | "c"
+                    | "h"
+                    | "cpp"
+                    | "cc"
+                    | "cxx"
+                    | "hpp"
+                    | "hxx"
+                    | "go"
+                    | "java"
+                    | "jl"
+                    | "js"
+                    | "jsx"
+                    | "mjs"
+                    | "cjs"
+                    | "py"
+                    | "r"
+                    | "R"
+                    | "rb"
+                    | "rs"
+                    | "ts"
+                    | "mts"
+                    | "tsx"
+                    | "cts"
+            )
+        })
+}
+
+fn collect_path(
+    path: &Path,
+    exclude_set: &globset::GlobSet,
+    walked: bool,
+    out: &mut Vec<PathBuf>,
+) -> Result<()> {
     if exclude_set.is_match(path) {
         return Ok(());
     }
 
     if path.is_file() {
+        // Files discovered by walking a directory must have a supported
+        // source extension; non-source files (.gitignore, README, etc.)
+        // are skipped silently. Explicitly passed paths keep the loud
+        // `get_parser` error so typos surface.
+        if walked && !is_supported_source(path) {
+            return Ok(());
+        }
         out.push(path.to_path_buf());
         return Ok(());
     }
@@ -1630,7 +1680,7 @@ fn collect_path(path: &Path, exclude_set: &globset::GlobSet, out: &mut Vec<PathB
             // rather than erroring, since these can appear in .git/ and other
             // infrastructure directories.
             if entry_path.is_file() || entry_path.is_dir() {
-                collect_path(&entry_path, exclude_set, out)?;
+                collect_path(&entry_path, exclude_set, true, out)?;
             }
         }
         return Ok(());

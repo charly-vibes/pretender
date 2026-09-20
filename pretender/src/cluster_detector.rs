@@ -104,7 +104,7 @@ pub fn detect(units: &[CodeUnit], min_size: u32) -> Vec<LazyCluster> {
         }
     }
 
-    clusters.sort_by(|a, b| b.count.cmp(&a.count));
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.count));
     clusters
 }
 
