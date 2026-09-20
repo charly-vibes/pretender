@@ -182,6 +182,7 @@ mod tests {
             is_exported: false,
             assertions,
             parent_class: None,
+            has_test_attribute: false,
         }
     }
 

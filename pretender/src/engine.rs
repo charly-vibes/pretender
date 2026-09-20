@@ -317,6 +317,7 @@ impl QueryEngine {
             is_exported,
             assertions: count_captured_nodes(body_node, &captures.assertions),
             parent_class: None,
+            has_test_attribute: has_test_marker(def_node, source),
         })
     }
 }
@@ -598,6 +599,28 @@ fn count_captured_nodes(
         count += count_captured_nodes(child, captured_ids);
     }
     count
+}
+
+/// True when the definition carries a test-registration attribute
+/// (e.g. Rust `#[test]`). Attributes precede the definition as siblings;
+/// scanning stops at the first non-attribute sibling so an outer unit
+/// never claims another unit's marker.
+fn has_test_marker(def_node: tree_sitter::Node, source: &[u8]) -> bool {
+    let mut sibling = def_node.prev_sibling();
+    while let Some(node) = sibling {
+        if node.kind() != "attribute_item" {
+            return false;
+        }
+        if node
+            .utf8_text(source)
+            .map(|text| text.contains("test"))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        sibling = node.prev_sibling();
+    }
+    false
 }
 
 fn is_nested_definition(node: tree_sitter::Node) -> bool {
