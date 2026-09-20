@@ -181,6 +181,7 @@ mod tests {
             ],
             body,
             parent_class: None,
+            has_test_attribute: false,
             is_exported: false,
             assertions: 0,
         }

@@ -1734,7 +1734,12 @@ fn build_unit_report(unit: &model::CodeUnit, thresholds: &EffectiveThresholds) -
     );
     push_limit_violation_f64(&mut violations, "abc", metrics.abc, thresholds.abc_max);
     if let Some(min) = thresholds.min_assertions {
-        push_min_violation(&mut violations, "min_assertions", metrics.assertions, min);
+        // pretender-68j: the rule applies only to units with test identity —
+        // a test-registration attribute or a test-shaped name. Fixtures and
+        // helpers living in test-role files are exempt.
+        if unit.has_test_attribute || has_test_name(&unit.name) {
+            push_min_violation(&mut violations, "min_assertions", metrics.assertions, min);
+        }
     }
 
     if unit.is_exported {
@@ -1806,6 +1811,16 @@ fn push_min_violation(out: &mut Vec<ViolationReport>, metric: &'static str, actu
             limit: min as f64,
         });
     }
+}
+
+/// Test-shaped unit names, per the update-min-assertions-scope proposal:
+/// `^test_`, `_test$`, `^test[A-Z]`, `Test$`, `^test$`.
+fn has_test_name(name: &str) -> bool {
+    name == "test"
+        || name.starts_with("test_")
+        || name.ends_with("_test")
+        || (name.len() > 4 && name.starts_with("test") && name.as_bytes()[4].is_ascii_uppercase())
+        || (name.len() >= 4 && name.ends_with("Test"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -662,6 +662,77 @@ fn test_check_reports_min_assertions_for_test_role() {
     assert!(stdout.contains("min_assertions"), "stdout: {stdout}");
 }
 
+// --- pretender-68j: min_assertions scoped to test-identifying units ---
+
+#[test]
+fn test_check_exempts_fixture_unit_from_min_assertions() {
+    let (_dir, staged) = write_temp_file(
+        "tests/test_fixture_sample.py",
+        "def simple():\n    return 1\n\ndef with_branch(x):\n    if x:\n        return 1\n    return 0\n",
+    );
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("min_assertions"),
+        "fixture units must be exempt from min_assertions; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_exempts_helper_unit_from_min_assertions() {
+    let (_dir, staged) = write_temp_file(
+        "tests/test_helpers_sample.py",
+        "def tempdir():\n    return 1\n",
+    );
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("min_assertions"),
+        "helper units must be exempt from min_assertions; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_rust_test_attribute_keeps_min_assertions() {
+    // Guard: #[test]-attributed fns keep the rule even with non-test names.
+    let (_dir, staged) = write_temp_file(
+        "tests/sample_test.rs",
+        "#[test]\nfn adds() {\n    let a = 2;\n}\n",
+    );
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("min_assertions"),
+        "#[test] fn must stay subject to min_assertions; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_exempts_unattributed_rust_unit_from_min_assertions() {
+    let (_dir, staged) = write_temp_file(
+        "tests/sample_probe_test.rs",
+        "fn probe_helper() {\n    let a = 2;\n}\n",
+    );
+
+    let output = check(&staged).output().expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("min_assertions"),
+        "unattributed units must be exempt from min_assertions; stdout: {stdout}"
+    );
+}
+
 #[test]
 fn test_check_accepts_test_role_when_assertion_present() {
     let (_dir, staged) = write_temp_file(
@@ -2706,7 +2777,7 @@ fn test_clojure_complexity() {
 }
 
 /// Helper: set up a temp dir with a pretender.toml, a test file, and a JUnit XML report.
-fn setup_duration_test() -> (PathBuf, PathBuf, PathBuf) {
+fn duration_setup() -> (PathBuf, PathBuf, PathBuf) {
     let (dir, _guard) = write_temp_file(
         "pretender.toml",
         r#"
@@ -2736,7 +2807,7 @@ fn setup_duration_test() -> (PathBuf, PathBuf, PathBuf) {
 
 #[test]
 fn test_duration_report_human_output() {
-    let (dir, _test_file, report_path) = setup_duration_test();
+    let (dir, _test_file, report_path) = duration_setup();
 
     let output = Command::new(pretender_bin())
         .arg("check")
@@ -2766,7 +2837,7 @@ fn test_duration_report_human_output() {
 
 #[test]
 fn test_duration_report_json_contains_findings() {
-    let (dir, _test_file, report_path) = setup_duration_test();
+    let (dir, _test_file, report_path) = duration_setup();
 
     let output = Command::new(pretender_bin())
         .arg("check")
@@ -2792,7 +2863,7 @@ fn test_duration_report_json_contains_findings() {
 
 #[test]
 fn test_duration_report_sarif_contains_findings() {
-    let (dir, _test_file, report_path) = setup_duration_test();
+    let (dir, _test_file, report_path) = duration_setup();
 
     let output = Command::new(pretender_bin())
         .arg("check")
@@ -2860,7 +2931,7 @@ fn test_duration_no_threshold_no_findings() {
 
 #[test]
 fn test_duration_cache_persisted() {
-    let (dir, _test_file, report_path) = setup_duration_test();
+    let (dir, _test_file, report_path) = duration_setup();
 
     let output = Command::new(pretender_bin())
         .arg("check")

@@ -96,9 +96,13 @@ fn genesis_feedback_modules_accessible() {
     };
     genesis::feedback::scratch::write_scratch_best_effort("pretender", &record);
 
-    // Verify feedback::redactor compiles
-    let _reduced =
+    // Verify feedback::redactor compiles and actually redacts
+    let reduced =
         genesis::feedback::redactor::reduce_git_remote_url("https://github.com/owner/repo.git");
+    assert!(
+        reduced.contains("owner/repo"),
+        "reduced URL should retain owner/repo: {reduced}"
+    );
 }
 
 #[test]
@@ -122,9 +126,9 @@ fn genesis_managed_block_accessible() {
 
 #[test]
 fn genesis_constants_accessible() {
-    // Verify constants compile
-    let _version = genesis::envelope::ENVELOPE_VERSION;
-    let _cli_version = genesis::envelope::CLI_VERSION;
+    // Verify constants compile and carry real values
+    assert!(!genesis::envelope::ENVELOPE_VERSION.is_empty());
+    assert!(!genesis::envelope::CLI_VERSION.is_empty());
 }
 
 #[test]
@@ -196,23 +200,47 @@ fn genesis_cli_accessible() {
     // Verify the module and its key functions compile
     // (real usage in main.rs: Completions variant handler and version-json pre-parse guard)
     let _ = genesis::cli::generate_completions;
-    let _ = genesis::cli::maybe_print_version_json;
+    // Real behavior: a no-flag invocation must return false and print nothing.
+    assert!(!genesis::cli::maybe_print_version_json("pretender", "0.2.0"));
 }
 
 #[test]
 fn genesis_scaffold_accessible() {
-    // Verify Scaffold::new compiles by calling with a concrete path.
-    // Use a type annotation to satisfy generic resolution.
-    let _: genesis::scaffold::Scaffold =
-        genesis::scaffold::Scaffold::new(std::path::Path::new("/nonexistent"));
+    use genesis::fixture::Fixture;
+
+    // Run the builder for real inside a throwaway fixture root.
+    let fixture = Fixture::new()
+        .with_marker(".git")
+        .build()
+        .expect("fixture should build");
+    let result = genesis::scaffold::Scaffold::new(fixture.root())
+        .dir("tools")
+        .default_config("tools.toml", "[probe]\n")
+        .build()
+        .expect("scaffold should build");
+    assert_eq!(result.created.len(), 2, "dir + config should be created");
+    assert!(
+        fixture.root().join("tools.toml").exists(),
+        "scaffold should write tools.toml"
+    );
 }
 
 #[test]
 fn genesis_discovery_accessible() {
-    // Verify the module and its key functions compile.
-    // NOTE: Avoid calling register() here since it writes .genesis/tools.toml
-    // (side effect unsuitable for a compile-only test).
-    let _ = genesis::discovery::register;
+    use genesis::fixture::Fixture;
+
+    // register() writes .genesis/tools.toml under project_root — run it in a
+    // throwaway fixture root instead of just referencing the symbol.
+    let fixture = Fixture::new()
+        .with_marker(".git")
+        .build()
+        .expect("fixture should build");
+    let result = genesis::discovery::register(fixture.root(), "probe", "probe", "file", "probe.sh");
+    assert!(result.is_ok(), "register should succeed in fixture root");
+    assert!(
+        fixture.root().join(".genesis").exists(),
+        "register should create the .genesis directory"
+    );
 }
 
 #[test]
@@ -238,5 +266,10 @@ fn genesis_fixture_accessible() {
 fn genesis_aix_accessible() {
     use genesis::aix::agents_block;
 
-    let _block = agents_block("WAI", "Agent instructions for wai");
+    let block = agents_block("WAI", "Agent instructions for wai");
+    assert!(block.contains("WAI"), "block should contain the tool name");
+    assert!(
+        block.contains("Agent instructions for wai"),
+        "block should contain the body"
+    );
 }

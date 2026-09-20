@@ -114,6 +114,10 @@ pub struct CodeUnit {
     pub is_exported: bool,
     pub assertions: u32,
     pub parent_class: Option<String>,
+    /// Test identity: definition carries a test-registration attribute
+    /// (e.g. Rust `#[test]`). Used by the min_assertions rule scope.
+    #[serde(default)]
+    pub has_test_attribute: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
