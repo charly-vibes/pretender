@@ -23,3 +23,9 @@
 
 ; Imports (for coupling analysis)
 (use_declaration) @import
+
+; Assertions (test role min_assertions)
+; Assertion macros — capture the invocation node, match the macro name.
+(macro_invocation
+  macro: (identifier) @assertion.macro_name
+  (#match? @assertion.macro_name "^(assert|assert_eq|assert_ne|debug_assert|debug_assert_eq|debug_assert_ne|panic|unreachable)$")) @assert.macro_invocation
