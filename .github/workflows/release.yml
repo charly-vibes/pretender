@@ -29,7 +29,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned minor version — bump alongside ci.yml (see pretender-hrw)
+      - uses: dtolnay/rust-toolchain@1.98
         with:
           targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
 
@@ -68,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
@@ -100,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98
         with:
           targets: x86_64-pc-windows-msvc
 
