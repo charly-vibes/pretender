@@ -177,15 +177,11 @@ pub fn parse_junit(path: &Path, time_unit: TimeUnit) -> Result<Vec<TestTiming>> 
                 } else if in_testcase {
                     match tag.as_str() {
                         "skipped" => current_status = TestStatus::Skipped,
-                        "failure" => {
-                            if current_status == TestStatus::Passed {
-                                current_status = TestStatus::Failed;
-                            }
+                        "failure" if current_status == TestStatus::Passed => {
+                            current_status = TestStatus::Failed;
                         }
-                        "error" => {
-                            if current_status == TestStatus::Passed {
-                                current_status = TestStatus::Errored;
-                            }
+                        "error" if current_status == TestStatus::Passed => {
+                            current_status = TestStatus::Errored;
                         }
                         _ => {}
                     }
@@ -206,15 +202,11 @@ pub fn parse_junit(path: &Path, time_unit: TimeUnit) -> Result<Vec<TestTiming>> 
                 } else if in_testcase {
                     match tag.as_str() {
                         "skipped" => current_status = TestStatus::Skipped,
-                        "failure" => {
-                            if current_status == TestStatus::Passed {
-                                current_status = TestStatus::Failed;
-                            }
+                        "failure" if current_status == TestStatus::Passed => {
+                            current_status = TestStatus::Failed;
                         }
-                        "error" => {
-                            if current_status == TestStatus::Passed {
-                                current_status = TestStatus::Errored;
-                            }
+                        "error" if current_status == TestStatus::Passed => {
+                            current_status = TestStatus::Errored;
                         }
                         _ => {}
                     }
