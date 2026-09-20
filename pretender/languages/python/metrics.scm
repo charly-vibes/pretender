@@ -10,7 +10,6 @@
 (for_statement) @branch.loop
 (while_statement) @branch.loop
 (except_clause) @branch.catch
-(except_group_clause) @branch.catch
 (conditional_expression) @branch.ternary
 
 ; Logical operators
