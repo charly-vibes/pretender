@@ -46,6 +46,26 @@ fn pretender_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/pretender")
 }
 
+#[test]
+fn test_meter_gate_hook_stops_commit() {
+    // Ticket 15w acceptance, executable: the meter seeds a scratch repo with
+    // a violating function, installs the hook, and asserts the gate stops the
+    // commit with the function name + rule in the output.
+    let meter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/meter-gate-hook.sh");
+    let output = Command::new("sh")
+        .arg(meter)
+        .env("PRETENDER_BIN", pretender_bin())
+        .env_remove("GIT_CONFIG_GLOBAL")
+        .output()
+        .expect("run meter script");
+    assert!(
+        output.status.success(),
+        "meter failed; stdout+stderr: {}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 fn source_fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../tests/fixtures")

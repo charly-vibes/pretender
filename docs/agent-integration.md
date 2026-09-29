@@ -63,6 +63,26 @@ pretender hooks install
 This writes a `.git/hooks/pre-commit` script that runs `pretender check .`
 on staged files.
 
+To enforce gate mode (exit non-zero on red findings so hooks actually stop
+the commit), set it in `pretender.toml`:
+
+```toml
+[pretender]
+mode = "gate"
+```
+
+Advisory mode stays the default; see the `mode` option in [configuration](configuration.md).
+
+Verify the full gate path (scratch repo → hook install → blocked commit) with
+the AFK meter: `PRETENDER_BIN=target/debug/pretender scripts/meter-gate-hook.sh`.
+
+> **Note:** git resolves hooks through `core.hooksPath` when set — including
+> global config (e.g. a machine-wide lefthook shim). A global `hooksPath`
+> overrides `.git/hooks/pre-commit`, so pretender's hook is not invoked there.
+> Check `git config core.hooksPath` if gate stops do not fire. Tracking:
+> genesis::git_hooks resolves only local-scope `core.hooksPath` — global
+> overrides are a known follow-up (genesis board).
+
 ## CI Integration
 
 Generate a GitHub Actions workflow:
