@@ -1361,16 +1361,17 @@ fn test_check_parallel_results_are_deterministic() {
     // Resolution tracking (ticket u8a) intentionally varies across runs:
     // run 1 reports findings as "new", run 2 as "still open" with a rate.
     // Compare everything except the volatile history.resolution block.
+    // Resolution tracking (ticket u8a) intentionally varies across runs:
+    // run 1 reports findings as "new", run 2 as "still open" with a rate.
+    // Compare everything except the volatile history block. NOTE: always
+    // remove history from the parsed tree (not conditionally) so runs with
+    // and without a history block normalize to the same shape.
     let normalize = |s: &str| {
-        let v: serde_json::Value = serde_json::from_str(s).expect("valid json");
-        if let Some(h) = v.pointer("/data/history") {
-            if let Some(obj) = h.as_object() {
-                let mut o = obj.clone();
-                o.remove("resolution");
-                return serde_json::to_string(&o).expect("serialize");
-            }
+        let mut v: serde_json::Value = serde_json::from_str(s).expect("valid json");
+        if let Some(data) = v.get_mut("data").and_then(|d| d.as_object_mut()) {
+            data.remove("history");
         }
-        s.to_string()
+        serde_json::to_string(&v).expect("serialize")
     };
     assert_eq!(
         normalize(&first),
