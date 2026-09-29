@@ -7,6 +7,7 @@ fn genesis_envelope_accessible() {
 
     // Create a success envelope
     let env = Envelope::success(
+        env!("CARGO_PKG_VERSION"),
         EnvelopeKind::Ok,
         serde_json::json!({"key": "value"}),
         vec![],
@@ -29,7 +30,7 @@ fn genesis_envelope_accessible() {
         }],
     )
     .expect("remediation must be non-empty");
-    let error_env = Envelope::error(err, vec![]);
+    let error_env = Envelope::error(env!("CARGO_PKG_VERSION"), err, vec![]);
     assert!(!error_env.ok);
     assert_eq!(error_env.envelope_kind, EnvelopeKind::Error);
 
@@ -128,7 +129,6 @@ fn genesis_managed_block_accessible() {
 fn genesis_constants_accessible() {
     // Verify constants compile and carry real values
     assert!(!genesis::envelope::ENVELOPE_VERSION.is_empty());
-    assert!(!genesis::envelope::CLI_VERSION.is_empty());
 }
 
 #[test]

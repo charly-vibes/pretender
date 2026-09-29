@@ -73,7 +73,7 @@ cargo build --release
 | `pretender report` | Render cached last check as human, markdown, or HTML |
 | `pretender duplication <paths...>` | Structural clone detection via AST subtree hashing |
 | `pretender mutation <paths...>` | Mutation testing wrapper (mutmut / cargo-mutants / Stryker / PIT) |
-| `pretender hooks install\|uninstall` | Install or remove the pre-commit hook |
+| `pretender hooks install\|uninstall [hook]` | Install or remove a git hook (pre-commit, pre-push; default pre-commit) |
 | `pretender ci generate github` | Emit `.github/workflows/pretender.yml` |
 | `pretender explain <metric>` | Print definition, threshold, and citation for a metric |
 | `pretender feedback [--dry-run] [--from-last-error]` | File a structured issue against upstream repo |

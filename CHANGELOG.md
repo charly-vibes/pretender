@@ -1,6 +1,20 @@
-# Changelog
-
 All notable changes to Pretender are documented here.
+
+## [Unreleased]
+
+### Changed
+
+- **Hook install/uninstall migrated onto `genesis::git_hooks`** (genesis-vibes
+  0.4 → 0.8.2) — private hook-management code in `main.rs` replaced by the
+  shared genesis module. Behavior upgrade: hook install now respects git's
+  `core.hooksPath` config. Foreign-hook refusal behavior and messages are
+  unchanged. JSON envelopes now carry `cli_version` (genesis 0.8 API).
+
+### Added
+
+- **`pretender hooks install pre-push` / `hooks uninstall pre-push`** —
+  pre-push hook support (previously only pre-commit). Defaults to pre-commit
+  when no hook name is given.
 
 ## [0.5.0] — 2026-08-05
 

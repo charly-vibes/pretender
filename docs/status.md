@@ -16,7 +16,7 @@ but have noted gaps.
 | `pretender report` | ✅ Implemented | human, markdown, html |
 | `pretender duplication` | ✅ Implemented | Cross-file and single-file |
 | `pretender mutation` | ✅ Implemented | Python, Rust, JS, TS — see caveats |
-| `pretender hooks install` | ✅ Implemented | Writes pre-commit shim |
+| `pretender hooks install [hook]` | ✅ Implemented | Writes git hook shim (pre-commit, pre-push) |
 | `pretender hooks uninstall` | ✅ Implemented | Removes Pretender-managed shim |
 | `pretender ci generate github` | ✅ Implemented | Writes `.github/workflows/pretender.yml` |
 | `pretender explain` | ✅ Implemented | All built-in metrics |

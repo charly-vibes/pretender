@@ -283,7 +283,7 @@ fn print_human(report: &DoctorReport) {
 }
 
 fn print_json(report: &DoctorReport) -> Result<()> {
-    let envelope = report.to_envelope();
+    let envelope = report.to_envelope(env!("CARGO_PKG_VERSION"));
     let json = serde_json::to_string_pretty(&envelope)?;
     println!("{json}");
     Ok(())

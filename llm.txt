@@ -20,7 +20,7 @@ TypeScript, Java, Ruby, C, and C++ via tree-sitter grammars.
 - `pretender feedback [--dry-run] [--from-last-error]` — file a structured issue against the upstream repo
 - `pretender completions <shell>` — generate shell completion scripts (bash, zsh, fish, etc.)
 - `pretender init` — interactive wizard: write config, install hook, generate CI
-- `pretender hooks install` — install pre-commit shim
+- `pretender hooks install [pre-commit|pre-push]` — install git hook shim (default pre-commit)
 - `pretender ci generate github` — emit `.github/workflows/pretender.yml`
 - `pretender explain <metric>` — print metric definition and citation
 

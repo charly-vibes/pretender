@@ -127,6 +127,16 @@ fn hooks_in(dir: &Path, action: &str) -> Command {
     cmd
 }
 
+fn hooks_in_named(dir: &Path, action: &str, hook: &str) -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.arg("hooks")
+        .arg(action)
+        .arg(hook)
+        .current_dir(dir)
+        .env("NO_COLOR", "1");
+    cmd
+}
+
 fn init_in(dir: &Path) -> Command {
     let mut cmd = Command::new(pretender_bin());
     cmd.arg("init").current_dir(dir).env("NO_COLOR", "1");
@@ -1531,6 +1541,43 @@ fn test_hooks_install_and_uninstall_manage_pretender_shim() {
         String::from_utf8_lossy(&uninstall.stderr)
     );
     assert!(!hook_path.exists(), "hook should be removed");
+}
+
+#[test]
+fn test_hooks_install_pre_push_installs_pre_push_hook() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+
+    let install = hooks_in_named(&dir, "install", "pre-push")
+        .output()
+        .expect("run hooks install pre-push");
+    assert!(
+        install.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+
+    let hook_path = dir.join(".git/hooks/pre-push");
+    let hook = std::fs::read_to_string(&hook_path).expect("pre-push hook exists");
+    assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
+    assert!(
+        hook.contains("exec pretender check . --staged"),
+        "hook: {hook}"
+    );
+    assert!(
+        !dir.join(".git/hooks/pre-commit").exists(),
+        "pre-commit untouched"
+    );
+
+    let uninstall = hooks_in_named(&dir, "uninstall", "pre-push")
+        .output()
+        .expect("run hooks uninstall pre-push");
+    assert!(
+        uninstall.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&uninstall.stderr)
+    );
+    assert!(!hook_path.exists(), "pre-push hook should be removed");
 }
 
 #[test]

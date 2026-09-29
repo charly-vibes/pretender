@@ -42,6 +42,7 @@ use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
 use genesis::envelope::{Envelope, EnvelopeKind};
 use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
+use genesis::git_hooks::{self as genesis_git_hooks, HookName};
 use genesis::guide::Guide;
 use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
 use genesis::status::{StatusContributor, StatusItem, StatusSection};
@@ -245,10 +246,33 @@ struct MutationArgs {
 
 #[derive(Subcommand)]
 enum HooksCommand {
-    /// Write .git/hooks/pre-commit (native shim) or lefthook/pre-commit YAML
-    Install,
+    /// Write .git/hooks/<hook> (native shim) — default: pre-commit
+    Install {
+        /// Which git hook to install
+        #[arg(default_value = "pre-commit")]
+        hook: HookNameArg,
+    },
     /// Remove the hook file(s) previously installed by `pretender hooks install`
-    Uninstall,
+    Uninstall {
+        /// Which git hook to uninstall
+        #[arg(default_value = "pre-commit")]
+        hook: HookNameArg,
+    },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum HookNameArg {
+    PreCommit,
+    PrePush,
+}
+
+impl From<HookNameArg> for HookName {
+    fn from(value: HookNameArg) -> Self {
+        match value {
+            HookNameArg::PreCommit => HookName::PreCommit,
+            HookNameArg::PrePush => HookName::PrePush,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -427,7 +451,7 @@ impl Executable for InitArgs {
         inject_managed_blocks()?;
 
         if options.install_hook {
-            install_pre_commit_hook()?;
+            install_hook(HookName::PreCommit)?;
         }
         if options.generate_github_actions {
             write_github_ci_workflow()?;
@@ -820,7 +844,13 @@ impl Executable for MutationArgs {
 
         match self.format {
             ReportFormat::Json => {
-                let env = Envelope::success(EnvelopeKind::Check, &report, vec![], vec![]);
+                let env = Envelope::success(
+                    env!("CARGO_PKG_VERSION"),
+                    EnvelopeKind::Check,
+                    &report,
+                    vec![],
+                    vec![],
+                );
                 println!("{}", serde_json::to_string_pretty(&env)?);
             }
             _ => print_mutation_report(&report),
@@ -918,12 +948,12 @@ impl Executable for ReportArgs {
 impl Executable for HooksCommand {
     fn run(&self) -> Result<ExitCode> {
         match self {
-            HooksCommand::Install => {
-                install_pre_commit_hook()?;
+            HooksCommand::Install { hook } => {
+                install_hook((*hook).into())?;
                 Ok(ExitCode::SUCCESS)
             }
-            HooksCommand::Uninstall => {
-                uninstall_pre_commit_hook()?;
+            HooksCommand::Uninstall { hook } => {
+                uninstall_hook((*hook).into())?;
                 Ok(ExitCode::SUCCESS)
             }
         }
@@ -1195,73 +1225,43 @@ fn render_init_config(options: &InitOptions) -> String {
 
 const PRE_COMMIT_HOOK_MARKER: &str = "# Installed by Pretender.";
 
-fn repo_root() -> Result<PathBuf> {
-    let cwd = std::env::current_dir().context("failed to get current directory")?;
-    let mut current = Some(cwd.as_path());
-    while let Some(dir) = current {
-        if dir.join(".git").exists() {
-            return Ok(dir.to_path_buf());
-        }
-        current = dir.parent();
-    }
-    Err(anyhow!(
-        "not inside a git repository — no .git directory found in any parent"
-    ))
+fn hook_script() -> String {
+    "#!/usr/bin/env sh\nexec pretender check . --staged\n".to_string()
 }
 
-fn install_pre_commit_hook() -> Result<()> {
-    let root = repo_root()?;
-    let path = root.join(".git/hooks/pre-commit");
-    if path.exists() {
-        let existing = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read hook: {}", path.display()))?;
-        if !existing.contains(PRE_COMMIT_HOOK_MARKER) {
-            return Err(anyhow!(
+fn install_hook(hook: HookName) -> Result<PathBuf> {
+    let root = git_hook_repo_root()?;
+    let path = genesis_git_hooks::install(&root, hook, PRE_COMMIT_HOOK_MARKER, &hook_script())
+        .map_err(|e| anyhow!("{}", hook_error_message(e)))?;
+    Ok(path)
+}
+
+fn uninstall_hook(hook: HookName) -> Result<PathBuf> {
+    let root = git_hook_repo_root()?;
+    let path = genesis_git_hooks::uninstall(&root, hook, PRE_COMMIT_HOOK_MARKER)
+        .map_err(|e| anyhow!("{}", hook_error_message(e)))?;
+    Ok(path)
+}
+
+fn hook_error_message(err: genesis_git_hooks::GitHooksError) -> String {
+    use genesis_git_hooks::GitHooksError as E;
+    match err {
+        E::ForeignHook { path, action } => match action {
+            "remove" => format!(
+                "refusing to remove hook not installed by Pretender: {}",
+                path.display()
+            ),
+            _ => format!(
                 "refusing to overwrite hook not installed by Pretender: {}",
                 path.display()
-            ));
-        }
+            ),
+        },
+        other => format!("hook operation failed: {other}"),
     }
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("invalid hook path: {}", path.display()))?;
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create hook dir: {}", parent.display()))?;
-    fs::write(&path, pre_commit_hook_contents())
-        .with_context(|| format!("failed to write hook: {}", path.display()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&path, perms)?;
-    }
-
-    Ok(())
 }
 
-fn uninstall_pre_commit_hook() -> Result<()> {
-    let root = repo_root()?;
-    let path = root.join(".git/hooks/pre-commit");
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let source = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read hook: {}", path.display()))?;
-    if !source.contains(PRE_COMMIT_HOOK_MARKER) {
-        return Err(anyhow!(
-            "refusing to remove hook not installed by Pretender: {}",
-            path.display()
-        ));
-    }
-
-    fs::remove_file(&path).with_context(|| format!("failed to remove hook: {}", path.display()))
-}
-
-fn pre_commit_hook_contents() -> String {
-    format!("#!/usr/bin/env sh\n{PRE_COMMIT_HOOK_MARKER}\nexec pretender check . --staged\n")
+fn git_hook_repo_root() -> Result<PathBuf> {
+    genesis_git_hooks::repo_root().map_err(|e| anyhow!("{}", e))
 }
 
 fn github_ci_workflow_path() -> PathBuf {
@@ -2226,7 +2226,13 @@ fn html_escape(value: &str) -> String {
 }
 
 fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
-    let env = Envelope::success(EnvelopeKind::Check, report, vec![], vec![]);
+    let env = Envelope::success(
+        env!("CARGO_PKG_VERSION"),
+        EnvelopeKind::Check,
+        report,
+        vec![],
+        vec![],
+    );
     serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;
     Ok(())
