@@ -46,6 +46,30 @@ fn pretender_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/pretender")
 }
 
+/// Neutral, shared empty file used as GIT_CONFIG_GLOBAL for every spawned
+/// pretender process: keeps core.hooksPath resolution (genesis multi-scope)
+/// hermetic — tests must never see the developer machine's real global
+/// config, nor write hooks into it.
+fn neutral_git_config_global() -> &'static std::path::Path {
+    static NEUTRAL: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    NEUTRAL
+        .get_or_init(|| {
+            let p = std::env::temp_dir().join(format!(
+                "pretender-test-empty-gitconfig-{}",
+                std::process::id()
+            ));
+            std::fs::write(&p, "").expect("write neutral gitconfig");
+            p
+        })
+        .as_path()
+}
+
+fn pretender_cmd() -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.env("GIT_CONFIG_GLOBAL", neutral_git_config_global());
+    cmd
+}
+
 #[test]
 fn test_meter_gate_hook_stops_commit() {
     // Ticket 15w acceptance, executable: the meter seeds a scratch repo with
@@ -104,13 +128,13 @@ fn tempdir() -> PathBuf {
 }
 
 fn check(path: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("check").arg(path).env("NO_COLOR", "1");
     cmd
 }
 
 fn check_default(dir: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("check").env("NO_COLOR", "1");
     cmd.current_dir(dir);
     cmd
@@ -123,13 +147,13 @@ fn check_in(dir: &Path, path: &Path) -> Command {
 }
 
 fn report_in(dir: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("report").current_dir(dir).env("NO_COLOR", "1");
     cmd
 }
 
 fn ci_generate_in(dir: &Path, provider: &str) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("ci")
         .arg("generate")
         .arg(provider)
@@ -139,7 +163,7 @@ fn ci_generate_in(dir: &Path, provider: &str) -> Command {
 }
 
 fn hooks_in(dir: &Path, action: &str) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("hooks")
         .arg(action)
         .current_dir(dir)
@@ -148,7 +172,7 @@ fn hooks_in(dir: &Path, action: &str) -> Command {
 }
 
 fn hooks_in_named(dir: &Path, action: &str, hook: &str) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("hooks")
         .arg(action)
         .arg(hook)
@@ -158,14 +182,14 @@ fn hooks_in_named(dir: &Path, action: &str, hook: &str) -> Command {
 }
 
 fn init_in(dir: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("init").current_dir(dir).env("NO_COLOR", "1");
     cmd
 }
 
 #[test]
 fn test_complexity_command() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("python_simple.py"))
         .output()
@@ -184,7 +208,7 @@ fn test_complexity_command() {
 
 #[test]
 fn test_complexity_multi_path() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("python_simple.py"))
         .arg(source_fixture("rust_simple.rs"))
@@ -214,7 +238,7 @@ fn test_complexity_directory_path() {
     // "failed to read source file" because directories were passed to
     // fs::read_to_string instead of being expanded to files.
     let dir = source_fixture("");
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(&dir)
         .output()
@@ -243,7 +267,7 @@ fn test_complexity_directory_with_non_source_files() {
     std::fs::create_dir_all(dir.join("sub")).expect("mkdir");
     std::fs::write(dir.join("sub/note.txt"), "hi\n").expect("write note");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(&dir)
         .output()
@@ -285,7 +309,7 @@ def very_complex(x):
     // No pretender.toml → defaults (app cyclomatic_max=10)
     let _ = dir;
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(&path)
         .output()
@@ -939,7 +963,7 @@ fn test_check_sarif_output_structure() {
 
 #[test]
 fn test_mutation_dry_run_python() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args([
             "mutation",
             "--dry-run",
@@ -970,7 +994,7 @@ fn test_mutation_dry_run_directory() {
     // "no supported source files found" because directories were passed
     // to detect_language() which checks file extensions.
     let dir = source_fixture("");
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["mutation", "--dry-run", dir.to_str().unwrap()])
         .output()
         .expect("failed to execute process");
@@ -985,7 +1009,7 @@ fn test_mutation_dry_run_directory() {
 #[test]
 fn test_stub_subcommands_exit_two() {
     let cmd = vec!["plugins", "list"];
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(&cmd)
         .output()
         .expect("failed to execute process");
@@ -1005,7 +1029,7 @@ fn test_stub_subcommands_exit_two() {
 
 #[test]
 fn test_typo_suggestion_for_misspelled_command() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["complxity"])
         .output()
         .expect("failed to execute process");
@@ -1027,12 +1051,12 @@ fn test_feedback_dry_run_prints_body_and_gh_line() {
     std::fs::create_dir_all(&cache).expect("create cache dir");
 
     // First simulate an error so --from-last-error has data
-    let _ = Command::new(pretender_bin())
+    let _ = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .env("XDG_CACHE_HOME", &cache)
         .output();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["feedback", "bug", "--dry-run", "--from-last-error"])
         .env("XDG_CACHE_HOME", &cache)
         .output()
@@ -1047,7 +1071,7 @@ fn test_feedback_dry_run_prints_body_and_gh_line() {
 
 #[test]
 fn test_non_zero_exit_shows_feedback_footer() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .output()
         .expect("failed to execute process");
@@ -1101,7 +1125,7 @@ fn test_error_scratch_records_full_argv() {
     let cache = tempdir().join("cache");
     std::fs::create_dir_all(&cache).expect("create cache dir");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .env("XDG_CACHE_HOME", &cache)
         .output()
@@ -1136,7 +1160,7 @@ fn test_error_scratch_records_full_argv() {
 
 #[test]
 fn test_explain_known_metric_prints_doc() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "cyclomatic"])
         .output()
         .expect("failed to execute process");
@@ -1160,7 +1184,7 @@ fn test_explain_known_metric_prints_doc() {
 
 #[test]
 fn test_explain_unknown_metric_exits_nonzero() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .output()
         .expect("failed to execute process");
@@ -1175,7 +1199,7 @@ fn test_explain_unknown_metric_exits_nonzero() {
 
 #[test]
 fn test_rust_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("rust_simple.rs"))
         .output()
@@ -1205,7 +1229,7 @@ fn test_rust_complexity() {
 fn test_rust_nested_function_complexity() {
     // Nested definitions (Rust function_item) must not contribute branches
     // to the enclosing function. outer has one if; inner's if belongs to inner.
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("rust_nested.rs"))
         .output()
@@ -1229,7 +1253,7 @@ fn test_rust_nested_function_complexity() {
 
 #[test]
 fn test_javascript_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("js_simple.js"))
         .output()
@@ -1258,7 +1282,7 @@ fn test_javascript_complexity() {
 #[test]
 fn test_javascript_nested_function_complexity() {
     // Nested function_declaration branches must not count toward outer.
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("js_nested.js"))
         .output()
@@ -1282,7 +1306,7 @@ fn test_javascript_nested_function_complexity() {
 
 #[test]
 fn test_typescript_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("ts_sample.ts"))
         .output()
@@ -1316,7 +1340,7 @@ fn test_check_parallel_results_are_deterministic() {
     }
 
     let run = || {
-        let output = Command::new(pretender_bin())
+        let output = pretender_cmd()
             .arg("check")
             .arg(&dir)
             .arg("--format")
@@ -1365,7 +1389,7 @@ fn test_resolution_tracking_reports_delta_across_runs() {
     std::fs::copy(source_fixture("python_violator.py"), &violator).expect("copy fixture");
 
     let check = || {
-        Command::new(pretender_bin())
+        pretender_cmd()
             .arg("check")
             .arg(".")
             .current_dir(&dir)
@@ -1412,7 +1436,7 @@ fn test_resolution_rate_appears_in_json_history() {
     let violator = dir.join("violator.py");
     std::fs::copy(source_fixture("python_violator.py"), &violator).expect("copy");
     let run = || {
-        Command::new(pretender_bin())
+        pretender_cmd()
             .arg("check")
             .arg(".")
             .current_dir(&dir)
@@ -1988,7 +2012,7 @@ fn test_report_fails_without_cached_report() {
 #[test]
 fn test_smell_call_weights_elevate_abc() {
     let (_dir, path) = stage_fixture("python_smell_calls.py");
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg(&path)
         .arg("--format")
@@ -2032,7 +2056,7 @@ fn test_smell_call_weights_elevate_abc() {
 
 #[test]
 fn test_go_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("go_sample.go"))
         .output()
@@ -2062,7 +2086,7 @@ fn test_go_complexity() {
 fn test_go_nested_function_complexity() {
     // Anonymous function literal (func_literal) branches must not count
     // toward the enclosing function.
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("go_nested.go"))
         .output()
@@ -2082,7 +2106,7 @@ fn test_go_nested_function_complexity() {
 
 #[test]
 fn test_java_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("java_sample.java"))
         .output()
@@ -2110,7 +2134,7 @@ fn test_java_complexity() {
 
 #[test]
 fn test_ruby_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("ruby_sample.rb"))
         .output()
@@ -2138,7 +2162,7 @@ fn test_ruby_complexity() {
 
 #[test]
 fn test_c_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("c_sample.c"))
         .output()
@@ -2184,7 +2208,7 @@ fn test_check_staged_only_scans_staged_files() {
     let file_b = dir.join("file_b.py");
     std::fs::write(&file_b, "def func_b(): pass\n").unwrap();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--staged"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2219,7 +2243,7 @@ fn test_check_staged_empty_staging_area_exits_success() {
     git_commit(&dir, "init");
 
     // Nothing staged — check should succeed with no file output
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--staged"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2243,7 +2267,7 @@ fn test_check_staged_first_commit_no_head() {
     std::fs::write(&f, "def first(): pass\n").unwrap();
     git_add(&dir, &f);
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--staged"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2280,7 +2304,7 @@ fn test_check_diff_only_filters_to_changed_files() {
     git_commit(&dir, "second commit");
 
     // --diff-only --diff-base=HEAD~1 should only show file_new.py
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--diff-only", "--diff-base=HEAD~1"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2305,7 +2329,7 @@ fn test_check_diff_only_filters_to_changed_files() {
 
 #[test]
 fn test_cpp_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("cpp_sample.cpp"))
         .output()
@@ -2592,7 +2616,7 @@ fn test_check_skips_binary_files_in_directory() {
 // No clap version set yet; move to a version-based test once #[command(version)] is added
 #[test]
 fn test_version_flag_works() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("--version")
         .output()
         .expect("failed to execute process");
@@ -2615,7 +2639,7 @@ fn test_version_flag_works() {
 
 #[test]
 fn test_version_short_flag_works() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("-V")
         .output()
         .expect("failed to execute process");
@@ -2632,12 +2656,20 @@ fn test_version_short_flag_works() {
     );
 }
 
+// Redirect git's global config to a neutral empty file so doctor's
+// core.hooksPath checks are hermetic regardless of the developer machine's
+// real ~/.gitconfig (some machines carry a global hooksPath shim).
+fn neutral_git_config() -> &'static std::path::Path {
+    neutral_git_config_global()
+}
+
 fn doctor_in(dir: &Path, extra_args: &[&str]) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("doctor")
         .args(extra_args)
         .current_dir(dir)
-        .env("NO_COLOR", "1");
+        .env("NO_COLOR", "1")
+        .env("GIT_CONFIG_GLOBAL", neutral_git_config());
     cmd
 }
 
@@ -2766,7 +2798,7 @@ fn test_check_warns_on_unsupported_language_paths() {
     )
     .expect("write haskell file");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg(&dir)
         .env("NO_COLOR", "1")
@@ -2791,7 +2823,7 @@ fn test_check_no_warning_when_supported_language_found() {
     std::fs::write(dir.join("main.clj"), "(ns my-app)\n").expect("write clojure file");
     std::fs::write(dir.join("main.py"), "def hello(): pass\n").expect("write python file");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg(&dir)
         .env("NO_COLOR", "1")
@@ -2807,7 +2839,7 @@ fn test_check_no_warning_when_supported_language_found() {
 
 #[test]
 fn test_r_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("r_sample.R"))
         .output()
@@ -2835,7 +2867,7 @@ fn test_r_complexity() {
 
 #[test]
 fn test_julia_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("julia_sample.jl"))
         .output()
@@ -2863,7 +2895,7 @@ fn test_julia_complexity() {
 
 #[test]
 fn test_csharp_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("csharp_sample.cs"))
         .output()
@@ -2909,7 +2941,7 @@ fn test_csharp_check() {
 
 #[test]
 fn test_clojure_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("clojure_sample.clj"))
         .output()
@@ -2968,7 +3000,7 @@ fn duration_setup() -> (PathBuf, PathBuf, PathBuf) {
 fn test_duration_report_human_output() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -2998,7 +3030,7 @@ fn test_duration_report_human_output() {
 fn test_duration_report_json_contains_findings() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -3024,7 +3056,7 @@ fn test_duration_report_json_contains_findings() {
 fn test_duration_report_sarif_contains_findings() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -3070,7 +3102,7 @@ fn test_duration_no_threshold_no_findings() {
     );
     let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -3092,7 +3124,7 @@ fn test_duration_no_threshold_no_findings() {
 fn test_duration_cache_persisted() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -3111,5 +3143,62 @@ fn test_duration_cache_persisted() {
     assert!(
         cache_content.contains("test_findings"),
         "expected test_findings in cache: {cache_content}"
+    );
+}
+
+#[test]
+fn test_doctor_warns_when_global_hooks_path_redirects_hook() {
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+    write_pretender_hook(&dir);
+
+    // Global git config points core.hooksPath elsewhere (the lefthook-shim
+    // scenario): git will invoke hooks from the redirected dir, so the
+    // installed .git/hooks/pre-commit is inert.
+    let global_cfg = dir.join("redirect.gitconfig");
+    std::fs::write(
+        &global_cfg,
+        "[core]\n\thooksPath = /nonexistent-shim-hooks\n",
+    )
+    .expect("write redirect gitconfig");
+
+    let mut cmd = pretender_cmd();
+    cmd.arg("doctor")
+        .arg("--human")
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .env("GIT_CONFIG_GLOBAL", &global_cfg);
+    let output = cmd.output().expect("run doctor");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Hook location"),
+        "expected a 'Hook location' doctor check; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("core.hooksPath"),
+        "warning should mention core.hooksPath; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("global"),
+        "warning should name the config scope; got: {stdout}"
+    );
+}
+
+#[test]
+fn test_doctor_hook_location_passes_when_hooks_path_default() {
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+    write_pretender_hook(&dir);
+
+    let output = doctor_in(&dir, &["--human"]).output().expect("run doctor");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The check runs but must not warn under the default (no redirect).
+    assert!(
+        stdout.contains("✓ Hook location"),
+        "hook-location check should pass with default hooksPath; got: {stdout}"
     );
 }

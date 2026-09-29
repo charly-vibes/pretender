@@ -272,9 +272,9 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "genesis-vibes"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6580eb27584714a9c731ab5928e4afa53ef6a44e4ea27899ad384fc1cbcc1064"
+checksum = "ad45377f0caaa16113bb15707f908b1607c5c30936bc3dc31680ae0d91f85c1d"
 dependencies = [
  "clap",
  "clap_complete",

@@ -71,12 +71,17 @@ duration_max_ms = 100
 duration_max_ms = 2000
 ```
 
-### Doctor check for config coverage
-
-`pretender doctor` includes a **Hooks vs config** check that warns when a
-pre-commit hook is installed but no `pretender.toml` exists. This catches the
-common onboarding failure where automation runs but with library defaults
 that may not match the project's quality targets.
+
+### Doctor check for effective hooks path
+
+`pretender doctor` also includes a **Hook location** check: it resolves
+`core.hooksPath` across all config scopes (local, global, system) using
+`genesis::git_hooks::effective_hooks_dir` and warns when git will invoke
+hooks from a directory other than where the pretender hook was installed
+— the case where a global `core.hooksPath` shim (e.g. lefthook) silently
+makes the installed gate inert. An empty-string `core.hooksPath` (git
+disables hooks entirely) is reported as an error.
 
 ### Deploying across the suite
 

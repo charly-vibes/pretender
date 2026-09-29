@@ -192,6 +192,53 @@ impl DoctorCheck for HooksConfigMismatchCheck {
     }
 }
 
+struct HookLocationCheck;
+impl DoctorCheck for HookLocationCheck {
+    fn name(&self) -> &'static str {
+        "Hook location"
+    }
+    fn description(&self) -> &'static str {
+        "Warn when core.hooksPath redirects hooks away from the installed pretender hook"
+    }
+    fn run(&self, repo_root: &Path) -> Result<Vec<LintResult>, Box<dyn std::error::Error>> {
+        if !repo_root.join(".git").exists() {
+            return Ok(vec![LintResult::new(
+                "skipped (not in a git repository)",
+                Severity::Warning,
+            )]);
+        }
+        // Only relevant when a pretender-managed hook is installed in .git/hooks
+        let hook_content =
+            std::fs::read_to_string(repo_root.join(".git/hooks/pre-commit")).unwrap_or_default();
+        if !hook_content.contains(PRE_COMMIT_HOOK_MARKER) {
+            return Ok(vec![]);
+        }
+        let effective = genesis::git_hooks::effective_hooks_dir(repo_root)?;
+        use genesis::git_hooks::HooksDirScope;
+        match effective.scope {
+            HooksDirScope::Default => Ok(vec![]),
+            HooksDirScope::Disabled => Ok(vec![LintResult::new(
+                "core.hooksPath is set to the empty string — git disables hooks entirely, \
+                 so the installed pretender pre-commit hook is inert. \
+                 Remove the core.hooksPath setting to re-enable the gate.",
+                Severity::Error,
+            )]),
+            scope => Ok(vec![LintResult::new(
+                format!(
+                    "git will invoke hooks from {} (core.hooksPath set at {} scope), \
+                     but the pretender hook is installed at {} — the gate is inert. \
+                     Remove the core.hooksPath setting or install the hook in the \
+                     effective directory.",
+                    effective.path.display(),
+                    format!("{scope:?}").to_lowercase(),
+                    repo_root.join(".git/hooks/pre-commit").display()
+                ),
+                Severity::Warning,
+            )]),
+        }
+    }
+}
+
 struct PluginManifestsCheck;
 impl DoctorCheck for PluginManifestsCheck {
     fn name(&self) -> &'static str {
@@ -246,6 +293,7 @@ pub fn run_doctor(format: OutputFormat) -> Result<ExitCode> {
         Box::new(ConfigValidCheck),
         Box::new(HookInstalledCheck),
         Box::new(HookExecutableCheck),
+        Box::new(HookLocationCheck),
         Box::new(HooksConfigMismatchCheck),
         Box::new(PluginManifestsCheck),
     ])
