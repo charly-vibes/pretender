@@ -5,7 +5,7 @@ All notable changes to Pretender are documented here.
 ### Changed
 
 - **Hook install/uninstall migrated onto `genesis::git_hooks`** (genesis-vibes
-  0.4 → 0.8.2) — private hook-management code in `main.rs` replaced by the
+  0.4 → 0.8.3) — private hook-management code in `main.rs` replaced by the
   shared genesis module. Behavior upgrade: hook install now respects git's
   `core.hooksPath` config. Foreign-hook refusal behavior and messages are
   unchanged. JSON envelopes now carry `cli_version` (genesis 0.8 API).
@@ -23,6 +23,11 @@ All notable changes to Pretender are documented here.
   output under `data.history.resolution` and in `summaries.json`, making
   adoption value (fixed-vs-flagged ratio) measurable. New history artifact:
   `history/last-findings.json`.
+- **`Hook location` doctor check** — resolves `core.hooksPath` across all
+  config scopes via `genesis::git_hooks::effective_hooks_dir` and warns when
+  git will invoke hooks from a directory other than where the pretender hook
+  was installed (e.g. a global `core.hooksPath` shim silently makes the gate
+  inert). An empty-string `core.hooksPath` (hooks disabled) is an error.
 
 ## [0.5.0] — 2026-08-05
 
