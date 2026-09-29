@@ -1,6 +1,6 @@
 All notable changes to Pretender are documented here.
 
-## [Unreleased]
+## [0.6.0] — 2026-09-29
 
 ### Changed
 
