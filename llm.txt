@@ -62,5 +62,5 @@ pretender/src/
   duplication.rs   AST clone detection
   explain.rs       metric catalog
   external_plugin.rs  plugin manifest loader and subprocess runner
-  history.rs       violation event log and hotspot/pattern computation
+  history.rs       violation event log, resolution tracking, hotspot/pattern computation
 ```

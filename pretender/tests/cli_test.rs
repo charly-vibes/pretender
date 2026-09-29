@@ -1314,10 +1314,102 @@ fn test_check_parallel_results_are_deterministic() {
 
     let first = run();
     let second = run();
+    // Resolution tracking (ticket u8a) intentionally varies across runs:
+    // run 1 reports findings as "new", run 2 as "still open" with a rate.
+    // Compare everything except the volatile history.resolution block.
+    let normalize = |s: &str| {
+        let v: serde_json::Value = serde_json::from_str(s).expect("valid json");
+        if let Some(h) = v.pointer("/data/history") {
+            if let Some(obj) = h.as_object() {
+                let mut o = obj.clone();
+                o.remove("resolution");
+                return serde_json::to_string(&o).expect("serialize");
+            }
+        }
+        s.to_string()
+    };
     assert_eq!(
-        first, second,
-        "json output must be deterministic across runs"
+        normalize(&first),
+        normalize(&second),
+        "json output must be deterministic across runs (excluding resolution deltas)"
     );
+}
+
+#[test]
+fn test_resolution_tracking_reports_delta_across_runs() {
+    // Ticket u8a: run 1 flags a finding ("new"); run 2 in the same repo sees
+    // it fixed ("1 fixed, 0 still open") because a clean run updates the
+    // snapshot. The fix was to remove the violation between runs.
+    let dir = tempdir();
+    let violator = dir.join("violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &violator).expect("copy fixture");
+
+    let check = || {
+        Command::new(pretender_bin())
+            .arg("check")
+            .arg(".")
+            .current_dir(&dir)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("run check")
+    };
+
+    // Run 1: finding appears — all new, rate undefined.
+    let first = check();
+    let first_out = String::from_utf8_lossy(&first.stdout).to_string();
+    assert!(
+        first_out.contains("resolution: 0 fixed, 0 still open, 1 new"),
+        "run 1 stdout: {first_out}"
+    );
+
+    // Fix the violation (reduce to 3 params).
+    std::fs::write(
+        violator.as_path(),
+        "def fewer_params(a, b, c):\n    return a + b + c\n",
+    )
+    .expect("fix violation");
+
+    let second = check();
+    let second_out = String::from_utf8_lossy(&second.stdout).to_string();
+    assert!(
+        second_out.contains("1 fixed"),
+        "run 2 must report the fix; stdout: {second_out}"
+    );
+
+    // Clean run logs nothing to events.jsonl but updates the snapshot: a
+    // third run must still see 1 fixed, proving "fixed" != "not rescanned".
+    let third = check();
+    let third_out = String::from_utf8_lossy(&third.stdout).to_string();
+    assert!(
+        !third_out.contains("resolution: 1 fixed"),
+        "clean run 3 must not re-report run 1's fix; stdout: {third_out}"
+    );
+}
+
+#[test]
+fn test_resolution_rate_appears_in_json_history() {
+    let dir = tempdir();
+    let violator = dir.join("violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &violator).expect("copy");
+    let run = || {
+        Command::new(pretender_bin())
+            .arg("check")
+            .arg(".")
+            .current_dir(&dir)
+            .arg("--format")
+            .arg("json")
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("run check")
+    };
+    run();
+    let second = run();
+    let json: serde_json::Value = serde_json::from_slice(&second.stdout).expect("json");
+    let resolution = &json["data"]["history"]["resolution"];
+    assert_eq!(resolution["fixed"], 0);
+    assert_eq!(resolution["still_open"], 1);
+    assert_eq!(resolution["new"], 0);
+    assert_eq!(resolution["rate"], 0.0);
 }
 
 #[test]

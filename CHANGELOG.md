@@ -15,6 +15,14 @@ All notable changes to Pretender are documented here.
 - **`pretender hooks install pre-push` / `hooks uninstall pre-push`** —
   pre-push hook support (previously only pre-commit). Defaults to pre-commit
   when no hook name is given.
+- **Resolution tracking** — `pretender check` persists a stable finding-ID
+  snapshot (`path::unit_name::rule_key`; safe against line-number shifts) on
+  every run, including clean runs, and reports a delta on human output:
+  `→ resolution: 3 fixed, 5 still open, 2 new (43%)`. The delta plus a
+  resolution rate (`fixed / (fixed + still_open)`) also appears in JSON
+  output under `data.history.resolution` and in `summaries.json`, making
+  adoption value (fixed-vs-flagged ratio) measurable. New history artifact:
+  `history/last-findings.json`.
 
 ## [0.5.0] — 2026-08-05
 

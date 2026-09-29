@@ -2512,10 +2512,60 @@ fn emit_history_events(
     let run_id = history::make_run_id();
     let mode_str = format!("{:?}", config.pretender.mode).to_ascii_lowercase();
     let new_events = all_violation_events(report, &run_id, &timestamp, &mode_str);
+    // Snapshot runs on EVERY check (including clean runs) so that "fixed" is
+    // distinguishable from "not rescanned" — the core of ticket u8a.
+    let current_ids: Vec<String> = new_events.iter().map(|e| e.fingerprint.clone()).collect();
+    let store = history::EventStore::new(Path::new(".pretender"));
+    let previous = match store.load_last_snapshot() {
+        Ok(prev) => prev,
+        Err(err) => {
+            eprintln!("pretender: history read failed: {err}");
+            return;
+        }
+    };
+    let delta = history::compute_delta(
+        previous.as_ref().map(|s| s.finding_ids.as_slice()),
+        &current_ids,
+    );
+
+    // Carry first_seen timestamps forward so persistence duration is tracked
+    // (consumed later by dj5's gate-findings export).
+    let mut first_seen = previous
+        .as_ref()
+        .map(|s| s.first_seen.clone())
+        .unwrap_or_default();
+    for id in &current_ids {
+        first_seen
+            .entry(id.clone())
+            .or_insert_with(|| timestamp.clone());
+    }
+    let snapshot = history::FindingsSnapshot {
+        schema_version: 1,
+        run_id: run_id.clone(),
+        timestamp: timestamp.clone(),
+        finding_ids: current_ids.clone(),
+        first_seen: first_seen.clone(),
+    };
+    if let Err(err) = store.persist_last_snapshot(&snapshot) {
+        eprintln!("pretender: history write failed: {err}");
+    }
+
     if new_events.is_empty() {
+        if !delta.fixed.is_empty() && matches!(format, ReportFormat::Human) {
+            let color = writing_to_stdout && color_enabled();
+            let (green, reset) = if color {
+                ("\u{1b}[32m", "\u{1b}[0m")
+            } else {
+                ("", "")
+            };
+            let _ = writeln!(
+                sink,
+                "{green}✓{reset} resolution: {} fixed since last check",
+                delta.fixed.len()
+            );
+        }
         return;
     }
-    let store = history::EventStore::new(Path::new(".pretender"));
     let all_events = match store.append_and_prune(&new_events) {
         Ok(events) => events,
         Err(err) => {
@@ -2523,17 +2573,56 @@ fn emit_history_events(
             return;
         }
     };
-    let summary = history::compute_summary(&all_events);
+    let mut summary = history::compute_summary(&all_events);
+    summary.resolution = Some(history::ResolutionStats {
+        fixed: delta.fixed.len(),
+        still_open: delta.still_open.len(),
+        new: delta.new.len(),
+        rate: delta.resolution_rate,
+    });
     let _ = store.persist_summary(&summary);
 
+    if matches!(format, ReportFormat::Human) {
+        let color = writing_to_stdout && color_enabled();
+        let _ = write_resolution_delta(sink, &delta, color);
+    }
+
     // Attach history to the report so it appears in JSON output
-    if !summary.top_hotspots.is_empty() || !summary.top_patterns.is_empty() {
+    if !summary.top_hotspots.is_empty()
+        || !summary.top_patterns.is_empty()
+        || summary.resolution.is_some()
+    {
         report.history = Some(summary.clone());
         if matches!(format, ReportFormat::Human) {
             let color = writing_to_stdout && color_enabled();
             let _ = write_recurrence_hints(sink, &summary, color);
         }
     }
+}
+
+/// Human-readable delta line: "resolution: 3 fixed, 5 still open, 2 new (43%)"
+fn write_resolution_delta(
+    sink: &mut dyn Write,
+    delta: &history::FindingDelta,
+    color: bool,
+) -> Result<()> {
+    let (cyan, reset) = if color {
+        ("\u{1b}[36m", "\u{1b}[0m")
+    } else {
+        ("", "")
+    };
+    let rate = delta
+        .resolution_rate
+        .map(|r| format!(" ({:.0}%)", r * 100.0))
+        .unwrap_or_default();
+    writeln!(
+        sink,
+        "{cyan}→{reset} resolution: {} fixed, {} still open, {} new{rate}",
+        delta.fixed.len(),
+        delta.still_open.len(),
+        delta.new.len()
+    )?;
+    Ok(())
 }
 
 fn metric_to_rule_key(metric: &str) -> &str {
@@ -2594,7 +2683,7 @@ fn all_violation_events(
                     actual: violation.actual,
                     limit: violation.limit,
                     delta: violation.actual - violation.limit,
-                    fingerprint: format!("{}::{}::{}", path, unit.name, rule_key),
+                    fingerprint: history::finding_id(&path, &unit.name, rule_key),
                 });
             }
         }

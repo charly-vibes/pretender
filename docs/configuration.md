@@ -430,6 +430,20 @@ From the event log pretender computes two summaries shown at the end of
   across the most files. Use these to calibrate thresholds or identify
   conventions your team hasn't codified yet.
 
+**Resolution tracking** — every `check` run (including clean runs) also
+persists the current set of finding IDs to
+`.pretender/history/last-findings.json`. IDs are stable across line-shift
+edits (`path::unit_name::rule_key`). The next run reports a delta:
+
+```
+→ resolution: 3 fixed, 5 still open, 2 new (38%)
+```
+
+The rate is `fixed / (fixed + still_open)` — `null` on the first tracked run.
+The same delta is available to machine consumers under
+`data.history.resolution` in JSON output and in `history/summaries.json`, so
+CI dashboards can track the fixed-vs-flagged ratio over time.
+
 The `.pretender/` directory should be committed so the feedback loop survives
 across machines and CI runs. Note: `events.jsonl` records file paths and
 fingerprints — review the file before committing if your repository contains

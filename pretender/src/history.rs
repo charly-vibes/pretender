@@ -33,6 +33,15 @@ pub struct ViolationEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolutionStats {
+    pub fixed: usize,
+    pub still_open: usize,
+    pub new: usize,
+    /// fixed / (fixed + still_open); null before the second tracked run.
+    pub rate: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotspotSummary {
     pub fingerprint: String,
     pub count: usize,
@@ -53,11 +62,74 @@ pub struct PatternSummary {
 pub struct HistorySummary {
     pub top_hotspots: Vec<HotspotSummary>,
     pub top_patterns: Vec<PatternSummary>,
+    /// Resolution tracking (ticket u8a): how the current scan compares to the
+    /// previous one. None on the first tracked run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<ResolutionStats>,
+}
+
+/// Stable finding identifier: path::unit_name::rule_key. Built from the unit
+/// name (not line numbers) so edits that shift lines keep the same ID
+/// (ticket u8a acceptance).
+pub fn finding_id(path: &str, unit_name: &str, rule_key: &str) -> String {
+    format!("{path}::{unit_name}::{rule_key}")
+}
+
+/// Delta between the previous check's finding IDs and the current scan's.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FindingDelta {
+    pub fixed: Vec<String>,
+    pub still_open: Vec<String>,
+    pub new: Vec<String>,
+    /// fixed / (fixed + still_open); None when there is no previous snapshot
+    /// (first tracked run) or nothing was ever flagged.
+    pub resolution_rate: Option<f64>,
+}
+
+/// Snapshot of the finding IDs observed by the most recent check run.
+/// Persisted on EVERY run (including clean runs) so "fixed" is
+/// distinguishable from "not rescanned".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FindingsSnapshot {
+    pub schema_version: u32,
+    pub run_id: String,
+    pub timestamp: String,
+    pub finding_ids: Vec<String>,
+    /// finding ID -> ISO timestamp of first sighting (for dj5: how long a
+    /// finding has persisted).
+    pub first_seen: HashMap<String, String>,
+}
+
+/// Compare previous finding IDs against the current scan and classify each
+/// finding: fixed (seen before, gone now), still_open, new.
+/// `resolution_rate` = fixed / (fixed + still_open); None when nothing was
+/// previously tracked (first run) or when there was nothing to resolve.
+pub fn compute_delta(previous: Option<&[String]>, current: &[String]) -> FindingDelta {
+    let prev: HashSet<&str> = previous
+        .map(|ids| ids.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+    let cur: HashSet<&str> = current.iter().map(|s| s.as_str()).collect();
+    let fixed: Vec<String> = prev.difference(&cur).map(|s| s.to_string()).collect();
+    let still_open: Vec<String> = cur.intersection(&prev).map(|s| s.to_string()).collect();
+    let new: Vec<String> = cur.difference(&prev).map(|s| s.to_string()).collect();
+    let resolution_rate = if previous.is_none() || (fixed.is_empty() && still_open.is_empty()) {
+        None
+    } else {
+        let tracked = fixed.len() + still_open.len();
+        Some(fixed.len() as f64 / (tracked.max(1) as f64))
+    };
+    FindingDelta {
+        fixed,
+        still_open,
+        new,
+        resolution_rate,
+    }
 }
 
 pub struct EventStore {
     events_path: PathBuf,
     summaries_path: PathBuf,
+    snapshot_path: PathBuf,
 }
 
 impl EventStore {
@@ -65,7 +137,36 @@ impl EventStore {
         Self {
             events_path: base_dir.join("history/events.jsonl"),
             summaries_path: base_dir.join("history/summaries.json"),
+            snapshot_path: base_dir.join("history/last-findings.json"),
         }
+    }
+
+    /// Load the finding-ID snapshot from the most recent check run.
+    /// None when no snapshot exists yet (first tracked run).
+    pub fn load_last_snapshot(&self) -> Result<Option<FindingsSnapshot>> {
+        match fs::read(&self.snapshot_path) {
+            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes).with_context(|| {
+                format!("failed to parse snapshot: {}", self.snapshot_path.display())
+            })?)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::anyhow!(e).context(format!(
+                "failed to read snapshot: {}",
+                self.snapshot_path.display()
+            ))),
+        }
+    }
+
+    /// Persist the snapshot of the current run's finding IDs. Called on every
+    /// check run, including clean runs.
+    pub fn persist_last_snapshot(&self, snap: &FindingsSnapshot) -> Result<()> {
+        if let Some(parent) = self.snapshot_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create history dir: {}", parent.display()))?;
+        }
+        let tmp = self.snapshot_path.with_extension("json.tmp");
+        fs::write(&tmp, serde_json::to_vec_pretty(snap)?)?;
+        fs::rename(&tmp, &self.snapshot_path)
+            .with_context(|| format!("failed to write snapshot: {}", self.snapshot_path.display()))
     }
 
     /// Loads existing events, appends new_events, prunes by age (RETENTION_DAYS)
@@ -222,6 +323,7 @@ pub fn compute_summary(events: &[ViolationEvent]) -> HistorySummary {
     HistorySummary {
         top_hotspots: hotspots,
         top_patterns: patterns,
+        resolution: None,
     }
 }
 
@@ -359,6 +461,86 @@ mod tests {
             delta: 5.0,
             fingerprint: fingerprint.to_string(),
         }
+    }
+
+    #[test]
+    fn test_finding_id_uses_unit_name_not_line() {
+        // Ticket u8a: the finding ID must be built from path + unit name +
+        // rule — not line numbers — so edits that shift lines do not orphan
+        // tracked findings.
+        let id = finding_id("src/a.rs", "parse", "cognitive_max");
+        assert_eq!(id, "src/a.rs::parse::cognitive_max");
+        assert!(
+            !id.chars().any(|c| c.is_ascii_digit()),
+            "no line numbers in ID: {id}"
+        );
+        assert_eq!(
+            finding_id("./src/a.rs", "parse", "cognitive_max"),
+            "./src/a.rs::parse::cognitive_max"
+        );
+    }
+
+    #[test]
+    fn test_compute_delta_fixed_still_open_new() {
+        let prev = vec![
+            "a::f::cog".to_string(),
+            "b::g::nest".to_string(),
+            "c::h::params".to_string(),
+        ];
+        let cur = vec!["a::f::cog".to_string(), "d::i::lines".to_string()];
+        let delta = compute_delta(Some(&prev), &cur);
+        let mut fixed = delta.fixed.clone();
+        let mut new = delta.new.clone();
+        fixed.sort();
+        new.sort();
+        assert_eq!(fixed, vec!["b::g::nest", "c::h::params"]);
+        assert_eq!(delta.still_open, vec!["a::f::cog"]);
+        assert_eq!(new, vec!["d::i::lines"]);
+        assert!(
+            (delta.resolution_rate.unwrap() - 2.0 / 3.0).abs() < 1e-9,
+            "2 fixed / 3 tracked"
+        );
+    }
+
+    #[test]
+    fn test_compute_delta_no_previous_is_all_new() {
+        let delta = compute_delta(None, &["a::f::cog".to_string()]);
+        assert_eq!(delta.fixed.len(), 0);
+        assert_eq!(delta.still_open.len(), 0);
+        assert_eq!(delta.new.len(), 1);
+        assert!(delta.resolution_rate.is_none(), "no tracked history yet");
+    }
+
+    #[test]
+    fn test_compute_delta_clean_run_fixes_everything() {
+        let delta = compute_delta(Some(&["a::f::cog".to_string()]), &[]);
+        assert_eq!(delta.fixed, vec!["a::f::cog"]);
+        assert!(delta.still_open.is_empty());
+        assert!((delta.resolution_rate.unwrap() - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_snapshot_round_trip() {
+        let dir = env::temp_dir().join(format!("pretender-snap-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let store = EventStore::new(&dir);
+        assert!(
+            store.load_last_snapshot().unwrap().is_none(),
+            "no snapshot yet"
+        );
+        let snap = FindingsSnapshot {
+            schema_version: 1,
+            run_id: "r1".into(),
+            timestamp: "2026-09-29T00:00:00Z".into(),
+            finding_ids: vec!["a::f::cog".into()],
+            first_seen: Default::default(),
+        };
+        store.persist_last_snapshot(&snap).expect("persist");
+        let loaded = store
+            .load_last_snapshot()
+            .unwrap()
+            .expect("snapshot exists");
+        assert_eq!(loaded.finding_ids, vec!["a::f::cog"]);
     }
 
     #[test]
