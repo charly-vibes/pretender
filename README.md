@@ -12,6 +12,12 @@
 
 # pretender
 
+> **Why:** code quality regressions slip in because complexity metrics live in
+> dashboards nobody checks — pretender puts cyclomatic/cognitive/abc/params
+> gates directly into CI, over exactly the code that changed, with CI configs
+> generated for you.
+> **Status:** [beta](docs/src/status.md) · init/report/ci-generate shipped · [Motivation & design](docs/src/status.md)
+
 [![tracked with wai](https://img.shields.io/badge/tracked%20with-wai-blue)](https://github.com/charly-vibes/wai)
 
 > **pretender will enable development teams using CI to detect structural quality

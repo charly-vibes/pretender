@@ -1,22 +1,18 @@
 
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
-
-# Beads internal state (track only issues.jsonl for backup)
 .beads/*
-!.beads/issues.jsonl
 !.beads/config.yaml
-
-# Pretender runtime cache
-/.pretender/
-
-# mdBook build output
+.beads-credential-key
+# Beads / Dolt files (added by bd init)
+# Beads internal state (track only issues.jsonl for backup)
+!.beads/issues.jsonl
 /book
-
+/book/
+*.db
+.dolt/
+# mdBook build output
+/.pretender/
+# Pretender runtime cache
+.testaruda/
+# testaruda store (local SQLite DB)
 # Vale downloaded styles (run `vale sync` to populate)
 .vale/styles/
-
-# testaruda store (local SQLite DB)
-.testaruda/
