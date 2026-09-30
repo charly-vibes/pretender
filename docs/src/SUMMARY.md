@@ -21,5 +21,7 @@
 
 # Design Specs
 
-- [CLI and Configuration](../../openspec/specs/cli-and-config/spec.md)
-- [Universal Code Model](../../openspec/specs/universal-code-model/spec.md)
+- [`cli-and-config`](./specs/cli-and-config.md)
+- [`cli-core`](./specs/cli-core.md)
+- [`config`](./specs/config.md)
+- [`universal-code-model`](./specs/universal-code-model.md)

@@ -16,3 +16,4 @@
 # testaruda store (local SQLite DB)
 # Vale downloaded styles (run `vale sync` to populate)
 .vale/styles/
+docs/src/specs/
