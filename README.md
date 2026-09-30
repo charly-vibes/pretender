@@ -62,10 +62,10 @@ cargo build --release
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Configuration reference](docs/configuration.md)
-- [Mutation testing](docs/mutation.md)
-- [Writing plugins](docs/plugins.md)
+- [Getting started](docs/src/getting-started.md)
+- [Configuration reference](docs/src/configuration.md)
+- [Mutation testing](docs/src/mutation.md)
+- [Writing plugins](docs/src/plugins.md)
 - [Language support](pretender/languages/)
 
 ## Commands

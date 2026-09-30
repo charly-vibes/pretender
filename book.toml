@@ -2,7 +2,7 @@
 title = "pretender"
 authors = ["charly vibes"]
 description = "Language-agnostic code quality CLI"
-src = "docs"
+src = "docs/src"
 
 [build]
 build-dir = "book"
