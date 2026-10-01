@@ -39,7 +39,7 @@ use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
-use genesis::envelope::{Envelope, EnvelopeKind};
+use genesis::envelope::{Envelope, EnvelopeKind, Warning};
 use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
 use genesis::git_hooks::{self as genesis_git_hooks, HookName};
@@ -627,6 +627,18 @@ impl Executable for CheckArgs {
             config.pretender.advisory_until = self.advisory_until.clone();
         }
 
+        // Advisory-lease fail-closed (GH #35): when tiered/guidance run without
+        // a current lease the check still fails, but the user must be told why.
+        // The diagnostic goes to stderr so stdout stays a parseable report.
+        let lease_failed = lease_fail_closed(
+            config.pretender.mode,
+            config.pretender.advisory_until.as_deref(),
+        );
+        let lease_warning = lease_failed.then(|| lease_diagnostic(config.pretender.mode));
+        if let Some(msg) = &lease_warning {
+            eprintln!("error: {msg}");
+        }
+
         // Respect global --json / --human flags
         let args: Vec<String> = std::env::args().collect();
         let format = if args.iter().any(|a| a == "--json" || a == "-j") {
@@ -780,7 +792,7 @@ impl Executable for CheckArgs {
                     self.show_all,
                 )?;
             }
-            ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
+            ReportFormat::Json => write_json_report(sink.as_mut(), &report, lease_warning)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
         }
         persist_last_check_report(&report)?;
@@ -1075,11 +1087,55 @@ fn wait_with_timeout(
     }
 }
 
+/// Single source of truth for the advisory-lease fail-closed condition
+/// (GH #35): tiered/guidance with a missing or expired lease fail closed;
+/// gate never consults the lease.
+fn lease_fail_closed(mode: Mode, advisory_until: Option<&str>) -> bool {
+    mode.is_advisory() && (advisory_until.is_none() || is_lease_expired(advisory_until))
+}
+
+/// Human-readable remediation for a lease fail-closed (GH #35). Printed to
+/// stderr and surfaced as a structured envelope warning.
+fn lease_diagnostic(mode: Mode) -> String {
+    let mode_name = match mode {
+        Mode::Guidance => "guidance",
+        Mode::Tiered => "tiered",
+        Mode::Gate => "gate",
+    };
+    format!(
+        "mode={mode_name} requires an advisory lease: set advisory_until in pretender.toml, \
+         pass --advisory-until YYYY-MM-DD, or switch to mode=gate"
+    )
+}
+
+#[test]
+fn test_lease_fail_closed_matrix() {
+    // advisory modes: missing or expired lease fails closed
+    assert!(lease_fail_closed(Mode::Tiered, None));
+    assert!(lease_fail_closed(Mode::Guidance, None));
+    assert!(lease_fail_closed(Mode::Tiered, Some("2000-01-01")));
+    assert!(lease_fail_closed(Mode::Guidance, Some("not-a-date")));
+    // valid lease passes
+    assert!(!lease_fail_closed(Mode::Tiered, Some("2099-12-31")));
+    // gate never consults the lease (GH #35 regression guard)
+    assert!(!lease_fail_closed(Mode::Gate, None));
+    assert!(!lease_fail_closed(Mode::Gate, Some("2000-01-01")));
+}
+
+#[test]
+fn test_lease_diagnostic_mentions_all_remediations() {
+    let msg = lease_diagnostic(Mode::Tiered);
+    assert!(msg.contains("tiered"), "names the mode: {msg}");
+    assert!(msg.contains("advisory_until"), "config remediation: {msg}");
+    assert!(msg.contains("--advisory-until"), "CLI remediation: {msg}");
+    assert!(msg.contains("mode=gate"), "gate fallback: {msg}");
+}
+
 fn decide_exit_code(report: &CheckReport, mode: Mode, advisory_until: Option<&str>) -> ExitCode {
     // Advisory lease TTL (pretender-1te): tiered/guidance are dated
     // downgrades from the gate default. Expired/missing/unparseable lease
     // fails closed — the drift detector forcing a renewed, dated decision.
-    if mode.is_advisory() && (advisory_until.is_none() || is_lease_expired(advisory_until)) {
+    if lease_fail_closed(mode, advisory_until) {
         return ExitCode::FAILURE;
     }
     let has_skipped = report
@@ -2245,14 +2301,29 @@ fn html_escape(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
-    let env = Envelope::success(
+fn write_json_report(
+    sink: &mut dyn Write,
+    report: &CheckReport,
+    lease_warning: Option<String>,
+) -> Result<()> {
+    let mut env = Envelope::success(
         env!("CARGO_PKG_VERSION"),
         EnvelopeKind::Check,
         report,
         vec![],
         vec![],
     );
+    // GH #35: a lease fail-closed exits 1, so the envelope must not claim
+    // ok:true — surface the reason as a structured warning instead.
+    if let Some(message) = lease_warning {
+        env.ok = false;
+        env.warnings.push(Warning {
+            rule_name: "advisory-lease".to_string(),
+            entity_id: None,
+            message,
+            suggested_remediation: Some("set advisory_until or switch to mode=gate".to_string()),
+        });
+    }
     serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;
     Ok(())

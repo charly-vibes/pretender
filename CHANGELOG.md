@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Advisory-lease fail-closed now explains itself (GH #35)** — when
+  `mode = "tiered"`/`"guidance"` runs without a current `advisory_until`
+  lease, `pretender check` exits 1 as designed, but now prints a remediation
+  diagnostic to stderr (`set advisory_until in pretender.toml, pass
+  --advisory-until YYYY-MM-DD, or switch to mode=gate`) instead of silently
+  failing with all-green output. The JSON envelope no longer claims
+  `"ok": true` on that path: it reports `"ok": false` and carries a
+  structured `advisory-lease` warning with the same message.
+
 ## [0.7.0] — 2026-10-01
 
 ### Changed

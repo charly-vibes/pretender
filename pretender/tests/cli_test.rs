@@ -615,6 +615,102 @@ fn test_check_tiered_mode_shows_advisory_not_violation() {
     );
 }
 
+/// GH #35: tiered without an advisory lease fails closed (rc=1) but used to
+/// emit an all-green report with no hint why. The diagnostic must land on
+/// stderr so stdout stays a parseable report.
+#[test]
+fn test_check_tiered_missing_lease_fails_closed_with_diagnostic() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .arg("--mode")
+        .arg("tiered")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing lease must fail closed; stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("tiered") && stderr.contains("advisory_until"),
+        "stderr must name the mode and the config remediation; got: {stderr}"
+    );
+    assert!(
+        stderr.contains("--advisory-until"),
+        "stderr must mention the CLI lease flag; got: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("all green"),
+        "stdout should still carry the normal report; got: {stdout}"
+    );
+}
+
+/// GH #35: the JSON envelope must not claim ok:true while the process exits 1.
+#[test]
+fn test_check_tiered_missing_lease_json_ok_false_with_warning() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--format")
+        .arg("json")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(1));
+    let json: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
+        .expect("stdout must remain valid JSON");
+    assert_eq!(
+        json["ok"],
+        serde_json::json!(false),
+        "envelope ok must agree with the exit code; got: {json}"
+    );
+    let warnings = json["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.iter().any(|w| {
+            let msg = w["message"].as_str().unwrap_or("");
+            msg.contains("tiered") && msg.contains("advisory_until")
+        }),
+        "envelope must carry a structured lease warning; got: {warnings:?}"
+    );
+}
+
+/// Regression: gate mode never consults the lease, so no advisory diagnostic
+/// may leak into its output (GH #35 fix scope guard).
+#[test]
+fn test_check_gate_mode_no_lease_no_advisory_diagnostic() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(output.status.success(), "gate + green files must pass");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("advisory"),
+        "gate mode must not emit lease diagnostics; got: {stderr}"
+    );
+}
+
 #[test]
 fn test_check_gate_mode_shows_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
