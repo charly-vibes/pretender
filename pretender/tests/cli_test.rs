@@ -1681,6 +1681,151 @@ fn test_init_injects_managed_blocks() {
 }
 
 #[test]
+fn test_init_injects_blocks_with_provenance_footer() {
+    // pretender-ivo: managed blocks carry a provenance footer (generator,
+    // version, source, sha) so the doctor drift check can use the footer-hash
+    // fast path. The sha covers only the block content, never the footer.
+    let dir = tempdir();
+
+    let output = init_in(&dir)
+        .arg("--non-interactive")
+        .output()
+        .expect("run init");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = std::fs::read_to_string(dir.join("AGENTS.md")).expect("read AGENTS.md");
+    assert_eq!(
+        content
+            .matches("<!-- provenance: generator=pretender version=")
+            .count(),
+        3,
+        "each managed block should carry a provenance footer: {content}"
+    );
+    for block in ["WAI", "OPENSPEC", "DONT"] {
+        let footer_line = content
+            .lines()
+            .find(|l| {
+                l.starts_with("<!-- provenance: generator=pretender version=")
+                    && l.contains(&format!("source={block} "))
+            })
+            .unwrap_or_else(|| panic!("no provenance footer for {block}: {content}"));
+        assert!(
+            footer_line.contains("sha="),
+            "footer must record a content sha: {footer_line}"
+        );
+    }
+}
+
+#[test]
+fn test_doctor_drift_check_passes_on_fresh_init() {
+    // pretender-ivo: after init, the injected blocks match generator output —
+    // the drift check must pass, not warn.
+    let dir = tempdir();
+    git_init(&dir);
+
+    let output = init_in(&dir)
+        .arg("--non-interactive")
+        .output()
+        .expect("run init");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = doctor_in(&dir, &["--json"]).output().expect("run doctor");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
+    let checks = json["data"]["checks"]
+        .as_array()
+        .expect("data.checks should be array");
+    let drift = checks
+        .iter()
+        .find(|c| c["name"] == "genesis.managed_block_drift")
+        .expect("drift check should be registered in doctor");
+    assert_eq!(
+        drift["status"], "pass",
+        "fresh init blocks should not drift; entry: {drift}"
+    );
+}
+
+#[test]
+fn test_doctor_drift_check_quiet_without_agents_md() {
+    // pretender-ivo: repos that never ran pretender init have no managed
+    // blocks — the drift check must not emit advisory noise there.
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+
+    let output = doctor_in(&dir, &["--json"]).output().expect("run doctor");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
+    let checks = json["data"]["checks"]
+        .as_array()
+        .expect("data.checks should be array");
+    let drift = checks
+        .iter()
+        .find(|c| c["name"] == "genesis.managed_block_drift")
+        .expect("drift check should be registered in doctor");
+    assert_eq!(
+        drift["status"], "pass",
+        "no AGENTS.md → check must stay quiet; entry: {drift}"
+    );
+}
+
+#[test]
+fn test_doctor_reports_managed_block_drift() {
+    // pretender-ivo: a hand-edited block body (markers and footer intact)
+    // must surface as a doctor warning with the sync command as fix.
+    let dir = tempdir();
+    git_init(&dir);
+
+    let output = init_in(&dir)
+        .arg("--non-interactive")
+        .output()
+        .expect("run init");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let agents = dir.join("AGENTS.md");
+    let content = std::fs::read_to_string(&agents).expect("read AGENTS.md");
+    let edited = content.replace(
+        "Run `wai status` to orient yourself.",
+        "Run `wai status` to orient yourself. HAND-EDITED",
+    );
+    std::fs::write(&agents, edited).expect("hand-edit AGENTS.md");
+
+    let output = doctor_in(&dir, &["--json"]).output().expect("run doctor");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
+    let checks = json["data"]["checks"]
+        .as_array()
+        .expect("data.checks should be array");
+    let drift = checks
+        .iter()
+        .find(|c| c["name"] == "genesis.managed_block_drift" && c["status"] == "warn")
+        .expect("drifted WAI block should warn");
+    assert!(
+        drift["message"].as_str().unwrap_or("").contains("WAI"),
+        "warning should name the drifted block: {drift}"
+    );
+    assert_eq!(
+        drift["fix"], "pretender init",
+        "warning should carry the sync command: {drift}"
+    );
+}
+
+#[test]
 fn test_init_interactive_can_install_hook_and_ci() {
     let dir = tempdir();
     std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");

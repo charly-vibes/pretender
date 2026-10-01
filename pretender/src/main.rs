@@ -538,31 +538,46 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
     Ok(repo_short)
 }
 
+/// Managed blocks pretender injects into AGENTS.md at init.
+///
+/// Single source of truth for both the injector ([`inject_managed_blocks`])
+/// and the doctor drift targets (`doctor.rs`): the doctor's
+/// `ManagedBlockDrift` check regenerates these exact contents to detect
+/// drifted blocks via the provenance footer hash.
+pub(crate) fn managed_block_specs() -> Vec<(BlockDef, String)> {
+    vec![
+        (
+            BlockDef::new("WAI"),
+            "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n".to_string(),
+        ),
+        (
+            BlockDef::new("OPENSPEC"),
+            "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
+                .to_string(),
+        ),
+        (
+            BlockDef::new("DONT"),
+            "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n".to_string(),
+        ),
+    ]
+}
+
 fn inject_managed_blocks() -> Result<()> {
     let mut reg = BlockRegistry::new();
-    reg.register(BlockDef::new("WAI"));
-    reg.register(BlockDef::new("OPENSPEC"));
-    reg.register(BlockDef::new("DONT"));
-    let injector = BlockInjector::new(reg);
+    for (block, _) in managed_block_specs() {
+        reg.register(block);
+    }
+    // Provenance footer (pretender-ivo): each block records generator,
+    // version, source and content sha inside the markers, enabling
+    // doctor's genesis.managed_block_drift fast path.
+    let injector = BlockInjector::new(reg).with_provenance("pretender");
 
     let agents_path = std::path::Path::new("AGENTS.md");
-    let wai_content =
-        "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n".to_string();
-    let openspec_content =
-        "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
-            .to_string();
-    let dont_content =
-        "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n".to_string();
-
-    injector
-        .inject(agents_path, "WAI", &wai_content)
-        .context("failed to inject WAI managed block")?;
-    injector
-        .inject(agents_path, "OPENSPEC", &openspec_content)
-        .context("failed to inject OPENSPEC managed block")?;
-    injector
-        .inject(agents_path, "DONT", &dont_content)
-        .context("failed to inject DONT managed block")?;
+    for (block, content) in managed_block_specs() {
+        injector
+            .inject(agents_path, &block.name, &content)
+            .with_context(|| format!("failed to inject {} managed block", block.name))?;
+    }
 
     Ok(())
 }
