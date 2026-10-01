@@ -19,3 +19,6 @@
 docs/src/specs/
 # §6: generated from Cargo.toml by docs.yml — never committed
 docs/src/release.md
+
+# generated report HTML (pretender report --output runs)
+/languages/*/index.html
