@@ -2,9 +2,9 @@ use crate::config;
 use crate::external_plugin;
 use anyhow::Result;
 use genesis::config::ValidationSeverity;
-use genesis::doctor::{DoctorCheck, DoctorReport, DoctorRunner};
+use genesis::doctor::{lint_to_doctor, DoctorCheck, DoctorReport, DoctorRunner};
 use genesis::guide::OutputFormat;
-use genesis::suite_linter::{LintResult, Severity};
+use genesis::suite_linter::{DriftTarget, LintCheck, LintResult, ManagedBlockDrift, Severity};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -284,6 +284,36 @@ impl DoctorCheck for PluginManifestsCheck {
     }
 }
 
+// ── Managed-block drift (pretender-ivo) ──────────────────────────────
+
+/// Managed-block drift check scoped to repos where pretender init ran.
+///
+/// Without AGENTS.md, pretender manages nothing — stay quiet instead of
+/// emitting advisory noise on every foreign repo.
+struct ManagedBlockDriftCheck(ManagedBlockDrift);
+
+impl LintCheck for ManagedBlockDriftCheck {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+    fn description(&self) -> &'static str {
+        self.0.description()
+    }
+    fn run(&self, repo_root: &Path) -> Result<Vec<LintResult>, Box<dyn std::error::Error>> {
+        if !repo_root.join("AGENTS.md").exists() {
+            return Ok(vec![]);
+        }
+        self.0.run(repo_root)
+    }
+}
+
+fn drift_targets() -> Vec<DriftTarget> {
+    crate::managed_block_specs()
+        .into_iter()
+        .map(|(block, content)| DriftTarget::new(block, "AGENTS.md", content, "pretender init"))
+        .collect()
+}
+
 // ── Public API ────────────────────────────────────────────────────────
 
 pub fn run_doctor(format: OutputFormat) -> Result<ExitCode> {
@@ -296,6 +326,9 @@ pub fn run_doctor(format: OutputFormat) -> Result<ExitCode> {
         Box::new(HookLocationCheck),
         Box::new(HooksConfigMismatchCheck),
         Box::new(PluginManifestsCheck),
+        Box::new(lint_to_doctor(ManagedBlockDriftCheck(
+            ManagedBlockDrift::new(drift_targets()),
+        ))),
     ])
     .with_tool_name("pretender");
 
