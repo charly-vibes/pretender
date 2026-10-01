@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.8.0] — 2026-10-01
+
+### Added
+
+- **Managed-block provenance + drift check (pretender-ivo)** — `pretender init`
+  now injects WAI/OPENSPEC/DONT managed blocks via
+  `BlockInjector::with_provenance("pretender")`, stamping a provenance footer
+  (generator, version, source, sha8) into each block. A new doctor check,
+  `genesis.managed_block_drift`, warns when managed blocks drift from the
+  genesis specs or are missing from an existing AGENTS.md (foreign repos
+  without AGENTS.md stay quiet). Underlying genesis-vibes dependency bumped
+  0.8.3 → 0.11.1.
+
+### Fixed
+
+- **tree-sitter-rust 0.23 → 0.24.2 (pretender-mlw)** — Rust files using
+  `&raw` locals no longer trigger a false "Parse errors detected" warning.
+  The found impact was worse than noise: the engine early-returned empty
+  units on parse errors, so such files silently lost ALL metrics
+  (complexity, coupling, checks) — parse errors are now reported as
+  diagnostics and remaining files are still analyzed. ABI compatibility
+  with the tree-sitter 0.25 runtime verified by the full test suite.
+- **`check --staged` short-circuit is format-aware (pretender-xgt)** — when
+  nothing is staged (or changed under `--diff-only`/`--diff-base`), the
+  short-circuit printed human text regardless of `--format`, so JSON/SARIF
+  consumers got unparseable stdout. Human output keeps the friendly
+  one-liner; JSON now emits a proper empty `check` envelope (including the
+  `advisory-lease` warning when lease fail-closed triggers) and SARIF emits
+  an empty report. Exit code still honors lease fail-closed.
+
 ## [0.7.1] — 2026-10-01
 
 ### Fixed
