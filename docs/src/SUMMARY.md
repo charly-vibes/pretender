@@ -1,6 +1,7 @@
 # Summary
 
 - [Getting Started](getting-started.md)
+- [Release Status](./release.md)
 - [Configuration Reference](configuration.md)
 - [Mutation Testing](mutation.md)
 - [Writing Plugins](plugins.md)

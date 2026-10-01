@@ -17,3 +17,5 @@
 # Vale downloaded styles (run `vale sync` to populate)
 .vale/styles/
 docs/src/specs/
+# §6: generated from Cargo.toml by docs.yml — never committed
+docs/src/release.md
