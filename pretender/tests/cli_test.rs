@@ -522,6 +522,55 @@ fn test_doctor_json_output_has_envelope_shape() {
 }
 
 #[test]
+fn test_check_rust_raw_local_no_parse_error_warning() {
+    // pretender-mlw: a local named `raw` referenced as `&raw` collided with
+    // the &raw const/mut expression lookahead in tree-sitter-rust 0.23.3,
+    // producing a false "Parse errors detected" warning (and, worse, empty
+    // metrics — the engine early-returns on has_error). Valid Rust must
+    // parse cleanly and yield metrics.
+    let dir = tempdir();
+    let source = dir.join("repro.rs");
+    std::fs::write(
+        &source,
+        "fn f(x: &str) -> usize {\n    let raw = x.to_string();\n    raw.len() + (&raw).len()\n}\n",
+    )
+    .expect("write repro.rs");
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+
+    let output = check_in(&dir, &source)
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "check should succeed; stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stdout.contains("Parse errors detected") && !stderr.contains("Parse errors detected"),
+        "valid Rust with a local named 'raw' must not warn; stdout: {stdout}, stderr: {stderr}"
+    );
+    // Metrics must actually compute — engine.rs early-returns empty units on
+    // has_error, so the warning's absence alone doesn't prove units parsed.
+    // `complexity` lists per-function scores.
+    let cx = pretender_cmd()
+        .arg("complexity")
+        .arg(&source)
+        .current_dir(dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run complexity");
+    let cx_out = String::from_utf8_lossy(&cx.stdout);
+    assert!(
+        cx_out.contains("f: "),
+        "metrics should compute (function f listed); stdout: {cx_out}"
+    );
+}
+
+#[test]
 fn test_check_warns_when_no_config() {
     let dir = tempdir();
     let source = dir.join("hello.py");
