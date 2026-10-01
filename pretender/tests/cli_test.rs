@@ -2803,6 +2803,42 @@ fn test_check_staged_no_files_prints_message() {
 }
 
 #[test]
+fn test_check_staged_no_files_json_envelope() {
+    // pretender-xgt: the short-circuit path must emit a parseable JSON
+    // envelope when --format json is requested, same shape as a normal run.
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n").expect("write file");
+
+    let output = check_in(&dir, &dir)
+        .arg("--staged")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "should exit 0 with no staged files; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("--format json must emit a JSON envelope even when nothing is staged");
+
+    assert_eq!(json["ok"], true, "no findings on empty diff, ok=true");
+    assert_eq!(
+        json["envelope_kind"], "check",
+        "envelope_kind should be 'check'"
+    );
+    assert_eq!(
+        json["data"]["files"].as_array().map(Vec::len),
+        Some(0),
+        "data.files should be an empty array; got: {json}"
+    );
+}
+
+#[test]
 fn test_check_default_hides_clean_functions() {
     // python_simple has passing functions — default output should not list them
     let (_dir, staged) = stage_fixture("python_simple.py");

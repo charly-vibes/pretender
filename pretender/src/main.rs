@@ -675,20 +675,39 @@ impl Executable for CheckArgs {
                 git::diff_base_files(&cwd, base)?
             };
             // Short-circuit: skip the full directory walk when nothing is staged/changed.
+            // pretender-xgt: the skipped output must still be format-aware —
+            // --format json/sarif consumers get a parseable empty report, not
+            // human text. Human keeps the friendly one-liner.
             if allowed.is_empty() {
-                if self.staged {
-                    println!("No staged files to check.");
-                } else {
-                    println!("No changed files to check.");
+                let report = CheckReport {
+                    files: vec![],
+                    modules: Vec::new(),
+                    cycles: Vec::new(),
+                    test_findings: Vec::new(),
+                    history: None,
+                };
+                match format {
+                    ReportFormat::Human => {
+                        if self.staged {
+                            println!("No staged files to check.");
+                        } else {
+                            println!("No changed files to check.");
+                        }
+                    }
+                    ReportFormat::Json | ReportFormat::Sarif => {
+                        let mut sink = open_report_sink(self.output.as_deref())?;
+                        match format {
+                            ReportFormat::Json => {
+                                write_json_report(sink.as_mut(), &report, lease_warning)?
+                            }
+                            ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
+                            ReportFormat::Human => unreachable!("handled above"),
+                        }
+                        sink.flush().context("failed to flush report output")?;
+                    }
                 }
                 return Ok(decide_exit_code(
-                    &CheckReport {
-                        files: vec![],
-                        modules: Vec::new(),
-                        cycles: Vec::new(),
-                        test_findings: Vec::new(),
-                        history: None,
-                    },
+                    &report,
                     config.pretender.mode,
                     config.pretender.advisory_until.as_deref(),
                 ));
