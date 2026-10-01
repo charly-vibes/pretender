@@ -1,0 +1,29 @@
+name         = "r"
+display_name = "R"
+extensions   = [".r", ".R"]
+shebangs     = ["R", "Rscript"]
+tree_sitter  = { source = "builtin:tree-sitter-r", rev = "1.3.0" }
+query        = "metrics.scm"
+
+[branches]
+"@branch.if"           = { cyclomatic = 1, cognitive = 1 }
+"@branch.loop"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
+"@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
+
+[assertions]
+patterns = [
+  "^expect_",
+  "^test_that",
+  "^verify",
+  "^assert_",
+  "^stopifnot",
+]
+
+[smell_weights]
+"eval"    = 5.0
+"assign"  = 3.0
+"rm"      = 3.0
+"attach"  = 4.0
+"detach"  = 2.0
+"options" = 1.5
