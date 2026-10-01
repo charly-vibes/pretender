@@ -2,13 +2,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn git_init(dir: &Path) {
-    assert!(Command::new("git")
+    let output = Command::new("git")
         .args(["init"])
         .current_dir(dir)
         .output()
-        .expect("git init")
-        .status
-        .success());
+        .expect("git init");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     Command::new("git")
         .args(["config", "user.email", "test@example.com"])
         .current_dir(dir)
@@ -117,12 +120,18 @@ fn write_temp_file(relative: &str, source: &str) -> (PathBuf, PathBuf) {
 }
 
 fn tempdir() -> PathBuf {
+    // Atomic counter disambiguates parallel test threads that read the clock
+    // within the same tick — pid+nanos alone collided, making `git init` fail
+    // with 'File exists' when copying template hooks (seen 2026-10-01,
+    // pretender-ivo).
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("pretender-cli-{pid}-{nanos}"));
+    let dir = std::env::temp_dir().join(format!("pretender-cli-{pid}-{nanos}-{seq}"));
     std::fs::create_dir_all(&dir).expect("create tempdir");
     dir
 }
