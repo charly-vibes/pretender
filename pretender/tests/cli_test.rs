@@ -129,13 +129,27 @@ fn tempdir() -> PathBuf {
 
 fn check(path: &Path) -> Command {
     let mut cmd = pretender_cmd();
-    cmd.arg("check").arg(path).env("NO_COLOR", "1");
+    // Output-focused helper: carries a current advisory lease so call sites
+    // keep advisory exit semantics (gate is now the default — pretender-1te).
+    // Exit-policy tests set --mode explicitly.
+    cmd.arg("check")
+        .arg(path)
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
+        .env("NO_COLOR", "1");
     cmd
 }
 
 fn check_default(dir: &Path) -> Command {
     let mut cmd = pretender_cmd();
-    cmd.arg("check").env("NO_COLOR", "1");
+    cmd.arg("check")
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
+        .env("NO_COLOR", "1");
     cmd.current_dir(dir);
     cmd
 }
@@ -552,15 +566,21 @@ fn test_check_exits_zero_when_clean() {
 }
 
 #[test]
-fn test_check_tiered_mode_exits_zero_on_violation() {
+fn test_check_default_gate_mode_fails_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged).output().expect("failed to execute process");
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
 
+    // Gate is now the fail-closed default (pretender-1te): violations EXIT 1
     assert_eq!(
         output.status.code(),
-        Some(0),
-        "expected exit 0 in default tiered mode; stdout: {} stderr: {}",
+        Some(1),
+        "default gate mode must fail on violations; stdout: {} stderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -570,9 +590,13 @@ fn test_check_tiered_mode_exits_zero_on_violation() {
 fn test_check_tiered_mode_shows_advisory_not_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
         .output()
         .expect("failed to execute process");
 
@@ -595,7 +619,9 @@ fn test_check_tiered_mode_shows_advisory_not_violation() {
 fn test_check_gate_mode_shows_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -805,9 +831,13 @@ fn test_check_accepts_test_role_when_assertion_present() {
 fn test_check_guidance_mode_exits_zero_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("guidance")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
         .output()
         .expect("failed to execute process");
 
@@ -833,7 +863,13 @@ fn test_check_gate_mode_from_config_fails_on_violation() {
     std::fs::write(dir.join("pretender.toml"), "[pretender]\nmode = \"gate\"\n")
         .expect("write config");
 
-    let output = check_in(&dir, &staged)
+    // Config-supplied mode must win — build raw so the helper's lease/mode
+    // flags don't shadow it (pretender-1te)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
         .output()
         .expect("failed to execute process");
 
@@ -872,7 +908,9 @@ fn test_check_tiered_human_output_highlights_yellow_band() {
 fn test_check_gate_mode_fails_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -2470,7 +2508,9 @@ fn test_check_default_hides_clean_functions() {
     // python_simple has passing functions — default output should not list them
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -2490,7 +2530,9 @@ fn test_check_default_hides_clean_functions() {
 fn test_check_verbose_shows_all_functions() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .arg("--show-all")
@@ -2509,7 +2551,9 @@ fn test_check_human_output_rounds_violation_values() {
     // python_violator triggers integer violations; ensure they display without decimals
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -2549,9 +2593,13 @@ def complex_function(x, y, z):
     std::fs::write(dir.join("pretender.toml"), "[thresholds]\nabc_max = 1\n")
         .expect("write config");
 
-    let output = check_in(&dir, &path)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&path)
         .arg("--mode")
         .arg("gate")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
         .output()
         .expect("failed to execute process");
 
@@ -3131,6 +3179,12 @@ fn test_duration_cache_persisted() {
         .arg(&report_path)
         .arg("--format")
         .arg("json")
+        // raw build: tests exit policy (gate default) via its own config dir,
+        // helper flags would shadow it (pretender-1te)
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
         .env("NO_COLOR", "1")
         .current_dir(&dir)
         .output()

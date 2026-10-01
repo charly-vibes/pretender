@@ -33,7 +33,7 @@ mod rust;
 mod test_report;
 mod typescript;
 
-use crate::config::{Band, Bands, Config, Mode};
+use crate::config::{is_lease_expired, Band, Bands, Config, Mode};
 use crate::model::{Metric, Module};
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
@@ -199,6 +199,11 @@ struct CheckArgs {
     /// Override config `pretender.mode`
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
+    /// Advisory lease expiry (ISO YYYY-MM-DD) for tiered/guidance modes.
+    /// Required for advisory modes; an expired/missing lease fails closed —
+    /// renew by pushing the date forward (a visible, reviewable diff).
+    #[arg(long, value_name = "DATE")]
+    advisory_until: Option<String>,
     /// Show all functions with metrics, not just violating ones
     #[arg(long)]
     show_all: bool,
@@ -617,6 +622,10 @@ impl Executable for CheckArgs {
         if let Some(mode) = self.mode {
             config.pretender.mode = mode.into();
         }
+        // CLI lease overrides config lease (same semantics either way)
+        if self.advisory_until.is_some() {
+            config.pretender.advisory_until = self.advisory_until.clone();
+        }
 
         // Respect global --json / --human flags
         let args: Vec<String> = std::env::args().collect();
@@ -654,6 +663,7 @@ impl Executable for CheckArgs {
                         history: None,
                     },
                     config.pretender.mode,
+                    config.pretender.advisory_until.as_deref(),
                 ));
             }
             let all = collect_input_files(&self.paths, &config)?;
@@ -776,7 +786,11 @@ impl Executable for CheckArgs {
         persist_last_check_report(&report)?;
         sink.flush().context("failed to flush report output")?;
 
-        Ok(decide_exit_code(&report, config.pretender.mode))
+        Ok(decide_exit_code(
+            &report,
+            config.pretender.mode,
+            config.pretender.advisory_until.as_deref(),
+        ))
     }
 }
 
@@ -1061,7 +1075,13 @@ fn wait_with_timeout(
     }
 }
 
-fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
+fn decide_exit_code(report: &CheckReport, mode: Mode, advisory_until: Option<&str>) -> ExitCode {
+    // Advisory lease TTL (pretender-1te): tiered/guidance are dated
+    // downgrades from the gate default. Expired/missing/unparseable lease
+    // fails closed — the drift detector forcing a renewed, dated decision.
+    if mode.is_advisory() && (advisory_until.is_none() || is_lease_expired(advisory_until)) {
+        return ExitCode::FAILURE;
+    }
     let has_skipped = report
         .files
         .iter()
