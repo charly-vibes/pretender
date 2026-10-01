@@ -102,7 +102,10 @@ pretender check <paths...> [flags]
 
   --format human|json|sarif     Output format (default: human)
   --output <path>               Write report to file instead of stdout
-  --mode guidance|tiered|gate   Override pretender.toml mode
+  --mode guidance|tiered|gate   Override pretender.toml mode (default: gate —
+                                advisory modes require --advisory-until DATE)
+  --advisory-until <DATE>       Advisory lease expiry (ISO YYYY-MM-DD) for
+                                tiered/guidance; expired lease fails closed
   --staged                      Check only git-staged files
   --diff-only                   Check only files changed vs --diff-base
   --diff-base <ref>             Base ref for --diff-only (default: origin/main)
@@ -131,7 +134,9 @@ Python, Rust, Go, JavaScript, TypeScript, Java, Ruby, C, C++
 
 ```toml
 [pretender]
-mode = "tiered"          # guidance | tiered | gate
+mode = "gate"            # gate (default, fail-closed) | tiered | guidance
+# advisory_until = "2027-03-31"  # REQUIRED for tiered/guidance — dated
+#                                # downgrade; expired lease fails closed
 languages = ["auto"]
 exclude = ["vendor/**", "node_modules/**", "**/*_generated.*"]
 

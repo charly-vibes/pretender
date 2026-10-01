@@ -1,15 +1,15 @@
 {
   "files": [
     {
-      "path": "/tmp/pretender-cli-2489590-1785590316825625443/csharp_sample.cs",
+      "path": "/tmp/pretender-cli-1212409-1790879336084572306/python_smell_calls.py",
       "role": "app",
       "diagnostics": [],
       "file_violations": [],
       "units": [
         {
-          "name": "Simple",
+          "name": "smell_eval",
           "kind": "Function",
-          "start_line": 3,
+          "start_line": 1,
           "metrics": {
             "cyclomatic": 1,
             "cognitive": 0,
@@ -17,37 +17,37 @@
             "function_lines": 3,
             "params": 1,
             "nesting_max": 0,
-            "abc": 0.0
+            "abc": 5.0990195135927845
           },
           "violations": []
         },
         {
-          "name": "WithBranch",
+          "name": "smell_exec",
           "kind": "Function",
-          "start_line": 7,
+          "start_line": 6,
           "metrics": {
-            "cyclomatic": 2,
-            "cognitive": 1,
+            "cyclomatic": 1,
+            "cognitive": 0,
             "assertions": 0,
-            "function_lines": 6,
+            "function_lines": 2,
             "params": 1,
-            "nesting_max": 1,
-            "abc": 1.0
+            "nesting_max": 0,
+            "abc": 5.0
           },
           "violations": []
         },
         {
-          "name": "ComplexFunc",
+          "name": "smell_compile",
           "kind": "Function",
-          "start_line": 14,
+          "start_line": 10,
           "metrics": {
-            "cyclomatic": 5,
-            "cognitive": 6,
+            "cyclomatic": 1,
+            "cognitive": 0,
             "assertions": 0,
-            "function_lines": 14,
-            "params": 3,
-            "nesting_max": 2,
-            "abc": 5.656854249492381
+            "function_lines": 3,
+            "params": 1,
+            "nesting_max": 0,
+            "abc": 3.1622776601683795
           },
           "violations": []
         }

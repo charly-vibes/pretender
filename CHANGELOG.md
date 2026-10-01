@@ -1,3 +1,34 @@
+# Changelog
+
+## [0.7.0] — 2026-10-01
+
+### Changed
+
+- **Gate-by-default + advisory lease TTL (pretender-1te)** — `mode` now
+  defaults to `"gate"` (fail-closed). `tiered` and `guidance` are dated
+  downgrades: they require an `advisory_until` ISO date (YYYY-MM-DD) in
+  `pretender.toml` (or `--advisory-until DATE` on the CLI). An expired,
+  missing, or unparseable lease makes `pretender check` FAIL — the
+  quality-drift detector forcing a renewed, dated, reviewable decision
+  instead of a permanent silent advisory. Renewal = push the date forward
+  (a visible diff). Gate mode never consults the lease. Date math is
+  zero-dependency (lexicographic ISO compare + Hinnant civil-from-days).
+
+### Added
+
+- `PretenderSection.advisory_until` config field and `--advisory-until`
+  CLI flag (overrides the config lease when given).
+- `Mode::is_advisory()` + `is_lease_expired()` in `pretender::config`.
+
+### Fixed
+
+- cli_test output helpers (`check`, `check_default`) carry a current
+  lease so output-focused tests keep advisory semantics; exit-policy
+  tests build raw commands (appending `--mode` to the helper made clap
+  exit 2 — flag shadowing).
+
+---
+
 All notable changes to Pretender are documented here.
 
 ## [0.6.0] — 2026-09-29

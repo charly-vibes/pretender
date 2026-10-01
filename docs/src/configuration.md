@@ -96,7 +96,8 @@ upstream source of truth for all suite repos.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mode` | string | `"tiered"` | Check behaviour: `"guidance"` (hints only, never fails), `"tiered"` (failures scale with severity), `"gate"` (any violation fails) |
+| `mode` | string | `"gate"` | Check behaviour: `"gate"` (any violation fails — the fail-closed default), `"tiered"` (failures scale with severity; advisory), `"guidance"` (hints only; advisory) |
+| `advisory_until` | ISO date string | — (required for `tiered`/`guidance`) | Advisory lease expiry (pretender-1te). Advisory modes are dated downgrades from the gate default: an expired, missing, or unparseable lease makes `check` FAIL, forcing a renewed, dated, reviewable decision. Renewal = push the date forward in this file (a visible diff). Gate mode never consults the lease. |
 | `languages` | array of strings | `["auto"]` | Languages to analyse. `"auto"` detects from file extensions. Explicit values: `"python"`, `"rust"`, `"go"`, `"javascript"`, `"typescript"`, `"java"`, `"ruby"`, `"c"`, `"cpp"` |
 | `exclude` | array of glob strings | `["vendor/**", "node_modules/**", "**/*_generated.*"]` | Path globs to skip during analysis |
 
