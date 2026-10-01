@@ -1103,7 +1103,7 @@ fn lease_diagnostic(mode: Mode) -> String {
         Mode::Gate => "gate",
     };
     format!(
-        "mode={mode_name} requires an advisory lease: set advisory_until in pretender.toml, \
+        "mode={mode_name} requires a current advisory lease: set advisory_until in pretender.toml, \
          pass --advisory-until YYYY-MM-DD, or switch to mode=gate"
     )
 }
