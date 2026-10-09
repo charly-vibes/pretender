@@ -100,6 +100,7 @@ upstream source of truth for all suite repos.
 | `advisory_until` | ISO date string | — (required for `tiered`/`guidance`) | Advisory lease expiry (pretender-1te). Advisory modes are dated downgrades from the gate default: an expired, missing, or unparseable lease makes `check` FAIL, forcing a renewed, dated, reviewable decision. Renewal = push the date forward in this file (a visible diff). Gate mode never consults the lease. |
 | `languages` | array of strings | `["auto"]` | Languages to analyse. `"auto"` detects from file extensions. Explicit values: `"python"`, `"rust"`, `"go"`, `"javascript"`, `"typescript"`, `"java"`, `"ruby"`, `"c"`, `"cpp"` |
 | `exclude` | array of glob strings | `["vendor/**", "node_modules/**", "**/*_generated.*"]` | Path globs to skip during analysis |
+| `respect_gitignore` | boolean | `true` | When walking directories, skip anything ignored by git (repo + nested `.gitignore`, global `core.excludesFile`, `.git/info/exclude`) so `target/`, `node_modules/`, and vendored code aren't scanned without per-repo exclude lists. Outside a git repo the walk is unfiltered. Explicitly passed file paths and `--staged` are never filtered. Pass `--scan-ignored` to `check` for a one-off exhaustive walk (pretender-094). |
 
 ---
 

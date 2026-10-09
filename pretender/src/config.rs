@@ -84,6 +84,11 @@ pub struct PretenderSection {
     pub advisory_until: Option<String>,
     pub languages: Vec<String>,
     pub exclude: Vec<String>,
+    /// Honor .gitignore (plus global/core.excludesFile and .git/info/exclude)
+    /// when walking directories, so generated/vendored/scratch dirs stop
+    /// being scanned without per-repo exclude lists (pretender-094).
+    /// Explicitly passed file paths and --staged are never filtered.
+    pub respect_gitignore: bool,
 }
 
 impl Default for PretenderSection {
@@ -99,6 +104,7 @@ impl Default for PretenderSection {
                 "node_modules/**".to_string(),
                 "**/*_generated.*".to_string(),
             ],
+            respect_gitignore: true,
         }
     }
 }

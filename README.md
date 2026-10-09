@@ -149,6 +149,7 @@ mode = "gate"            # gate (default, fail-closed) | tiered | guidance
 #                                # downgrade; expired lease fails closed
 languages = ["auto"]
 exclude = ["vendor/**", "node_modules/**", "**/*_generated.*"]
+respect_gitignore = true  # skip git-ignored dirs (target/, vendor/, …) when walking
 
 [thresholds]
 cyclomatic_max = 10
