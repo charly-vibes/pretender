@@ -29,6 +29,16 @@ Pretender is a Rust CLI for structural code-quality checks across multiple langu
 
 ## Installation
 
+### Binary (curl)
+
+```bash
+V=$(basename "$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+  https://github.com/charly-vibes/pretender/releases/latest)" | sed 's/^v//')
+TGT="$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/^x86_64$/amd64/; s/^aarch64$/arm64/')"
+curl -fsSL "https://github.com/charly-vibes/pretender/releases/download/v${V}/pretender_${V}_${TGT}.tar.gz" | tar xz
+chmod +x pretender && sudo mv pretender /usr/local/bin/
+```
+
 ### Cargo (crates.io)
 
 ```bash
