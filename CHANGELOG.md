@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.9.0] — 2026-10-09
+
+### Added
+
+- **.gitignore-aware walk by default (pretender-094)** — when walking
+  directories, `pretender` now skips anything git-ignored (repo + nested
+  `.gitignore`, global `core.excludesFile`, `.git/info/exclude`), so
+  `target/`, `node_modules/`, and vendored code stop being scanned without
+  per-repo exclude lists. Kills the `./`-anchoring footgun class entirely:
+  walked paths no longer need `./target/**` twins of `target/**` patterns
+  (leaked 104 vendored-mermaid findings into specodelic's walk gate).
+  Opt out with `pretender.respect_gitignore = false` or
+  `check --scan-ignored`; explicitly passed file paths and `--staged` are
+  never filtered. Outside a git repo the walk stays unfiltered.
+
+### Fixed
+
+- **Executable release tarballs + curl install docs** — release artifacts
+  now carry the executable bit so `curl … | sh` installs work out of the
+  box; install docs and LLM summaries on Pages updated to match.
+- **genesis-vibes 0.11.1 → 0.12.3 (pretender-ipn)** — no API changes to
+  modules pretender uses (audit in PR #45); keeps the suite-current
+  infrastructure dep from drifting.
+
 ## [0.8.0] — 2026-10-01
 
 ### Added
