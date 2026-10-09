@@ -1,75 +1,98 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
+use genesis::git::{self as ggit, EnvPolicy, GitError};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+/// Diff-filter selecting the historical delta set: Added, Modified,
+/// Renamed, Copied, Typechange — deleted files excluded.
+const DIFF_FILTER: &str = "AMRCT";
 
 /// Returns canonical absolute paths of files currently staged in the git index.
 /// Deleted files are excluded — only Added, Modified, Renamed, Copied, Typechange.
 pub fn staged_files(cwd: &Path) -> Result<HashSet<PathBuf>> {
-    let repo = git2::Repository::discover(cwd)
-        .context("failed to open git repository (is this a git repo?)")?;
-    let root = workdir(&repo)?;
-    let index = repo.index().context("failed to read git index")?;
-    let head_tree = head_tree(&repo);
-    let diff = repo
-        .diff_tree_to_index(head_tree.as_ref(), Some(&index), None)
-        .context("failed to diff index against HEAD")?;
-    Ok(paths_from_diff(&root, &diff))
+    let root = repo_root(cwd)?;
+    // Index vs HEAD. In an unborn-HEAD repo `git diff --cached HEAD` exits
+    // 128; `git diff --cached` then diffs the index against the empty tree,
+    // matching the historical `head_tree() == None` behavior exactly.
+    let out = match ggit::run(
+        &root,
+        EnvPolicy::StripHookContext,
+        &[
+            "diff",
+            "-z",
+            "--name-only",
+            "--cached",
+            "--diff-filter",
+            DIFF_FILTER,
+            "HEAD",
+        ],
+    ) {
+        Ok(out) => out.stdout,
+        Err(GitError::Git {
+            code: 128,
+            ref stderr,
+            ..
+        }) if is_unborn_head(stderr) => {
+            ggit::run(
+                &root,
+                EnvPolicy::StripHookContext,
+                &[
+                    "diff",
+                    "-z",
+                    "--name-only",
+                    "--cached",
+                    "--diff-filter",
+                    DIFF_FILTER,
+                ],
+            )
+            .context("failed to diff index against the empty tree (unborn HEAD)")?
+            .stdout
+        }
+        Err(e) => return Err(e).context("failed to diff index against HEAD"),
+    };
+    Ok(paths_from_stdout(&root, &out))
 }
 
 /// Returns canonical absolute paths of files changed between `base_ref` and HEAD.
 pub fn diff_base_files(cwd: &Path, base_ref: &str) -> Result<HashSet<PathBuf>> {
-    let repo = git2::Repository::discover(cwd)
-        .context("failed to open git repository (is this a git repo?)")?;
-    let root = workdir(&repo)?;
-    let base_tree = resolve_tree(&repo, base_ref)?;
-    let head_tree = repo
-        .head()
-        .context("failed to get HEAD")?
-        .peel_to_commit()
-        .context("failed to peel HEAD to commit")?
-        .tree()
-        .context("failed to get HEAD commit tree")?;
-    let diff = repo
-        .diff_tree_to_tree(Some(&base_tree), Some(&head_tree), None)
-        .context("failed to diff trees")?;
-    Ok(paths_from_diff(&root, &diff))
+    let root = repo_root(cwd)?;
+    let out = ggit::run(
+        &root,
+        EnvPolicy::StripHookContext,
+        &[
+            "diff",
+            "-z",
+            "--name-only",
+            "--diff-filter",
+            DIFF_FILTER,
+            base_ref,
+            "HEAD",
+        ],
+    )
+    .with_context(|| format!("failed to diff '{base_ref}' against HEAD"))?;
+    Ok(paths_from_stdout(&root, &out.stdout))
 }
 
-fn workdir(repo: &git2::Repository) -> Result<PathBuf> {
-    repo.workdir()
-        .ok_or_else(|| anyhow!("git repository has no working directory (bare repo?)"))
-        .map(Path::to_path_buf)
+fn repo_root(cwd: &Path) -> Result<PathBuf> {
+    ggit::repo_root_from(cwd).context("failed to open git repository (is this a git repo?)")
 }
 
-// Returns None for an empty repo (no HEAD yet); diff against empty tree is correct.
-fn head_tree(repo: &git2::Repository) -> Option<git2::Tree<'_>> {
-    repo.head().ok()?.peel_to_commit().ok()?.tree().ok()
+/// Whether a 128-exit stderr indicates HEAD does not resolve (unborn HEAD
+/// in a repository without commits). Mirrors the genesis::git predicate.
+fn is_unborn_head(stderr: &str) -> bool {
+    stderr.contains("unknown revision") || stderr.contains("bad revision")
 }
 
-fn resolve_tree<'r>(repo: &'r git2::Repository, refname: &str) -> Result<git2::Tree<'r>> {
-    repo.revparse_single(refname)
-        .with_context(|| format!("failed to resolve ref '{refname}' — is it fetched?"))?
-        .peel_to_commit()
-        .with_context(|| format!("failed to peel '{refname}' to a commit"))?
-        .tree()
-        .context("failed to get commit tree")
-}
-
-fn paths_from_diff(root: &Path, diff: &git2::Diff<'_>) -> HashSet<PathBuf> {
-    diff.deltas()
-        .filter_map(|delta| {
-            use git2::Delta;
-            match delta.status() {
-                Delta::Added
-                | Delta::Modified
-                | Delta::Renamed
-                | Delta::Copied
-                | Delta::Typechange => delta.new_file().path().map(|p| {
-                    let abs = root.join(p);
-                    std::fs::canonicalize(&abs).unwrap_or(abs)
-                }),
-                _ => None,
-            }
+/// Parse `-z` diff output (NUL-separated, unquoted paths) into canonical
+/// absolute paths under the repository root.
+fn paths_from_stdout(root: &Path, stdout: &[u8]) -> HashSet<PathBuf> {
+    stdout
+        .split(|byte| *byte == 0)
+        .filter(|raw| !raw.is_empty())
+        .map(|raw| {
+            let rel = String::from_utf8_lossy(raw);
+            let abs = root.join(rel.as_ref());
+            std::fs::canonicalize(&abs).unwrap_or(abs)
         })
         .collect()
 }
@@ -177,7 +200,11 @@ mod characterization_tests {
         run_git(&root, &["rm", "--cached", "-q", "a.py"]);
 
         let staged = staged_files(&root).unwrap();
-        assert!(staged.is_empty(), "expected empty, got {:?}", rel_paths(&root, &staged));
+        assert!(
+            staged.is_empty(),
+            "expected empty, got {:?}",
+            rel_paths(&root, &staged)
+        );
     }
 
     #[test]

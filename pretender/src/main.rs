@@ -3038,7 +3038,16 @@ mod gitignore_walk_tests {
     fn fixture_repo() -> (TempDir, std::path::PathBuf) {
         let dir = TempDir::new().expect("tempdir");
         let root = dir.path().to_path_buf();
-        git2::Repository::init(&root).expect("git init");
+        let init = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&root)
+            .output()
+            .expect("spawn git init");
+        assert!(
+            init.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
         std::fs::write(root.join(".gitignore"), "target/\nvendor/\n").expect("write .gitignore");
         std::fs::create_dir_all(root.join("target")).expect("mkdir target");
         std::fs::create_dir_all(root.join("vendor")).expect("mkdir vendor");
