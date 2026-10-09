@@ -210,6 +210,10 @@ struct CheckArgs {
     /// Path to a JUnit XML report for test-duration analysis
     #[arg(long)]
     test_report: Option<PathBuf>,
+    /// Scan git-ignored files too (overrides the default .gitignore-aware
+    /// walk; same as setting `pretender.respect_gitignore = false`)
+    #[arg(long)]
+    scan_ignored: bool,
     /// Execute the configured test_cmd before analyzing test durations
     #[arg(long)]
     execute: bool,
@@ -712,10 +716,10 @@ impl Executable for CheckArgs {
                     config.pretender.advisory_until.as_deref(),
                 ));
             }
-            let all = collect_input_files(&self.paths, &config)?;
+            let all = collect_input_files_with_override(&self.paths, &config, self.scan_ignored)?;
             apply_file_filter(all, Some(&allowed), &cwd)
         } else {
-            collect_input_files(&self.paths, &config)?
+            collect_input_files_with_override(&self.paths, &config, self.scan_ignored)?
         };
 
         // Warn when explicit paths produce no files matching any supported grammar.
@@ -1703,6 +1707,14 @@ fn apply_file_filter(
 }
 
 fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf>> {
+    collect_input_files_with_override(paths, config, false)
+}
+
+fn collect_input_files_with_override(
+    paths: &[PathBuf],
+    config: &Config,
+    scan_ignored: bool,
+) -> Result<Vec<PathBuf>> {
     let mut builder = globset::GlobSetBuilder::new();
     for pattern in &config.pretender.exclude {
         let glob = globset::Glob::new(pattern)
@@ -1711,9 +1723,14 @@ fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf
     }
     let exclude_set = builder.build().context("failed to build exclude GlobSet")?;
 
+    // pretender-094: honor .gitignore by default so generated/vendored/
+    // scratch dirs stop being scanned without per-repo exclude lists.
+    // `--scan-ignored` (CLI) restores the exhaustive walk regardless of config.
+    let respect_gitignore = config.pretender.respect_gitignore && !scan_ignored;
+
     let mut files = Vec::new();
     for path in paths {
-        collect_path(path, &exclude_set, false, &mut files)?;
+        collect_path(path, &exclude_set, respect_gitignore, false, &mut files)?;
     }
     files.sort();
     files.dedup();
@@ -1761,6 +1778,7 @@ fn is_supported_source(path: &Path) -> bool {
 fn collect_path(
     path: &Path,
     exclude_set: &globset::GlobSet,
+    respect_gitignore: bool,
     walked: bool,
     out: &mut Vec<PathBuf>,
 ) -> Result<()> {
@@ -1781,6 +1799,32 @@ fn collect_path(
     }
 
     if path.is_dir() {
+        if respect_gitignore {
+            // pretender-094: delegate to the `ignore` walker so nested
+            // .gitignore files, the global/core.excludesFile, and
+            // .git/info/exclude are all honored. Outside a git repo
+            // (require_git, the default) the walk is unfiltered — same as
+            // the manual fallback below.
+            let mut builder = ignore::WalkBuilder::new(path);
+            builder.git_ignore(true).git_global(true).git_exclude(true);
+            // Preserve the pre-existing behavior of walking hidden entries;
+            // `.git` itself is pruned explicitly.
+            builder.hidden(false);
+            builder.filter_entry(|e| e.file_name() != ".git");
+            for entry in builder.build() {
+                let entry = entry
+                    .with_context(|| format!("failed to walk directory: {}", path.display()))?;
+                let entry_path = entry.path();
+                if entry_path == path || exclude_set.is_match(entry_path) {
+                    continue;
+                }
+                if entry_path.is_file() && is_supported_source(entry_path) {
+                    out.push(entry_path.to_path_buf());
+                }
+            }
+            return Ok(());
+        }
+
         for entry in fs::read_dir(path)
             .with_context(|| format!("failed to read directory: {}", path.display()))?
         {
@@ -1790,7 +1834,7 @@ fn collect_path(
             // rather than erroring, since these can appear in .git/ and other
             // infrastructure directories.
             if entry_path.is_file() || entry_path.is_dir() {
-                collect_path(&entry_path, exclude_set, true, out)?;
+                collect_path(&entry_path, exclude_set, respect_gitignore, true, out)?;
             }
         }
         return Ok(());
@@ -2980,5 +3024,109 @@ impl StatusContributor for PretenderStatus {
         };
 
         Ok(StatusSection::with_items("pretender", summary, items))
+    }
+}
+
+// ── .gitignore-aware walk (pretender-094) ─────────────────────────────
+#[cfg(test)]
+mod gitignore_walk_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Temp repo fixture: git-initialized, with `target/` and `vendor/`
+    /// gitignored, one source file at the root, one in each ignored dir.
+    fn fixture_repo() -> (TempDir, std::path::PathBuf) {
+        let dir = TempDir::new().expect("tempdir");
+        let root = dir.path().to_path_buf();
+        git2::Repository::init(&root).expect("git init");
+        std::fs::write(root.join(".gitignore"), "target/\nvendor/\n").expect("write .gitignore");
+        std::fs::create_dir_all(root.join("target")).expect("mkdir target");
+        std::fs::create_dir_all(root.join("vendor")).expect("mkdir vendor");
+        std::fs::write(root.join("root.py"), "def f():\n    return 1\n").expect("write root.py");
+        std::fs::write(
+            root.join("target").join("gen.py"),
+            "def g():\n    return 2\n",
+        )
+        .expect("write target/gen.py");
+        std::fs::write(
+            root.join("vendor").join("lib.py"),
+            "def h():\n    return 3\n",
+        )
+        .expect("write vendor/lib.py");
+        (dir, root)
+    }
+
+    /// Relative, sorted names for readable assertions.
+    fn rel_names(root: &std::path::Path, files: &[std::path::PathBuf]) -> Vec<String> {
+        let mut v: Vec<String> = files
+            .iter()
+            .map(|p| p.strip_prefix(root).unwrap().display().to_string())
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn walk_skips_gitignored_dirs_by_default() {
+        let (_dir, root) = fixture_repo();
+        let config = Config::default();
+        assert!(
+            config.pretender.respect_gitignore,
+            "default must honor .gitignore"
+        );
+
+        let files = collect_input_files(std::slice::from_ref(&root), &config).expect("collect");
+        assert_eq!(
+            rel_names(&root, &files),
+            vec!["root.py".to_string()],
+            "gitignored target/ and vendor/ must not be scanned"
+        );
+    }
+
+    #[test]
+    fn opt_out_restores_exhaustive_walk() {
+        let (_dir, root) = fixture_repo();
+        let mut config = Config::default();
+        config.pretender.respect_gitignore = false;
+
+        let files = collect_input_files(std::slice::from_ref(&root), &config).expect("collect");
+        assert_eq!(
+            rel_names(&root, &files),
+            vec![
+                "root.py".to_string(),
+                "target/gen.py".to_string(),
+                "vendor/lib.py".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_ignored_file_still_scanned() {
+        let (_dir, root) = fixture_repo();
+        let config = Config::default();
+        let ignored = root.join("vendor").join("lib.py");
+
+        let files = collect_input_files(std::slice::from_ref(&ignored), &config).expect("collect");
+        assert_eq!(
+            files.len(),
+            1,
+            "explicitly passed paths bypass the gitignore filter"
+        );
+    }
+
+    #[test]
+    fn no_gitignore_falls_back_to_full_walk() {
+        let dir = TempDir::new().expect("tempdir");
+        let root = dir.path().to_path_buf();
+        std::fs::write(root.join("a.py"), "def f():\n    return 1\n").expect("write a.py");
+        std::fs::write(root.join("b.py"), "def g():\n    return 2\n").expect("write b.py");
+
+        let config = Config::default();
+        let files = collect_input_files(std::slice::from_ref(&root), &config).expect("collect");
+        assert_eq!(
+            rel_names(&root, &files).len(),
+            2,
+            "no .gitignore: nothing filtered"
+        );
     }
 }
