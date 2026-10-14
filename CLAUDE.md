@@ -82,6 +82,8 @@ Read it at the start of your first session or when you need detailed guidance.
 
 Keep this managed block so `wai init` can refresh the instructions.
 
+
+<!-- provenance: generator=wai version=0.12.3 source=WAI sha=f740aa4e -->
 <!-- WAI:END -->
 
 <!-- WAI:REFLECT:REF:START -->
@@ -94,6 +96,8 @@ context before starting research or creating tickets.
 > **Before research or ticket creation**: always run `wai search "<topic>"` to
 > check for known patterns. Do not rediscover what is already documented.
 
+
+<!-- provenance: generator=wai version=0.12.3 source=WAI:REFLECT:REF sha=73879972 -->
 <!-- WAI:REFLECT:REF:END -->
 
 

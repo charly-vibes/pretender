@@ -1,3 +1,40 @@
+<!-- BEADS:START -->
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY.
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+<!-- END BEADS INTEGRATION -->
+<!-- BEADS:END -->
+
 <!-- OPENSPEC:START -->
 # OpenSpec Instructions
 
@@ -18,29 +55,11 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 <!-- OPENSPEC:END -->
 
 <!-- DONT:START -->
-# DONT MANAGED BLOCK — DO NOT EDIT
-
-This project uses `dont` for grounded-claim workflow.
-
-**When to use:** When making a design or correctness assertion during development, run `dont conclude "<assertion>"` before asserting it. For documented facts, use `dont ground "<fact>" --file <path> --lines <N>`.
-
-At session start run `dont prime --json`.
-
-Canonical agent instructions: `.dont/AGENTS.md`.
-
-Edits inside this managed block will be overwritten by `dont doctor --fix`.
+<!-- dont: managed block -->
+See .dont/ for grounded-claim workflow.
 <!-- DONT:END -->
 
-<!-- WAI:START -->
-## PRIMARY OBJECTIVE
-
-Build and maintain **pretender** — the multi-language code-quality CLI that
-flags structural issues (complexity, missing assertions, risky call patterns)
-beyond what linters catch. Every action should trace back to: does this make
-pretender more accurate at detecting real issues, less noisy with false
-positives, or better at integrating into CI workflows?
-
-# Workflow Tools
+<!-- WAI:START --># Workflow Tools
 
 This project uses **wai** to track the *why* behind decisions — research,
 reasoning, and design choices that shaped the code. Run `wai status` first
@@ -69,7 +88,18 @@ When context reaches ~40%: stop and tell the user — responses degrade past
 this point. Recommend `wai close` then `/clear` to resume cleanly.
 Do NOT skip `wai close` — it enables resume detection.
 
+## Autonomous Work Policy
 
+Proceed without routine confirmation when the next step is clear.
+Do not ask to continue, fix, or commit — just do it.
+
+**Stop and ask** only when:
+- Conflicting requirements or ambiguous intent
+- Destructive actions (data loss, force-push, drop table)
+- Credentials, secrets, or external services not yet authorized
+- Unresolved test failures after two attempts
+- Push, deploy, or release — always get explicit authorization
+- Context approaching 40% — recommend `wai close` then `/clear`
 
 ## Detailed Instructions
 
@@ -77,15 +107,10 @@ Full workflow reference — session lifecycle, capturing work, command cheat
 sheets, cross-tool sync, and PARA structure — lives in **`.wai/AGENTS.md`**.
 Read it at the start of your first session or when you need detailed guidance.
 
-## PRIMARY OBJECTIVE (echo)
-
-Build and maintain **pretender** — the multi-language code-quality CLI that
-flags structural issues beyond what linters catch. Every action should trace
-back to: does this make pretender more accurate at detecting real issues,
-less noisy with false positives, or better at integrating into CI workflows?
-
 Keep this managed block so `wai init` can refresh the instructions.
 
+
+<!-- provenance: generator=wai version=0.12.3 source=WAI sha=f740aa4e -->
 <!-- WAI:END -->
 
 ## Behavioral Constraints
@@ -155,6 +180,8 @@ context before starting research or creating tickets.
 > **Before research or ticket creation**: always run `wai search "<topic>"` to
 > check for known patterns. Do not rediscover what is already documented.
 
+
+<!-- provenance: generator=wai version=0.12.3 source=WAI:REFLECT:REF sha=73879972 -->
 <!-- WAI:REFLECT:REF:END -->
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
@@ -221,3 +248,21 @@ Run `ah check` to verify spec-test correspondence before committing.
 - `ah doctor --enable <adapter>` — write adapter config into .espectacular/config.toml
 - `ah signals` — emit dont drift signals
 <!-- ah:managed:end -->
+<!-- DDL:START -->
+
+## dulce-de-leche (ddl v0.8.0)
+
+Orchestrator for the charly-vibes tool ecosystem. Run `ddl init` to
+install and configure all tools. Run `ddl status` for a health overview.
+
+Commands:
+- init     Bootstrap the toolset
+- install  Install a single tool
+- status   Show health overview
+- doctor   Run diagnostics
+- version  Show versions
+- upgrade  Update tools
+- migrate  Migrate configs
+- scope    Show active .ddl/
+
+<!-- DDL:END -->
