@@ -1,6 +1,5 @@
 # Summary
 - [Getting Started](getting-started.md)
-- [charly-vibes Tool Ecosystem](https://charly-vibes.github.io/dulce-de-leche/ecosystem-map.html)
 - [Release Status](./release.md)
 - [Configuration Reference](configuration.md)
 - [Mutation Testing](mutation.md)

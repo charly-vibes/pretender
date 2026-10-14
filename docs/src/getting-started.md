@@ -198,3 +198,7 @@ on mutation score in CI, set `thresholds.mutation_min` in `pretender.toml`
 | Mutation testing flags and JSON output | [Mutation testing](mutation.md) |
 | Writing custom metric plugins | [Writing plugins](plugins.md) |
 | Language-specific tracked nodes | [languages/](../pretender/languages/) |
+
+## Ecosystem
+
+pretender is part of the [charly-vibes Tool Ecosystem](https://charly-vibes.github.io/dulce-de-leche/ecosystem-map.html) — the map shows how it relates to its sibling tools.
