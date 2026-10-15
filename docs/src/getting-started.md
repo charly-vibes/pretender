@@ -151,6 +151,33 @@ Recheck after refactoring:
 pretender check src/parser.py
 ```
 
+### Adopting a gate baseline
+
+Some violations are legitimate but hard to fix right now, and mechanical
+changes (a tree-wide reformat, a generated file) shouldn't read as "new"
+violations forever. `check --adopt` writes the current scan's violations into
+a gate baseline — `pretender-baseline.json`, next to `pretender.toml`:
+
+```sh
+pretender check --adopt
+# ✓ adopted 3 findings into pretender-baseline.json (file_lines 1, function_lines 2)
+```
+
+Commit that file. From then on, `pretender check --mode gate` fails **only
+on genuinely new violations** — findings whose stable ID (path, function
+name, rule — deliberately not line numbers) is not in the baseline. Known
+violations pass with a summary line:
+
+```
+→ gate: 3 known (baselined), 0 new
+```
+
+Without a baseline file, gate mode keeps its fail-closed behavior: any
+violation fails. A corrupt or unreadable baseline also fails the check
+rather than silently degrading. Adopted findings still appear in reports
+and resolution tracking — the baseline changes gate *semantics*, not
+visibility. Refresh the baseline by re-running with `--adopt`.
+
 ---
 
 ## 5. Install the pre-commit hook

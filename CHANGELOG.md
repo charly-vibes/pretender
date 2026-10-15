@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Gate baseline adoption (gently-if4)** — `pretender check --adopt` writes
+  the current scan's stable finding IDs into `pretender-baseline.json` next
+  to `pretender.toml`. With that baseline present, `check --mode gate` fails
+  only on genuinely new findings; known (baselined) violations pass with a
+  `gate: N known (baselined), M new` summary line. A mechanical reformat can
+  no longer hard-block gate mode with "0 new" findings. Without a baseline,
+  gate mode stays fail-closed (any violation fails). The IDs reuse the u8a
+  stable-finding scheme (`path::unit::rule`, no line numbers), and file-scope
+  violations (`file_lines`, `mock_count`, …) are now tracked in history too.
+
 ## [0.9.0] — 2026-10-09
 
 ### Added
