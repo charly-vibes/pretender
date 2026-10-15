@@ -132,7 +132,6 @@ pub fn compute_delta(previous: Option<&[String]>, current: &[String]) -> Finding
 /// violations pass with a summary line. No baseline → gate fails on any
 /// violation (fail-closed preserved).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)] // GREEN: wired into the gate flow
 pub struct Baseline {
     pub schema_version: u32,
     /// ISO timestamp of the most recent adoption.
@@ -144,7 +143,6 @@ pub struct Baseline {
 
 /// Load the gate baseline. `Ok(None)` when no baseline file exists yet —
 /// callers must keep the no-baseline fail-closed behavior.
-#[allow(dead_code)] // GREEN: wired into the gate flow
 pub fn load_baseline(path: &Path) -> Result<Option<Baseline>> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes).with_context(|| {
@@ -158,7 +156,6 @@ pub fn load_baseline(path: &Path) -> Result<Option<Baseline>> {
 
 /// Write/refresh the baseline from a current scan's finding IDs (the `--adopt`
 /// flow). IDs are deduped and sorted so the persisted file diffs stably.
-#[allow(dead_code)] // GREEN: wired into the gate flow
 pub fn persist_baseline(path: &Path, finding_ids: &[String]) -> Result<Baseline> {
     let mut ids: Vec<String> = finding_ids.to_vec();
     ids.sort();

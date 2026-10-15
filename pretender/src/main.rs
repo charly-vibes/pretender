@@ -50,7 +50,7 @@ use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -217,6 +217,13 @@ struct CheckArgs {
     /// Execute the configured test_cmd before analyzing test durations
     #[arg(long)]
     execute: bool,
+    /// Adopt every current violation into the gate baseline
+    /// (pretender-baseline.json): afterwards `check --mode gate` fails only on
+    /// genuinely new findings; known (baselined) violations pass with a
+    /// summary line. Refresh by re-running with --adopt. Without a baseline,
+    /// gate mode still fails on any violation (fail-closed).
+    #[arg(long)]
+    adopt: bool,
 }
 
 #[derive(Parser)]
@@ -809,6 +816,12 @@ impl Executable for CheckArgs {
                 test_report::evaluate_duration(&timings, &detector, &config, &search_root);
         }
 
+        // ── Gate baseline (gently-if4) ───────────────────────────────
+        // The current scan's stable finding IDs — the u8a scheme — are what
+        // `--adopt` persists and what gate mode diffs the baseline against.
+        let findings = violation_findings(&report);
+        let current_ids = violation_finding_ids(&report);
+
         let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
         // Attach history before writing output so JSON format includes it
@@ -819,6 +832,51 @@ impl Executable for CheckArgs {
             writing_to_stdout,
             sink.as_mut(),
         );
+
+        // `--adopt` writes/refreshes the gate baseline from the current scan
+        // and reports what it adopted. The run still updates history, but the
+        // exit code is success by definition — adoption is the decision.
+        if self.adopt {
+            let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+            for finding in &findings {
+                *kinds.entry(finding.rule_key.as_str()).or_default() += 1;
+            }
+            let breakdown = kinds
+                .iter()
+                .map(|(rule, count)| format!("{rule} {count}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let baseline = history::persist_baseline(Path::new(BASELINE_PATH), &current_ids)
+                .context("failed to write gate baseline")?;
+            if matches!(format, ReportFormat::Human) {
+                println!(
+                    "\u{1b}[32m\u{2713}\u{1b}[0m adopted {} findings into {BASELINE_PATH} ({breakdown})",
+                    baseline.finding_ids.len()
+                );
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        // Gate mode with a baseline: known (adopted) violations pass; only
+        // genuinely new finding IDs gate. No baseline → every violation gates
+        // (fail-closed preserved). A corrupt baseline errors out — it must not
+        // silently degrade to "no baseline".
+        let (baselined, baseline_present) = if matches!(config.pretender.mode, Mode::Gate) {
+            match history::load_baseline(Path::new(BASELINE_PATH)) {
+                Ok(Some(baseline)) => {
+                    let known: HashSet<String> = current_ids
+                        .iter()
+                        .filter(|id| baseline.finding_ids.contains(*id))
+                        .cloned()
+                        .collect();
+                    (known, true)
+                }
+                Ok(None) => (HashSet::new(), false),
+                Err(err) => return Err(err.context("gate baseline unreadable — refusing to gate")),
+            }
+        } else {
+            (HashSet::new(), false)
+        };
         match format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
@@ -834,6 +892,24 @@ impl Executable for CheckArgs {
             ReportFormat::Json => write_json_report(sink.as_mut(), &report, lease_warning)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
         }
+        if baseline_present && matches!(format, ReportFormat::Human) {
+            let new_count = current_ids
+                .iter()
+                .filter(|id| !baselined.contains(*id))
+                .collect::<HashSet<_>>()
+                .len();
+            let color = writing_to_stdout && color_enabled();
+            let (cyan, reset) = if color {
+                ("\u{1b}[36m", "\u{1b}[0m")
+            } else {
+                ("", "")
+            };
+            writeln!(
+                sink,
+                "{cyan}\u{2192}{reset} gate: {} known (baselined), {new_count} new",
+                baselined.len()
+            )?;
+        }
         persist_last_check_report(&report)?;
         sink.flush().context("failed to flush report output")?;
 
@@ -841,7 +917,7 @@ impl Executable for CheckArgs {
             &report,
             config.pretender.mode,
             config.pretender.advisory_until.as_deref(),
-            &HashSet::new(),
+            &baselined,
         ))
     }
 }
@@ -1171,13 +1247,16 @@ fn test_lease_diagnostic_mentions_all_remediations() {
     assert!(msg.contains("mode=gate"), "gate fallback: {msg}");
 }
 
+/// Gate baseline location: next to pretender.toml (repo root), so it can be
+/// committed and gate mode behaves identically in CI.
+const BASELINE_PATH: &str = "pretender-baseline.json";
+
 fn decide_exit_code(
     report: &CheckReport,
     mode: Mode,
     advisory_until: Option<&str>,
     baselined: &HashSet<String>,
 ) -> ExitCode {
-    let _ = baselined; // GREEN: gate mode filters baselined violations through this set
     // Advisory lease TTL (pretender-1te): tiered/guidance are dated
     // downgrades from the gate default. Expired/missing/unparseable lease
     // fails closed — the drift detector forcing a renewed, dated decision.
@@ -1188,10 +1267,13 @@ fn decide_exit_code(
         .files
         .iter()
         .any(|file| file.diagnostics.iter().any(|d| d.severity == "Error"));
-    let has_violation = report.files.iter().any(|file| {
-        !file.file_violations.is_empty()
-            || file.units.iter().any(|unit| !unit.violations.is_empty())
-    });
+    // gently-if4: a violation gates only when its stable finding ID is NOT in
+    // the adopted baseline (genuinely new). Baselined violations pass; the
+    // other gate categories (parse errors, coupling, cycles, test durations)
+    // have no stable per-violation IDs and always gate — fail-closed.
+    let has_violation = violation_findings(report)
+        .iter()
+        .any(|finding| !baselined.contains(&violation_finding_id(finding)));
     let has_coupling_violation = report
         .modules
         .iter()
@@ -2891,7 +2973,6 @@ fn violation_finding_id(finding: &ViolationFinding) -> String {
 
 /// The current scan's stable finding IDs — what the gate baseline is adopted
 /// from and compared against.
-#[allow(dead_code)] // GREEN: wired into the gate flow
 fn violation_finding_ids(report: &CheckReport) -> Vec<String> {
     violation_findings(report)
         .iter()
