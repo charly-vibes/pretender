@@ -50,7 +50,7 @@ use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -217,6 +217,13 @@ struct CheckArgs {
     /// Execute the configured test_cmd before analyzing test durations
     #[arg(long)]
     execute: bool,
+    /// Adopt every current violation into the gate baseline
+    /// (pretender-baseline.json): afterwards `check --mode gate` fails only on
+    /// genuinely new findings; known (baselined) violations pass with a
+    /// summary line. Refresh by re-running with --adopt. Without a baseline,
+    /// gate mode still fails on any violation (fail-closed).
+    #[arg(long)]
+    adopt: bool,
 }
 
 #[derive(Parser)]
@@ -714,6 +721,7 @@ impl Executable for CheckArgs {
                     &report,
                     config.pretender.mode,
                     config.pretender.advisory_until.as_deref(),
+                    &HashSet::new(),
                 ));
             }
             let all = collect_input_files_with_override(&self.paths, &config, self.scan_ignored)?;
@@ -808,6 +816,12 @@ impl Executable for CheckArgs {
                 test_report::evaluate_duration(&timings, &detector, &config, &search_root);
         }
 
+        // ── Gate baseline (gently-if4) ───────────────────────────────
+        // The current scan's stable finding IDs — the u8a scheme — are what
+        // `--adopt` persists and what gate mode diffs the baseline against.
+        let findings = violation_findings(&report);
+        let current_ids = violation_finding_ids(&report);
+
         let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
         // Attach history before writing output so JSON format includes it
@@ -818,6 +832,51 @@ impl Executable for CheckArgs {
             writing_to_stdout,
             sink.as_mut(),
         );
+
+        // `--adopt` writes/refreshes the gate baseline from the current scan
+        // and reports what it adopted. The run still updates history, but the
+        // exit code is success by definition — adoption is the decision.
+        if self.adopt {
+            let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+            for finding in &findings {
+                *kinds.entry(finding.rule_key.as_str()).or_default() += 1;
+            }
+            let breakdown = kinds
+                .iter()
+                .map(|(rule, count)| format!("{rule} {count}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let baseline = history::persist_baseline(Path::new(BASELINE_PATH), &current_ids)
+                .context("failed to write gate baseline")?;
+            if matches!(format, ReportFormat::Human) {
+                println!(
+                    "\u{1b}[32m\u{2713}\u{1b}[0m adopted {} findings into {BASELINE_PATH} ({breakdown})",
+                    baseline.finding_ids.len()
+                );
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        // Gate mode with a baseline: known (adopted) violations pass; only
+        // genuinely new finding IDs gate. No baseline → every violation gates
+        // (fail-closed preserved). A corrupt baseline errors out — it must not
+        // silently degrade to "no baseline".
+        let (baselined, baseline_present) = if matches!(config.pretender.mode, Mode::Gate) {
+            match history::load_baseline(Path::new(BASELINE_PATH)) {
+                Ok(Some(baseline)) => {
+                    let known: HashSet<String> = current_ids
+                        .iter()
+                        .filter(|id| baseline.finding_ids.contains(*id))
+                        .cloned()
+                        .collect();
+                    (known, true)
+                }
+                Ok(None) => (HashSet::new(), false),
+                Err(err) => return Err(err.context("gate baseline unreadable — refusing to gate")),
+            }
+        } else {
+            (HashSet::new(), false)
+        };
         match format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
@@ -833,6 +892,24 @@ impl Executable for CheckArgs {
             ReportFormat::Json => write_json_report(sink.as_mut(), &report, lease_warning)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
         }
+        if baseline_present && matches!(format, ReportFormat::Human) {
+            let new_count = current_ids
+                .iter()
+                .filter(|id| !baselined.contains(*id))
+                .collect::<HashSet<_>>()
+                .len();
+            let color = writing_to_stdout && color_enabled();
+            let (cyan, reset) = if color {
+                ("\u{1b}[36m", "\u{1b}[0m")
+            } else {
+                ("", "")
+            };
+            writeln!(
+                sink,
+                "{cyan}\u{2192}{reset} gate: {} known (baselined), {new_count} new",
+                baselined.len()
+            )?;
+        }
         persist_last_check_report(&report)?;
         sink.flush().context("failed to flush report output")?;
 
@@ -840,6 +917,7 @@ impl Executable for CheckArgs {
             &report,
             config.pretender.mode,
             config.pretender.advisory_until.as_deref(),
+            &baselined,
         ))
     }
 }
@@ -1169,7 +1247,16 @@ fn test_lease_diagnostic_mentions_all_remediations() {
     assert!(msg.contains("mode=gate"), "gate fallback: {msg}");
 }
 
-fn decide_exit_code(report: &CheckReport, mode: Mode, advisory_until: Option<&str>) -> ExitCode {
+/// Gate baseline location: next to pretender.toml (repo root), so it can be
+/// committed and gate mode behaves identically in CI.
+const BASELINE_PATH: &str = "pretender-baseline.json";
+
+fn decide_exit_code(
+    report: &CheckReport,
+    mode: Mode,
+    advisory_until: Option<&str>,
+    baselined: &HashSet<String>,
+) -> ExitCode {
     // Advisory lease TTL (pretender-1te): tiered/guidance are dated
     // downgrades from the gate default. Expired/missing/unparseable lease
     // fails closed — the drift detector forcing a renewed, dated decision.
@@ -1180,10 +1267,13 @@ fn decide_exit_code(report: &CheckReport, mode: Mode, advisory_until: Option<&st
         .files
         .iter()
         .any(|file| file.diagnostics.iter().any(|d| d.severity == "Error"));
-    let has_violation = report.files.iter().any(|file| {
-        !file.file_violations.is_empty()
-            || file.units.iter().any(|unit| !unit.violations.is_empty())
-    });
+    // gently-if4: a violation gates only when its stable finding ID is NOT in
+    // the adopted baseline (genuinely new). Baselined violations pass; the
+    // other gate categories (parse errors, coupling, cycles, test durations)
+    // have no stable per-violation IDs and always gate — fail-closed.
+    let has_violation = violation_findings(report)
+        .iter()
+        .any(|finding| !baselined.contains(&violation_finding_id(finding)));
     let has_coupling_violation = report
         .modules
         .iter()
@@ -2577,7 +2667,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CheckReport {
     files: Vec<FileReport>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2590,7 +2680,7 @@ struct CheckReport {
     history: Option<history::HistorySummary>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct FileReport {
     path: String,
     role: String,
@@ -2603,7 +2693,7 @@ struct FileReport {
     mock_findings: Vec<MockFindingReport>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiagnosticReport {
     severity: String,
     message: String,
@@ -2622,7 +2712,7 @@ impl From<model::Diagnostic> for DiagnosticReport {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UnitReport {
     name: String,
     kind: String,
@@ -2631,7 +2721,7 @@ struct UnitReport {
     violations: Vec<ViolationReport>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct MetricValues {
     cyclomatic: u32,
     cognitive: u32,
@@ -2642,28 +2732,28 @@ struct MetricValues {
     abc: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ModuleReport {
     path: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     coupling_violations: Vec<CouplingViolationReport>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CouplingViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct MockFindingReport {
     name: String,
     line: u32,
@@ -2818,13 +2908,25 @@ fn metric_to_family(metric: &str) -> &str {
     }
 }
 
-fn all_violation_events(
-    report: &CheckReport,
-    run_id: &str,
-    timestamp: &str,
-    mode: &str,
-) -> Vec<history::ViolationEvent> {
-    let mut events = Vec::new();
+/// A metric violation as a stable finding: everything needed to derive the
+/// u8a finding ID (`history::finding_id`) plus the event fields. File-scope
+/// violations (file_lines, mock_count, ...) have `unit_name: None` and derive
+/// their ID with an empty unit name: `path::::rule_key`.
+struct ViolationFinding {
+    path: String,
+    unit_name: Option<String>,
+    role: String,
+    metric: String,
+    rule_key: String,
+    actual: f64,
+    limit: f64,
+}
+
+/// Every metric violation in the report as a stable finding — unit-scope and
+/// file-scope alike. The single source both history events and the gate
+/// baseline derive their IDs from, so the two can never drift.
+fn violation_findings(report: &CheckReport) -> Vec<ViolationFinding> {
+    let mut findings = Vec::new();
     for file in &report.files {
         // Normalize away leading "./" so fingerprints are stable regardless of
         // how the CLI path was spelled (e.g. "src/foo.rs" vs "./src/foo.rs").
@@ -2833,31 +2935,87 @@ fn all_violation_events(
             .strip_prefix("./")
             .unwrap_or(&file.path)
             .to_string();
+        for violation in &file.file_violations {
+            findings.push(ViolationFinding {
+                path: path.clone(),
+                unit_name: None,
+                role: file.role.clone(),
+                metric: violation.metric.clone(),
+                rule_key: metric_to_rule_key(&violation.metric).to_string(),
+                actual: violation.actual,
+                limit: violation.limit,
+            });
+        }
         for unit in &file.units {
             for violation in &unit.violations {
-                let rule_key = metric_to_rule_key(&violation.metric);
-                let metric_family = metric_to_family(&violation.metric);
-                events.push(history::ViolationEvent {
-                    schema_version: 1,
-                    timestamp: timestamp.to_string(),
-                    run_id: run_id.to_string(),
-                    mode: mode.to_string(),
+                findings.push(ViolationFinding {
                     path: path.clone(),
                     unit_name: Some(unit.name.clone()),
                     role: file.role.clone(),
-                    rule_key: rule_key.to_string(),
-                    metric_family: metric_family.to_string(),
-                    scope: "unit".to_string(),
-                    severity: "red".to_string(),
+                    metric: violation.metric.clone(),
+                    rule_key: metric_to_rule_key(&violation.metric).to_string(),
                     actual: violation.actual,
                     limit: violation.limit,
-                    delta: violation.actual - violation.limit,
-                    fingerprint: history::finding_id(&path, &unit.name, rule_key),
                 });
             }
         }
     }
-    events
+    findings
+}
+
+fn violation_finding_id(finding: &ViolationFinding) -> String {
+    history::finding_id(
+        &finding.path,
+        finding.unit_name.as_deref().unwrap_or(""),
+        &finding.rule_key,
+    )
+}
+
+/// The current scan's stable finding IDs — what the gate baseline is adopted
+/// from and compared against.
+fn violation_finding_ids(report: &CheckReport) -> Vec<String> {
+    violation_findings(report)
+        .iter()
+        .map(violation_finding_id)
+        .collect()
+}
+
+fn all_violation_events(
+    report: &CheckReport,
+    run_id: &str,
+    timestamp: &str,
+    mode: &str,
+) -> Vec<history::ViolationEvent> {
+    violation_findings(report)
+        .into_iter()
+        .map(|finding| {
+            let metric_family = metric_to_family(&finding.metric).to_string();
+            let scope = if finding.unit_name.is_some() {
+                "unit"
+            } else {
+                "file"
+            }
+            .to_string();
+            let fingerprint = violation_finding_id(&finding);
+            history::ViolationEvent {
+                schema_version: 1,
+                timestamp: timestamp.to_string(),
+                run_id: run_id.to_string(),
+                mode: mode.to_string(),
+                path: finding.path,
+                unit_name: finding.unit_name,
+                role: finding.role,
+                rule_key: finding.rule_key,
+                metric_family,
+                scope,
+                severity: "red".to_string(),
+                actual: finding.actual,
+                limit: finding.limit,
+                delta: finding.actual - finding.limit,
+                fingerprint,
+            }
+        })
+        .collect()
 }
 
 fn write_recurrence_hints(
@@ -3127,6 +3285,190 @@ mod gitignore_walk_tests {
             rel_names(&root, &files).len(),
             2,
             "no .gitignore: nothing filtered"
+        );
+    }
+}
+
+#[cfg(test)]
+mod baseline_gate_tests {
+    use super::*;
+
+    fn metric_values() -> MetricValues {
+        MetricValues {
+            cyclomatic: 1,
+            cognitive: 0,
+            assertions: 1,
+            function_lines: 0,
+            params: 0,
+            nesting_max: 0,
+            abc: 1.0,
+        }
+    }
+
+    fn unit_report(name: &str, violations: Vec<ViolationReport>) -> UnitReport {
+        UnitReport {
+            name: name.to_string(),
+            kind: "function".to_string(),
+            start_line: 10,
+            metrics: metric_values(),
+            violations,
+        }
+    }
+
+    fn unit_violation(metric: &str, actual: f64, limit: f64) -> ViolationReport {
+        ViolationReport {
+            metric: metric.to_string(),
+            actual,
+            limit,
+        }
+    }
+
+    fn file_report(
+        path: &str,
+        file_violations: Vec<ViolationReport>,
+        units: Vec<UnitReport>,
+    ) -> FileReport {
+        FileReport {
+            path: path.to_string(),
+            role: "app".to_string(),
+            diagnostics: vec![],
+            file_violations,
+            units,
+            external_findings: vec![],
+            mock_findings: vec![],
+        }
+    }
+
+    fn report(files: Vec<FileReport>) -> CheckReport {
+        CheckReport {
+            files,
+            modules: vec![],
+            cycles: vec![],
+            test_findings: vec![],
+            history: None,
+        }
+    }
+
+    fn baselined_ids(r: &CheckReport) -> HashSet<String> {
+        violation_finding_ids(r).into_iter().collect()
+    }
+
+    /// A mechanical reformat shifted lines: same file, same function name,
+    /// same rule — only start_line differs (50 -> 77).
+    fn shifted_violation_report() -> CheckReport {
+        let mut r = report(vec![file_report(
+            "src/a.rs",
+            vec![unit_violation("file_lines", 420.0, 400.0)],
+            vec![unit_report(
+                "parse",
+                vec![unit_violation("function_lines", 120.0, 100.0)],
+            )],
+        )]);
+        r.files[0].units[0].start_line = 77;
+        r
+    }
+
+    #[test]
+    fn gate_fails_on_any_violation_without_baseline() {
+        // No baseline file: fail-closed, gate fails on any violation.
+        let r = shifted_violation_report();
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &HashSet::new()),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn gate_passes_when_only_baselined_violations_remain() {
+        // gently-if4 acceptance: "0 fixed, 11 still open, 0 new" must exit 0.
+        let r = shifted_violation_report();
+        let baselined = baselined_ids(&r);
+        assert_eq!(baselined.len(), 2, "file + unit finding");
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn gate_fails_on_genuinely_new_violation_with_baseline() {
+        let adopted = shifted_violation_report();
+        let baselined = baselined_ids(&adopted);
+        // A different function now violates too — genuinely new.
+        let mut r = adopted;
+        r.files[0].units.push(unit_report(
+            "serialize",
+            vec![unit_violation("cognitive", 30.0, 15.0)],
+        ));
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn gate_fails_on_coupling_even_when_metric_violations_baselined() {
+        // Fail-closed preserved: baseline covers metric violations only —
+        // coupling violations, cycles and test-duration findings always gate.
+        let mut r = shifted_violation_report();
+        r.modules.push(ModuleReport {
+            path: "src/a.rs".to_string(),
+            coupling_violations: vec![CouplingViolationReport {
+                metric: "affero".to_string(),
+                actual: 9.0,
+                limit: 5.0,
+            }],
+        });
+        let baselined = baselined_ids(&r);
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn finding_ids_reuse_history_scheme_file_and_unit_scope() {
+        // One ID scheme (u8a finding_id), not a second one: file scope uses
+        // an empty unit name; no line numbers anywhere.
+        let r = shifted_violation_report();
+        let mut ids = violation_finding_ids(&r);
+        ids.sort();
+        let mut expected = vec![
+            "src/a.rs::parse::function_lines_max".to_string(),
+            "src/a.rs::::file_lines".to_string(),
+        ];
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+
+    #[test]
+    fn finding_ids_stable_across_line_shifts() {
+        let before = shifted_violation_report();
+        let mut after = before.clone();
+        after.files[0].units[0].start_line = 4096;
+        assert_eq!(
+            violation_finding_ids(&before),
+            violation_finding_ids(&after),
+            "a mechanical reformat must not change finding IDs"
+        );
+    }
+
+    #[test]
+    fn adopt_writes_baseline_that_gate_accepts() {
+        // The --adopt flow: persist the current scan's IDs, reload, and gate
+        // mode passes on exactly those violations.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pretender-baseline.json");
+        let r = shifted_violation_report();
+        let ids = violation_finding_ids(&r);
+        history::persist_baseline(&path, &ids).expect("persist");
+        let loaded = history::load_baseline(&path)
+            .expect("load")
+            .expect("exists");
+        let baselined: HashSet<String> = loaded.finding_ids.into_iter().collect();
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::SUCCESS
         );
     }
 }

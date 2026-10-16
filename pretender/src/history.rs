@@ -126,6 +126,57 @@ pub fn compute_delta(previous: Option<&[String]>, current: &[String]) -> Finding
     }
 }
 
+/// Gate-mode baseline (gently-if4): the set of stable finding IDs a team has
+/// explicitly adopted. With a baseline present, `check --mode gate` fails only
+/// on findings whose stable ID is NOT in the baseline (genuinely new); known
+/// violations pass with a summary line. No baseline → gate fails on any
+/// violation (fail-closed preserved).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Baseline {
+    pub schema_version: u32,
+    /// ISO timestamp of the most recent adoption.
+    pub adopted_at: String,
+    /// Stable finding IDs (the u8a `finding_id` scheme), sorted + deduped for
+    /// stable diffs.
+    pub finding_ids: Vec<String>,
+}
+
+/// Load the gate baseline. `Ok(None)` when no baseline file exists yet —
+/// callers must keep the no-baseline fail-closed behavior.
+pub fn load_baseline(path: &Path) -> Result<Option<Baseline>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes).with_context(|| {
+            format!("failed to parse baseline: {}", path.display())
+        })?)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => {
+            Err(anyhow::anyhow!(e).context(format!("failed to read baseline: {}", path.display())))
+        }
+    }
+}
+
+/// Write/refresh the baseline from a current scan's finding IDs (the `--adopt`
+/// flow). IDs are deduped and sorted so the persisted file diffs stably.
+pub fn persist_baseline(path: &Path, finding_ids: &[String]) -> Result<Baseline> {
+    let mut ids: Vec<String> = finding_ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    let baseline = Baseline {
+        schema_version: 1,
+        adopted_at: now_iso8601(),
+        finding_ids: ids,
+    };
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create baseline dir: {}", parent.display()))?;
+        }
+    }
+    fs::write(path, serde_json::to_vec_pretty(&baseline)?)
+        .with_context(|| format!("failed to write baseline: {}", path.display()))?;
+    Ok(baseline)
+}
+
 pub struct EventStore {
     events_path: PathBuf,
     summaries_path: PathBuf,
@@ -711,5 +762,51 @@ mod tests {
         assert_eq!(path_area("src/main.rs"), "src");
         assert_eq!(path_area("main.rs"), ".");
         assert_eq!(path_area("./src/foo.rs"), "src");
+    }
+
+    #[test]
+    fn test_baseline_roundtrip_persist_load() {
+        // gently-if4: persist_baseline then load_baseline round-trips the same
+        // finding IDs, deduped and sorted for stable diffs.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pretender-baseline.json");
+        let ids = vec![
+            "src/b.rs::g::function_lines_max".to_string(),
+            "src/a.rs::parse::cognitive_max".to_string(),
+            "src/a.rs::parse::cognitive_max".to_string(),
+        ];
+        let written = persist_baseline(&path, &ids).expect("persist");
+        assert_eq!(written.finding_ids.len(), 2, "deduped");
+        let mut expected = vec![
+            "src/a.rs::parse::cognitive_max".to_string(),
+            "src/b.rs::g::function_lines_max".to_string(),
+        ];
+        expected.sort();
+        assert_eq!(written.finding_ids, expected, "sorted");
+        let loaded = load_baseline(&path)
+            .expect("load")
+            .expect("baseline exists");
+        assert_eq!(loaded.finding_ids, written.finding_ids);
+        assert_eq!(loaded.schema_version, 1);
+    }
+
+    #[test]
+    fn test_load_baseline_missing_file_is_none() {
+        // Fail-closed contract: a missing baseline is Ok(None), never an error,
+        // so the caller keeps the no-baseline gate behavior.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pretender-baseline.json");
+        assert!(load_baseline(&path).expect("load").is_none());
+    }
+
+    #[test]
+    fn test_load_baseline_corrupt_file_is_error() {
+        // A corrupt baseline must NOT silently degrade to "no baseline":
+        // gate would then fail on adopted violations (surprise), so it errors
+        // instead and the caller fails closed.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pretender-baseline.json");
+        std::fs::write(&path, "{ not json").expect("write junk");
+        assert!(load_baseline(&path).is_err());
     }
 }
