@@ -149,8 +149,9 @@ pub fn load_baseline(path: &Path) -> Result<Option<Baseline>> {
             format!("failed to parse baseline: {}", path.display())
         })?)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(anyhow::anyhow!(e)
-            .context(format!("failed to read baseline: {}", path.display()))),
+        Err(e) => {
+            Err(anyhow::anyhow!(e).context(format!("failed to read baseline: {}", path.display())))
+        }
     }
 }
 
@@ -167,9 +168,8 @@ pub fn persist_baseline(path: &Path, finding_ids: &[String]) -> Result<Baseline>
     };
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create baseline dir: {}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create baseline dir: {}", parent.display()))?;
         }
     }
     fs::write(path, serde_json::to_vec_pretty(&baseline)?)

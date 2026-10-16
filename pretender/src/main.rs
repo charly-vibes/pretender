@@ -3396,9 +3396,10 @@ mod baseline_gate_tests {
         let baselined = baselined_ids(&adopted);
         // A different function now violates too — genuinely new.
         let mut r = adopted;
-        r.files[0]
-            .units
-            .push(unit_report("serialize", vec![unit_violation("cognitive", 30.0, 15.0)]));
+        r.files[0].units.push(unit_report(
+            "serialize",
+            vec![unit_violation("cognitive", 30.0, 15.0)],
+        ));
         assert_eq!(
             decide_exit_code(&r, Mode::Gate, None, &baselined),
             ExitCode::FAILURE
