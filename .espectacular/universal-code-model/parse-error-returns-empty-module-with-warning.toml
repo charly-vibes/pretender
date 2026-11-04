@@ -1,6 +1,9 @@
 id = "parse-error-returns-empty-module-with-warning"
-description = ""
+description = "Parse error: diagnostic emitted, empty module returned."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "parse_error_emits_diagnostic_and_skips"}]

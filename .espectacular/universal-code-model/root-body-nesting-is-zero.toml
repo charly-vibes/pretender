@@ -1,6 +1,9 @@
 id = "root-body-nesting-is-zero"
-description = ""
+description = "Root block nesting starts at 0; nested branches increment."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "nested_branches_have_correct_nesting"}]

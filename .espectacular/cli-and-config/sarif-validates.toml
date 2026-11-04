@@ -1,6 +1,9 @@
 id = "sarif-validates"
-description = ""
+description = "SARIF output conforms to the 2.1.0 schema shape."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_sarif_output_structure"}]

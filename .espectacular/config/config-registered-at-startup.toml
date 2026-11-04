@@ -1,6 +1,9 @@
 id = "config-registered-at-startup"
-description = ""
+description = "Pretender config registered with ConfigRegistry."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.11.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "build_registry_registers_pretender"}]

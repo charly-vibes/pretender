@@ -1,6 +1,9 @@
 id = "errorsink-for-self-healing-errors"
-description = ""
+description = "ErrorSink prints suggestion footer and records error scratch."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.11.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_non_zero_exit_shows_feedback_footer"},{flags = "test_error_scratch_records_full_argv"}]

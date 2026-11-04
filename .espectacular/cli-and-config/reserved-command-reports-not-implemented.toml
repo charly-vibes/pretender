@@ -1,6 +1,9 @@
 id = "reserved-command-reports-not-implemented"
-description = ""
+description = "DRIFT: scenario text says explain is a stub but explain ships (test_explain_known_metric_prints_doc). Spec update pending (bd); entry covers stub exit-2 behavior."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_stub_subcommands_exit_two"}]

@@ -1,6 +1,9 @@
 id = "interactive-init-can-install-hook-and-workflow"
-description = ""
+description = "Interactive init writes config + hook + workflow on opt-in."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_init_interactive_can_install_hook_and_ci"}]

@@ -1,6 +1,9 @@
 id = "logical-sequence-ids-are-scoped-to-code-unit"
-description = ""
+description = "Logical operator captures carry per-unit sequence ids."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "captures_logical_and"}]

@@ -1,0 +1,10 @@
+id = "built-in-defaults-match-the-documented-table"
+description = "Built-in threshold defaults match the documented table in the Configuration Schema requirement."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[[tests.cargo]]
+name = "default_config_matches_documented_conventions"
+file = "pretender/src/config.rs"

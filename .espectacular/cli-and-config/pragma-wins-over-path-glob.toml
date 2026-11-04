@@ -1,6 +1,9 @@
 id = "pragma-wins-over-path-glob"
-description = ""
+description = "Pragma role beats configured glob."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "explicit_pragma_overrides_path_globs"}]

@@ -1,6 +1,9 @@
 id = "most-specific-glob-wins"
-description = ""
+description = "Configured globs assign roles via the glob matcher."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "configured_path_globs_override_heuristics"}]
