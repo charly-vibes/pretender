@@ -1910,7 +1910,9 @@ fn test_init_interactive_can_install_hook_and_ci() {
                 .stdin
                 .as_mut()
                 .expect("stdin")
-                .write_all(b"guidance\npython,rust\ny\ny\n")?;
+                // mode, preset (added by update-app-threshold-defaults),
+                // languages, hook, workflow
+                .write_all(b"guidance\n\npython,rust\ny\ny\n")?;
             child.wait_with_output()
         })
         .expect("run init interactively");

@@ -81,7 +81,7 @@ cargo build --release
 
 | Command | Description |
 |---------|-------------|
-| `pretender init` | Interactive wizard: write `pretender.toml`, install hook, generate CI |
+| `pretender init` | Interactive wizard: write `pretender.toml` (threshold preset default/strict), install hook, generate CI |
 | `pretender check <paths...>` | Fast pass/fail scan against configured thresholds |
 | `pretender doctor [--json]` | Diagnose configuration, hooks, and plugin health (warns if hook installed but no config) |
 | `pretender complexity <path>` | Show cyclomatic complexity per function, sorted worst-first |
@@ -154,7 +154,7 @@ respect_gitignore = true  # skip git-ignored dirs (target/, vendor/, …) when w
 [thresholds]
 cyclomatic_max = 10
 cognitive_max = 15
-function_lines_max = 40
+function_lines_max = 30
 file_lines_max = 400
 nesting_max = 3
 params_max = 4

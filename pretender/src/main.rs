@@ -168,6 +168,17 @@ struct InitArgs {
     /// Override default mode
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
+    /// Threshold preset to write into the generated config
+    #[arg(long, value_enum)]
+    preset: Option<ThresholdPreset>,
+}
+
+/// Threshold strictness preset for `init` (update-app-threshold-defaults):
+/// selects which threshold tables the generated pretender.toml emits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum ThresholdPreset {
+    Default,
+    Strict,
 }
 
 #[derive(Parser)]
@@ -341,7 +352,7 @@ enum LongReportFormat {
     Html,
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum ModeArg {
     Guidance,
     Tiered,
@@ -431,12 +442,13 @@ impl Executable for InitArgs {
         let options = if self.non_interactive {
             InitOptions {
                 mode: self.mode.unwrap_or(ModeArg::Tiered),
+                preset: self.preset.unwrap_or(ThresholdPreset::Default),
                 languages: vec!["auto".to_string()],
                 install_hook: false,
                 generate_github_actions: false,
             }
         } else {
-            prompt_init_options(self.mode)?
+            prompt_init_options(self.mode, self.preset)?
         };
 
         let cwd = std::env::current_dir().context("failed to get current directory")?;
@@ -451,6 +463,18 @@ impl Executable for InitArgs {
         if result.created.is_empty() && result.existed.iter().any(|p| p.ends_with("pretender.toml"))
         {
             eprintln!("pretender.toml already exists, skipping");
+        }
+
+        // Strict on gate is an immediate wall of violations on an existing
+        // codebase — point at the migration path (spec: Strict Preset Gate
+        // Hint). Printed whenever gate+strict combine, written or not.
+        if options.mode == ModeArg::Gate && options.preset == ThresholdPreset::Strict {
+            println!(
+                "Strict preset with gate mode: existing code will likely violate the tighter thresholds."
+            );
+            println!(
+                "Baseline the current state first: pretender check --adopt, or use mode = \"tiered\" with an advisory lease."
+            );
         }
 
         // Register in genesis discovery manifest
@@ -1301,12 +1325,16 @@ fn decide_exit_code(
 
 struct InitOptions {
     mode: ModeArg,
+    preset: ThresholdPreset,
     languages: Vec<String>,
     install_hook: bool,
     generate_github_actions: bool,
 }
 
-fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
+fn prompt_init_options(
+    mode_override: Option<ModeArg>,
+    preset_override: Option<ThresholdPreset>,
+) -> Result<InitOptions> {
     let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
 
@@ -1325,6 +1353,24 @@ fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
             "guidance" => ModeArg::Guidance,
             "gate" => ModeArg::Gate,
             other => return Err(anyhow!("invalid mode: {other}")),
+        },
+    };
+
+    // An explicit --preset suppresses the prompt (mirrors --mode).
+    let preset = match preset_override {
+        Some(preset) => preset,
+        None => match prompt(
+            &mut stdin,
+            &mut stdout,
+            "Threshold preset (default/strict) [default]: ",
+        )?
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+        {
+            "" | "default" => ThresholdPreset::Default,
+            "strict" => ThresholdPreset::Strict,
+            other => return Err(anyhow!("invalid preset: {other}")),
         },
     };
 
@@ -1348,6 +1394,7 @@ fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
 
     Ok(InitOptions {
         mode,
+        preset,
         languages,
         install_hook,
         generate_github_actions,
@@ -1420,10 +1467,70 @@ fn render_init_config(options: &InitOptions) -> String {
             "[roles.generated]\n",
             "paths = [\"**/*.pb.go\", \"**/*_generated.*\"]\n\n",
             "[roles.vendor]\n",
-            "paths = [\"vendor/**\", \"node_modules/**\"]\n"
+            "paths = [\"vendor/**\", \"node_modules/**\"]\n\n",
+            "{thresholds}"
         ),
         mode = mode,
         languages = languages,
+        thresholds = preset_tables(options.preset),
+    )
+}
+
+/// Single source for the threshold tables `init` emits (update-app-threshold-
+/// defaults): emitting them explicitly makes the generated config self-
+/// documenting and pins today's values against future default changes.
+/// Strict deviations are pinned by the spec ("Strict Preset Values"); every
+/// other value matches the built-in defaults.
+fn preset_tables(preset: ThresholdPreset) -> String {
+    let strict = preset == ThresholdPreset::Strict;
+    let v = |strict_val, default_val| {
+        if strict {
+            strict_val
+        } else {
+            default_val
+        }
+    };
+
+    format!(
+        concat!(
+            "[thresholds]\n",
+            "cyclomatic_max = {app_cyclomatic}\n",
+            "cognitive_max = {app_cognitive}\n",
+            "function_lines_max = {app_function_lines}\n",
+            "file_lines_max = {app_file_lines}\n",
+            "nesting_max = {app_nesting}\n",
+            "params_max = {app_params}\n",
+            "abc_max = {app_abc}\n",
+            "duplication_pct_max = {app_duplication}\n",
+            "void_mutators_max = 3\n",
+            "mut_ratio_max = 0.3\n",
+            "unwrap_max = 5\n",
+            "bool_cluster_max = 3\n",
+            "primitive_param_check = false\n",
+            "inheritance_depth_max = 2\n\n",
+            "[thresholds.test]\n",
+            "cyclomatic_max = {test_cyclomatic}\n",
+            "cognitive_max = {test_cognitive}\n",
+            "function_lines_max = {test_function_lines}\n",
+            "nesting_max = 2\n",
+            "params_max = 2\n",
+            "duplication_pct_max = 30\n",
+            "min_assertions = 1\n",
+            "mock_count_max = 5\n",
+            "unwrap_max = 5\n",
+            "lazy_cluster_min = 3\n"
+        ),
+        app_cyclomatic = v(8, 10),
+        app_cognitive = v(12, 15),
+        app_function_lines = v(25, 30),
+        app_file_lines = v(300, 400),
+        app_nesting = v(2, 3),
+        app_params = v(3, 4),
+        app_abc = v(25, 30),
+        app_duplication = v(4, 5),
+        test_cyclomatic = v(2, 3),
+        test_cognitive = v(3, 5),
+        test_function_lines = v(60, 80),
     )
 }
 
@@ -3469,6 +3576,207 @@ mod baseline_gate_tests {
         assert_eq!(
             decide_exit_code(&r, Mode::Gate, None, &baselined),
             ExitCode::SUCCESS
+        );
+    }
+}
+
+#[cfg(test)]
+mod init_preset_tests {
+    use super::*;
+
+    /// Spawn the CLI in `dir` with a neutral GIT_CONFIG_GLOBAL so hooksPath
+    /// resolution never sees the developer machine's real global config
+    /// (same hermeticity pattern as tests/cli_test.rs pretender_cmd()).
+    fn init_cmd(dir: &std::path::Path) -> std::process::Command {
+        let bin =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/pretender");
+        let neutral = std::env::temp_dir().join(format!(
+            "pretender-init-preset-test-gitconfig-{}",
+            std::process::id()
+        ));
+        std::fs::write(&neutral, "").expect("write neutral gitconfig");
+        let mut cmd = std::process::Command::new(bin);
+        cmd.current_dir(dir).env("GIT_CONFIG_GLOBAL", neutral);
+        cmd.arg("init");
+        cmd
+    }
+
+    fn read_config(dir: &std::path::Path) -> String {
+        std::fs::read_to_string(dir.join("pretender.toml")).expect("config written")
+    }
+
+    /// Contract test
+    /// (.espectacular/cli-and-config/interactive-init-asks-for-preset.toml):
+    /// the preset choice — prompt answer or --preset flag — selects the
+    /// threshold tables init emits; an explicit --preset suppresses the
+    /// interactive preset prompt (mirroring --mode).
+    #[test]
+    fn init_preset_prompt_writes_threshold_tables() {
+        // --preset strict --non-interactive: strict tables, app cyclomatic 8
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--preset", "strict"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let strict_config = read_config(dir.path());
+        assert!(
+            strict_config.contains("cyclomatic_max = 8"),
+            "strict app table missing: {strict_config}"
+        );
+
+        // Task 3.3: emitted strict TOML parses back to the pinned strict
+        // effective values (spec: Strict Preset Values) via Config::parse_str.
+        let parsed = Config::parse_str(&strict_config).expect("strict config parses");
+        assert_eq!(parsed.thresholds.app.cyclomatic_max, 8);
+        assert_eq!(parsed.thresholds.app.cognitive_max, 12);
+        assert_eq!(parsed.thresholds.app.function_lines_max, 25);
+        assert_eq!(parsed.thresholds.app.nesting_max, 2);
+        assert_eq!(parsed.thresholds.app.params_max, 3);
+        assert_eq!(parsed.thresholds.app.abc_max, 25);
+        assert_eq!(parsed.thresholds.app.duplication_pct_max, 4);
+        assert_eq!(parsed.thresholds.app.file_lines_max, 300);
+        assert_eq!(parsed.thresholds.test.cyclomatic_max, 2);
+        assert_eq!(parsed.thresholds.test.cognitive_max, 3);
+        assert_eq!(parsed.thresholds.test.function_lines_max, 60);
+        assert_eq!(parsed.thresholds.test.nesting_max, 2);
+        // enabled-check values identical to the default preset
+        assert_eq!(parsed.thresholds.app.unwrap_max, 5);
+        assert_eq!(parsed.thresholds.test.mock_count_max, 5);
+
+        // --preset default writes the default tables
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--preset", "default"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let default_config = read_config(dir.path());
+        assert!(
+            default_config.contains("cyclomatic_max = 10"),
+            "default app table missing: {default_config}"
+        );
+        let parsed = Config::parse_str(&default_config).expect("default config parses");
+        assert_eq!(
+            parsed.thresholds.app,
+            Config::default().thresholds.app,
+            "default preset tables must round-trip to the built-in app defaults"
+        );
+        assert_eq!(
+            parsed.thresholds.test,
+            Config::default().thresholds.test,
+            "default preset tables must round-trip to the built-in test defaults"
+        );
+
+        // Absent flag: same as --preset default
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .arg("--non-interactive")
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            read_config(dir.path()).contains("cyclomatic_max = 10"),
+            "absent --preset must emit the default tables"
+        );
+
+        // Explicit --preset on an interactive run suppresses the preset
+        // prompt: stdin answers mode/languages/hook/workflow only; had the
+        // prompt not been suppressed, the answers would shift and the run
+        // would fail (or fall back to default tables).
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let mut child = init_cmd(dir.path())
+            .arg("--preset")
+            .arg("strict")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn interactive init");
+        {
+            use std::io::Write;
+            let stdin = child.stdin.as_mut().expect("piped stdin");
+            stdin
+                .write_all(b"\nauto\nn\nn\n")
+                .expect("write prompt answers");
+        }
+        let out = child.wait_with_output().expect("interactive init finishes");
+        assert!(
+            out.status.success(),
+            "interactive init with explicit --preset failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            read_config(dir.path()).contains("cyclomatic_max = 8"),
+            "explicit --preset must suppress the preset prompt and emit strict tables"
+        );
+    }
+
+    #[test]
+    fn init_rejects_unknown_preset() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--preset", "loose"])
+            .output()
+            .expect("run init");
+        assert!(!out.status.success(), "unknown preset must exit non-zero");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains("loose"),
+            "error should name the bad value: {err}"
+        );
+    }
+
+    #[test]
+    fn init_strict_gate_prints_migration_hint() {
+        // Spec: Strict Preset Gate Hint — gate + strict must print the
+        // --adopt / tiered-lease migration hint after writing the config.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--mode", "gate", "--preset", "strict"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("check --adopt"),
+            "gate+strict must print the adoption hint; stdout: {stdout}"
+        );
+    }
+
+    #[test]
+    fn init_default_gate_no_migration_hint() {
+        // The hint is scoped to gate+strict; default preset stays quiet.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--mode", "gate"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("check --adopt"),
+            "gate+default must not print the adoption hint; stdout: {stdout}"
         );
     }
 }

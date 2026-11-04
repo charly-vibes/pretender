@@ -268,18 +268,18 @@ impl Default for AppThresholds {
         Self {
             cyclomatic_max: 10,
             cognitive_max: 15,
-            function_lines_max: 40,
+            function_lines_max: 30,
             file_lines_max: 400,
             nesting_max: 3,
             params_max: 4,
             abc_max: 30,
             duplication_pct_max: 5,
-            void_mutators_max: 0,
-            mut_ratio_max: 0.0,
-            unwrap_max: 0,
-            bool_cluster_max: 0,
+            void_mutators_max: 3,
+            mut_ratio_max: 0.3,
+            unwrap_max: 5,
+            bool_cluster_max: 3,
             primitive_param_check: false,
-            inheritance_depth_max: 0,
+            inheritance_depth_max: 2,
         }
     }
 }
@@ -310,10 +310,10 @@ impl Default for TestThresholds {
             cognitive_max: 5,
             duplication_pct_max: 30,
             min_assertions: Some(1),
-            mock_count_max: 0,
+            mock_count_max: 5,
             void_mutators_max: 0,
-            unwrap_max: 0,
-            lazy_cluster_min: 0,
+            unwrap_max: 5,
+            lazy_cluster_min: 3,
         }
     }
 }
@@ -765,11 +765,24 @@ mod tests {
         assert_eq!(config.pretender.languages, vec!["auto"]);
         assert_eq!(config.thresholds.app.cyclomatic_max, 10);
         assert_eq!(config.thresholds.app.cognitive_max, 15);
-        assert_eq!(config.thresholds.app.function_lines_max, 40);
+        // update-app-threshold-defaults: function length tightened 40 → 30
+        assert_eq!(config.thresholds.app.function_lines_max, 30);
         assert_eq!(config.thresholds.app.file_lines_max, 400);
         assert_eq!(config.thresholds.app.nesting_max, 3);
         assert_eq!(config.thresholds.app.params_max, 4);
         assert_eq!(config.thresholds.app.duplication_pct_max, 5);
+        // update-app-threshold-defaults: previously-disabled checks enabled
+        // at the values documented in openspec/changes/CONVENTIONS.md
+        assert_eq!(config.thresholds.app.void_mutators_max, 3);
+        assert_eq!(config.thresholds.app.mut_ratio_max, 0.3);
+        assert_eq!(config.thresholds.app.unwrap_max, 5);
+        assert_eq!(config.thresholds.app.bool_cluster_max, 3);
+        assert_eq!(config.thresholds.app.inheritance_depth_max, 2);
+        // test table: unwrap has no app fallback in EffectiveThresholds::for_role,
+        // so the test row is required (matches the shipped unwrap spec)
+        assert_eq!(config.thresholds.test.unwrap_max, 5);
+        assert_eq!(config.thresholds.test.mock_count_max, 5);
+        assert_eq!(config.thresholds.test.lazy_cluster_min, 3);
         assert_eq!(
             config.bands.cyclomatic.unwrap(),
             Band {

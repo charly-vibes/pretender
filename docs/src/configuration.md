@@ -42,12 +42,18 @@ the recommended starting point for Rust CLI repos:
 [thresholds]
 cyclomatic_max        = 10
 cognitive_max         = 15
-function_lines_max    = 40
+function_lines_max    = 30
 file_lines_max        = 400
 nesting_max           = 3
 params_max            = 4
 abc_max               = 30
 duplication_pct_max   = 5
+void_mutators_max     = 3
+mut_ratio_max         = 0.3
+unwrap_max            = 5
+bool_cluster_max      = 3
+primitive_param_check = false
+inheritance_depth_max = 2
 
 [thresholds.test]
 cyclomatic_max      = 3
@@ -57,6 +63,9 @@ nesting_max         = 2
 params_max          = 2
 duplication_pct_max = 30
 min_assertions      = 1
+mock_count_max      = 5
+unwrap_max          = 5
+lazy_cluster_min    = 3
 
 [thresholds.library]
 exported_params_max       = 3
@@ -70,6 +79,38 @@ duration_max_ms = 100
 [thresholds.integration-test]
 duration_max_ms = 2000
 ```
+
+### Threshold presets
+
+`pretender init` writes the chosen preset's threshold tables explicitly into
+the generated config, so a project initted today keeps today's values when a
+later version changes the built-in defaults (re-init or hand-edit to pick up
+new defaults).
+
+- **`default`** — the values above (the built-in defaults).
+- **`strict`** — tighter headline limits for established codebases: app
+  `cyclomatic_max` 8, `cognitive_max` 12, `function_lines_max` 25,
+  `nesting_max` 2, `params_max` 3, `abc_max` 25, `duplication_pct_max` 4,
+  `file_lines_max` 300; test `cyclomatic_max` 2, `cognitive_max` 3,
+  `function_lines_max` 60, `nesting_max` 2. Enabled-check values are
+  identical to the default preset.
+
+Choose the preset interactively (the wizard asks `Threshold preset
+(default/strict) [default]:` after the mode question) or non-interactively
+with `pretender init --preset <default|strict>` (default `default`). An
+explicit `--preset` suppresses the prompt. Combining `--mode gate` with the
+`strict` preset makes init print the migration hint: baseline the current
+state with `pretender check --adopt`, or use `mode = "tiered"` with an
+advisory lease, otherwise existing code violates the tighter thresholds
+immediately.
+
+> **Upgrading a gate-mode repo:** previously-disabled checks (unwrap,
+> void-mutators, bool clusters, mutable-binding ratio, lazy test clusters,
+> inheritance depth, test mock counts) are now enabled by default, and
+> `function_lines_max` tightened from 40 to 30. Without explicit thresholds
+> in your `pretender.toml`, new findings appear after upgrade. Run `pretender
+> check --adopt` to baseline the current state, or switch to
+> `mode = "tiered"` with an advisory lease.
 
 that may not match the project's quality targets.
 
@@ -113,12 +154,18 @@ for files not matched by any other role).
 |-----|------|---------|-------------|
 | `cyclomatic_max` | integer | `10` | Maximum cyclomatic complexity per function |
 | `cognitive_max` | integer | `15` | Maximum cognitive complexity per function |
-| `function_lines_max` | integer | `40` | Maximum lines per function |
+| `function_lines_max` | integer | `30` | Maximum lines per function |
 | `file_lines_max` | integer | `400` | Maximum lines per file |
 | `nesting_max` | integer | `3` | Maximum control-flow nesting depth |
 | `params_max` | integer | `4` | Maximum formal parameters per function |
 | `abc_max` | integer | `30` | Maximum ABC score (√(A²+B²+C²)) per function |
 | `duplication_pct_max` | integer | `5` | Maximum structural duplication percentage (0–100) |
+| `void_mutators_max` | integer | `3` | Maximum void-mutator functions per file; `0` disables |
+| `mut_ratio_max` | number | `0.3` | Maximum mutable-binding ratio per file; `0.0` disables |
+| `unwrap_max` | integer | `5` | Maximum `unwrap()`/`expect()` calls per file; `0` disables |
+| `bool_cluster_max` | integer | `3` | Maximum boolean parameters per function; `0` disables |
+| `primitive_param_check` | boolean | `false` | Flag `String`/`int` parameters that should be newtypes |
+| `inheritance_depth_max` | integer | `2` | Maximum class inheritance depth; `0` disables |
 
 > **Planned (not yet enforced):** Maintainability Index (`mi_min`), coverage
 > (`coverage_line_min` / `coverage_branch_min`), and mutation score (`mutation_min`)
@@ -158,6 +205,9 @@ Overrides for files assigned the `test` role.
 | `params_max` | integer | `2` | Parameter limit for test functions |
 | `duplication_pct_max` | integer | `30` | Duplication tolerance in test files |
 | `min_assertions` | integer or null | `1` | Minimum assertion calls per test function; `null` disables |
+| `mock_count_max` | integer | `5` | Maximum mocks per test file; `0` disables |
+| `unwrap_max` | integer | `5` | Maximum `unwrap()`/`expect()` calls per test file; `0` disables |
+| `lazy_cluster_min` | integer | `3` | Minimum identical-test-cluster size to flag; `0` disables |
 
 ### `[thresholds.library]`
 
