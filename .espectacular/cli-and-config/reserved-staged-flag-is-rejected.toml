@@ -1,6 +1,9 @@
 id = "reserved-staged-flag-is-rejected"
-description = ""
+description = "DRIFT: scenario text says --staged is rejected but --staged ships and is tested. Spec update pending (bd); entry pins implemented behavior."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_staged_only_scans_staged_files"}]

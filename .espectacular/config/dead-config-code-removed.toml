@@ -1,6 +1,9 @@
 id = "dead-config-code-removed"
-description = ""
+description = "Negative-space scenario: absence of legacy config code enforced by clippy -D warnings + full suite."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.11.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "parses_full_config_schema_and_ignores_unknown_keys"}]

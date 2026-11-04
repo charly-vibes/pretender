@@ -1,6 +1,9 @@
 id = "config-struct-implements-configfile"
-description = ""
+description = "ConfigFile impl: repo-root pretender.toml path."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.11.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "configfile_path_is_repo_root_pretender_toml"}]

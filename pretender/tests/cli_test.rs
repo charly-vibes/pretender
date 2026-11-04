@@ -230,6 +230,26 @@ fn test_complexity_command() {
 }
 
 #[test]
+fn test_complexity_unsupported_extension_fails() {
+    // Contract: cli-and-config / unsupported-complexity-input-fails
+    let dir = tempdir();
+    let txt = dir.join("notes.txt");
+    std::fs::write(&txt, "just some text\n").expect("write txt file");
+
+    let output = pretender_cmd()
+        .arg("complexity")
+        .arg(&txt)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        !output.status.success(),
+        "complexity on an unsupported extension must exit non-zero"
+    );
+}
+
+#[test]
 fn test_complexity_multi_path() {
     let output = pretender_cmd()
         .arg("complexity")

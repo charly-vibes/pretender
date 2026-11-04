@@ -1,6 +1,9 @@
 id = "typescript-adapter-is-available"
-description = ""
+description = "TypeScript adapter resolves for .ts via the CLI path."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_typescript_complexity"}]

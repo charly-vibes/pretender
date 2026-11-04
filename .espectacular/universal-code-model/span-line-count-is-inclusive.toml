@@ -1,6 +1,9 @@
 id = "span-line-count-is-inclusive"
-description = ""
+description = "Span.lines() counts inclusively (3..5 -> 3)."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "span_lines_counts_inclusive"}]

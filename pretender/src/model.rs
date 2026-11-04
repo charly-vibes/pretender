@@ -215,4 +215,24 @@ mod tests {
 
         assert_ne!(left, right);
     }
+
+    #[test]
+    fn span_lines_counts_inclusive() {
+        // Contract: universal-code-model / span-line-count-is-inclusive —
+        // a span with start_line = 3 and end_line = 5 covers 3 lines.
+        let span = Span {
+            start_line: 3,
+            end_line: 5,
+        };
+
+        assert_eq!(span.lines(), 3);
+        assert_eq!(
+            Span {
+                start_line: 7,
+                end_line: 7
+            }
+            .lines(),
+            1
+        );
+    }
 }

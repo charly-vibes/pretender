@@ -1,6 +1,9 @@
 id = "guidance-mode-does-not-fail-violating-file"
-description = ""
+description = "Guidance mode reports violations with exit 0."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_guidance_mode_exits_zero_on_violation"}]

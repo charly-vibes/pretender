@@ -1,6 +1,9 @@
 id = "function-captures-populate-code-unit"
-description = ""
+description = "Function captures populate the CodeUnit."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "extracts_single_function"}]

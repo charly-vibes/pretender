@@ -12,7 +12,7 @@ pre-commit:
     ddl-pretender-gate:
       run: pretender check --mode gate
     ddl-spk-lint:
-      run: spk lint openspec
+      run: spk lint specodelic
     # ddl:managed:end (pre-commit)
 # ah:managed:start
     ah-check:
