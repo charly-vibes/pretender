@@ -47,11 +47,13 @@ pretender init
 
 The wizard will:
 
-1. Ask which languages your project uses
-2. Suggest threshold values based on project size
-3. Write `pretender.toml` to the repo root
-4. Offer to install the pre-commit hook
-5. Offer to generate a CI workflow file
+1. Ask which mode to run (`guidance`/`tiered`/`gate`)
+2. Ask which threshold preset to write (`default`/`strict` — or pass
+   `--preset` to skip the question)
+3. Ask which languages your project uses
+4. Write `pretender.toml` to the repo root with the preset's threshold tables
+5. Offer to install the pre-commit hook
+6. Offer to generate a CI workflow file
 
 A minimal generated `pretender.toml` looks like:
 
@@ -63,9 +65,11 @@ languages = ["auto"]
 [thresholds]
 cyclomatic_max = 10
 cognitive_max  = 15
+function_lines_max = 30
 ```
 
-See the [Configuration reference](configuration.md) for every available key.
+See the [Configuration reference](configuration.md) for every available key
+and the [threshold presets](configuration.md#threshold-presets).
 
 ---
 

@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.11.0] - unreleased
+
+### Changed
+
+- **Tightened built-in defaults (update-app-threshold-defaults)** —
+  `function_lines_max` 40 → 30 (dogfood p95 was 47), and the seven
+  previously-disabled shipped checks are now enabled at their documented
+  convention values: `unwrap_max = 5`, `void_mutators_max = 3`,
+  `bool_cluster_max = 3`, `mut_ratio_max = 0.3`, `inheritance_depth_max = 2`,
+  test `mock_count_max = 5`, test `unwrap_max = 5`, test `lazy_cluster_min = 3`.
+  **Gate-mode migration:** these activate on existing repos without config
+  changes — run `pretender check --adopt` to baseline the current state, or
+  switch to `mode = "tiered"` with an advisory lease. Rule IDs, SARIF schema,
+  and metric semantics are unchanged; repos with explicit thresholds in
+  `pretender.toml` are unaffected.
+
+### Added
+
+- **Threshold presets for `pretender init`** — the wizard now asks
+  `Threshold preset (default/strict) [default]:` after the mode question;
+  non-interactive runs accept `--preset <default|strict>` (default `default`,
+  and an explicit `--preset` suppresses the prompt, mirroring `--mode`). Init
+  writes the chosen preset's threshold tables explicitly into the generated
+  `pretender.toml`, making the config self-documenting and stable against
+  future default changes. The `strict` preset pins tighter headline limits
+  (app cyclomatic 8, cognitive 12, function lines 25, nesting 2, params 3,
+  ABC 25, duplication 4%, file lines 300; test cyclomatic 2, cognitive 3,
+  function lines 60, nesting 2). Combining gate mode with `strict` prints the
+  `check --adopt` / tiered-lease migration hint.
+
+### Fixed
+
+- `templates/pretender.toml.example` no longer lists `mi_min`,
+  `coverage_line_min`, `coverage_branch_min`, `mutation_min` — keys removed
+  from the schema in v0.5.0 that were silently ignored.
+
 ## [0.10.0] - 2026-10-16
 
 ### Added

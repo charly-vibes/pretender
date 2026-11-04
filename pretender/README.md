@@ -67,7 +67,7 @@ exclude = ["vendor/**", "node_modules/**", "**/*_generated.*"]
 [thresholds]
 cyclomatic_max = 10
 cognitive_max = 15
-function_lines_max = 40
+function_lines_max = 30
 file_lines_max = 400
 nesting_max = 3
 params_max = 4
