@@ -221,6 +221,9 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Update Homebrew tap
+        # Distribution must not be hostage to crates.io auth: publish the
+        # package-manager manifests even when the crate upload fails.
+        if: always()
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
@@ -238,6 +241,7 @@ jobs:
           git push
 
       - name: Update Scoop bucket
+        if: always()
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
