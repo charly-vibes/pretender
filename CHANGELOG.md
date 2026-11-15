@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.11.1] - 2026-11-15
+
+### Fixed
+
+- **Exclude globs match dot-prefixed walked paths** — walking `.` yields
+  `./tests/x.rs`, which never matched `tests/**` (or the wizard defaults
+  `vendor/**`, `node_modules/**`), so configured exclusions were silently
+  inert. Paths are now matched raw and with leading `./` stripped, and
+  patterns are normalized the same way. Absolute paths keep prior behavior.
+- **`--diff-only` covers the pending commit** — `diff_base_files` diffed
+  only `base..HEAD`, so at pre-commit the staged/worktree changes were
+  invisible and the previous commit's files were gated instead. The diff now
+  unions `base..HEAD`, `HEAD..index` and `index..worktree`; newly staged
+  untracked files count as additions. Default base ref unchanged.
+
 ## [0.11.0] - 2026-11-04
 
 ### Changed
