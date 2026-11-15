@@ -1907,18 +1907,61 @@ fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf
     collect_input_files_with_override(paths, config, false)
 }
 
+/// Compile the configured exclude patterns into a glob set.
+///
+/// Patterns are normalized to walker-relative form (`./tests/**` becomes
+/// `tests/**`) so a single set matches both spellings users write.
+fn build_exclude_set(patterns: &[String]) -> Result<globset::GlobSet> {
+    let mut builder = globset::GlobSetBuilder::new();
+    for pattern in patterns {
+        let glob = globset::Glob::new(normalize_exclude_pattern(pattern))
+            .with_context(|| format!("invalid exclude pattern: {}", pattern))?;
+        builder.add(glob);
+    }
+    builder.build().context("failed to build exclude GlobSet")
+}
+
+/// Strip any leading `./` components so `./tests/**` and `tests/**` compile
+/// to the same glob.
+fn normalize_exclude_pattern(pattern: &str) -> &str {
+    let mut rest = pattern;
+    while let Some(stripped) = rest.strip_prefix("./") {
+        rest = stripped;
+    }
+    rest
+}
+
+/// `path` without its leading `.` component, when it has one.
+///
+/// Walking `.` (the CLI default) yields entries like `./tests/x.rs`, and
+/// explicit `./dir` arguments carry the same prefix; neither matches
+/// walker-relative globs such as `tests/**` until stripped.
+fn strip_leading_cur_dir(path: &Path) -> Option<&Path> {
+    let mut current = path;
+    let mut stripped = false;
+    while let Ok(rest) = current.strip_prefix(".") {
+        if rest.as_os_str().is_empty() {
+            break;
+        }
+        current = rest;
+        stripped = true;
+    }
+    stripped.then_some(current)
+}
+
+/// True when an exclude glob matches `path`, testing both the raw path and
+/// its walker-relative form.
+fn is_excluded(exclude_set: &globset::GlobSet, path: &Path) -> bool {
+    exclude_set.is_match(path)
+        || strip_leading_cur_dir(path).is_some_and(|rest| exclude_set.is_match(rest))
+}
+
 fn collect_input_files_with_override(
     paths: &[PathBuf],
     config: &Config,
     scan_ignored: bool,
 ) -> Result<Vec<PathBuf>> {
-    let mut builder = globset::GlobSetBuilder::new();
-    for pattern in &config.pretender.exclude {
-        let glob = globset::Glob::new(pattern)
-            .with_context(|| format!("invalid exclude pattern: {}", pattern))?;
-        builder.add(glob);
-    }
-    let exclude_set = builder.build().context("failed to build exclude GlobSet")?;
+    let exclude_set = build_exclude_set(&config.pretender.exclude)?;
 
     // pretender-094: honor .gitignore by default so generated/vendored/
     // scratch dirs stop being scanned without per-repo exclude lists.
@@ -1979,7 +2022,7 @@ fn collect_path(
     walked: bool,
     out: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    if exclude_set.is_match(path) {
+    if is_excluded(exclude_set, path) {
         return Ok(());
     }
 
@@ -2012,7 +2055,7 @@ fn collect_path(
                 let entry = entry
                     .with_context(|| format!("failed to walk directory: {}", path.display()))?;
                 let entry_path = entry.path();
-                if entry_path == path || exclude_set.is_match(entry_path) {
+                if entry_path == path || is_excluded(exclude_set, entry_path) {
                     continue;
                 }
                 if entry_path.is_file() && is_supported_source(entry_path) {
@@ -3393,6 +3436,39 @@ mod gitignore_walk_tests {
             2,
             "no .gitignore: nothing filtered"
         );
+    }
+}
+
+// ── exclude glob normalization (espectacular-dwc) ────────────────────
+#[cfg(test)]
+mod exclude_glob_tests {
+    use super::*;
+
+    fn exclusions(patterns: &[&str]) -> globset::GlobSet {
+        let owned: Vec<String> = patterns.iter().map(|p| p.to_string()).collect();
+        build_exclude_set(&owned).expect("build exclude set")
+    }
+
+    #[test]
+    fn relative_patterns_match_dot_prefixed_walked_paths() {
+        let set = exclusions(&["tests/**", "vendor/**"]);
+        assert!(is_excluded(&set, Path::new("./tests/test_a.py")));
+        assert!(is_excluded(&set, Path::new("./vendor/lib.py")));
+        assert!(!is_excluded(&set, Path::new("./src/app.py")));
+    }
+
+    #[test]
+    fn dot_prefixed_pattern_matches_plain_walked_path() {
+        let set = exclusions(&["./tests/**"]);
+        assert!(is_excluded(&set, Path::new("./tests/test_a.py")));
+        assert!(is_excluded(&set, Path::new("tests/test_a.py")));
+        assert!(!is_excluded(&set, Path::new("./vendor/lib.py")));
+    }
+
+    #[test]
+    fn absolute_paths_keep_prior_behavior() {
+        let set = exclusions(&["tests/**"]);
+        assert!(!is_excluded(&set, Path::new("/repo/tests/test_a.py")));
     }
 }
 

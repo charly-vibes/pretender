@@ -2688,6 +2688,172 @@ fn test_check_diff_only_filters_to_changed_files() {
 }
 
 #[test]
+fn test_check_diff_only_includes_unstaged_worktree_edits() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let baseline = dir.join("baseline.py");
+    std::fs::write(&baseline, "def baseline(): pass\n").unwrap();
+    git_add(&dir, &baseline);
+    let unchanged = dir.join("unchanged.py");
+    std::fs::write(&unchanged, "def unchanged(): pass\n").unwrap();
+    git_add(&dir, &unchanged);
+    git_commit(&dir, "baseline commit");
+
+    // Pending worktree edit: base..HEAD has nothing, so a commit-only diff
+    // would evaluate an older commit and miss this file entirely.
+    std::fs::write(&baseline, "def baseline():\n    return 1\n").unwrap();
+
+    let output = pretender_cmd()
+        .args(["check", ".", "--diff-only", "--diff-base=HEAD"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("baseline.py"),
+        "expected pending edit baseline.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("unchanged.py"),
+        "unexpected unchanged.py in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_diff_only_includes_newly_staged_untracked_file() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let baseline = dir.join("baseline.py");
+    std::fs::write(&baseline, "def baseline(): pass\n").unwrap();
+    git_add(&dir, &baseline);
+    git_commit(&dir, "baseline commit");
+
+    // Brand-new file, staged but never committed: an index addition.
+    let fresh = dir.join("fresh.py");
+    std::fs::write(&fresh, "def fresh(): pass\n").unwrap();
+    git_add(&dir, &fresh);
+
+    let output = pretender_cmd()
+        .args(["check", ".", "--diff-only", "--diff-base=HEAD"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("fresh.py"),
+        "expected newly staged fresh.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("baseline.py"),
+        "unexpected unchanged baseline.py in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_exclude_globs_match_walked_paths_from_dot() {
+    let dir = tempdir();
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[pretender]\nexclude = [\"tests/**\", \"vendor/**\"]\n",
+    )
+    .expect("write config");
+
+    for (relative, source) in [
+        ("src/app.py", "def app(): pass\n"),
+        ("tests/test_a.py", "def test_a(): pass\n"),
+        ("vendor/lib.py", "def vendored(): pass\n"),
+    ] {
+        let full = dir.join(relative);
+        std::fs::create_dir_all(full.parent().expect("parent dir")).expect("mkdir");
+        std::fs::write(full, source).expect("write source");
+    }
+
+    let output = check_in(&dir, Path::new("."))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("app.py"),
+        "expected app.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("test_a.py"),
+        "tests/** must exclude the dot-prefixed walked path: {stdout}"
+    );
+    assert!(
+        !stdout.contains("lib.py"),
+        "vendor/** must exclude the dot-prefixed walked path: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_exclude_dot_prefixed_glob_matches_walked_path() {
+    let dir = tempdir();
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[pretender]\nexclude = [\"./tests/**\"]\n",
+    )
+    .expect("write config");
+    std::fs::create_dir_all(dir.join("tests")).expect("mkdir tests");
+    std::fs::write(dir.join("tests").join("test_a.py"), "def test_a(): pass\n")
+        .expect("write test file");
+    std::fs::write(dir.join("app.py"), "def app(): pass\n").expect("write app file");
+
+    let dot = check_in(&dir, Path::new("."))
+        .output()
+        .expect("failed to execute process");
+    assert!(
+        dot.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&dot.stderr)
+    );
+    let dot_stdout = String::from_utf8_lossy(&dot.stdout);
+    assert!(dot_stdout.contains("app.py"), "stdout: {dot_stdout}");
+    assert!(
+        !dot_stdout.contains("test_a.py"),
+        "./tests/** must exclude the dot-prefixed walk: {dot_stdout}"
+    );
+
+    // Walking `tests` directly yields paths without the `./` prefix, so the
+    // pattern only matches once its own leading `./` is normalized away.
+    let bare = check_in(&dir, Path::new("tests"))
+        .output()
+        .expect("failed to execute process");
+    assert!(
+        bare.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&bare.stderr)
+    );
+    let bare_stdout = String::from_utf8_lossy(&bare.stdout);
+    assert!(
+        !bare_stdout.contains("test_a.py"),
+        "./tests/** must exclude walked tests/test_a.py: {bare_stdout}"
+    );
+}
+
+#[test]
 fn test_cpp_complexity() {
     let output = pretender_cmd()
         .arg("complexity")
