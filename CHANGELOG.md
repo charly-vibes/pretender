@@ -4,11 +4,23 @@
 
 ### Fixed
 
+- **`pretender init` no longer injects the `WAI` and `DONT` blocks it does not
+  own, and the doctor no longer reports their absent provenance as drift
+  (pretender-1ap)** — ownership follows publication: wai authors the `WAI`
+  block, dont authors `DONT`, and pretender publishes no AGENTS.md region, so
+  init had no business writing either one. `pretender init` now writes only
+  `pretender.toml` (plus the optional hook and CI workflow), leaving an existing
+  `AGENTS.md` byte-identical, and the `genesis.managed_block_drift` doctor check
+  is no longer registered — a wai- or dont-authored block can no longer be
+  reported as drifted against a pretender generator. A CLI test pins both the
+  byte-identical file and the absence of any drift finding naming `WAI` or
+  `DONT`.
+
 - **`pretender init` no longer writes the retired `OPENSPEC` managed block** —
   openspec 1.0.0 stopped publishing its AGENTS.md block (it writes
   `openspec/config.yaml` instead), so pretender was a second writer into a
-  retired region. Init now injects only the `WAI` and `DONT` blocks, and a unit
-  test pins that set. Fixes the ddl doctor advisory `ddl.repo.blocks`
+  retired region. Init's remaining blocks are gone too (see pretender-1ap
+  above). Fixes the ddl doctor advisory `ddl.repo.blocks`
   ("AGENTS.md carries the retired OPENSPEC:START managed block") that turned
   ddl CI red on repos where `pretender init` had run.
 

@@ -44,7 +44,6 @@ use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
 use genesis::git_hooks::{self as genesis_git_hooks, HookName};
 use genesis::guide::Guide;
-use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
 use genesis::status::{StatusContributor, StatusItem, StatusSection};
 use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
@@ -487,9 +486,6 @@ impl Executable for InitArgs {
         )
         .map_err(|e| anyhow::anyhow!("failed to register in genesis manifest: {e}"))?;
 
-        // Inject suite managed blocks into AGENTS.md
-        inject_managed_blocks()?;
-
         if options.install_hook {
             install_hook(HookName::PreCommit)?;
         }
@@ -573,66 +569,27 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
     Ok(repo_short)
 }
 
-/// Managed blocks pretender injects into AGENTS.md at init.
-///
-/// Single source of truth for both the injector ([`inject_managed_blocks`])
-/// and the doctor drift targets (`doctor.rs`): the doctor's
-/// `ManagedBlockDrift` check regenerates these exact contents to detect
-/// drifted blocks via the provenance footer hash.
-pub(crate) fn managed_block_specs() -> Vec<(BlockDef, String)> {
-    vec![
-        (
-            BlockDef::new("WAI"),
-            "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n".to_string(),
-        ),
-        (
-            BlockDef::new("DONT"),
-            "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n".to_string(),
-        ),
-    ]
-}
-
-fn inject_managed_blocks() -> Result<()> {
-    let mut reg = BlockRegistry::new();
-    for (block, _) in managed_block_specs() {
-        reg.register(block);
-    }
-    // Provenance footer (pretender-ivo): each block records generator,
-    // version, source and content sha inside the markers, enabling
-    // doctor's genesis.managed_block_drift fast path.
-    let injector = BlockInjector::new(reg).with_provenance("pretender");
-
-    let agents_path = std::path::Path::new("AGENTS.md");
-    for (block, content) in managed_block_specs() {
-        injector
-            .inject(agents_path, &block.name, &content)
-            .with_context(|| format!("failed to inject {} managed block", block.name))?;
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
-mod managed_block_spec_tests {
-    use super::*;
+mod managed_block_ownership_tests {
+    /// AGENTS.md regions pretender owns.
+    ///
+    /// Ownership rule: only the tool that publishes a region may write it.
+    /// pretender publishes none — WAI belongs to wai and DONT to dont — so
+    /// `pretender init` injects no blocks and the doctor registers no
+    /// block-drift target. A future entry here is a deliberate, test-visible
+    /// decision that must name the publishing tool first.
+    fn owned_agents_regions() -> Vec<&'static str> {
+        vec![]
+    }
 
-    /// The injected block set is a public surface: `pretender init` writes
-    /// these regions into the user's AGENTS.md. Pin it exactly so adding or
-    /// removing a block is a deliberate, test-visible change. In particular
-    /// only blocks whose owning tool still publishes them belong here —
-    /// openspec retired its AGENTS.md block in 1.0.0 (it writes
-    /// `openspec/config.yaml` instead), so pretender must not be a second
-    /// writer into a retired region.
     #[test]
-    fn injected_block_set_is_exactly_supported_names() {
-        let names: Vec<String> = managed_block_specs()
-            .into_iter()
-            .map(|(block, _)| block.name)
-            .collect();
-        assert_eq!(
-            names,
-            vec!["WAI".to_string(), "DONT".to_string()],
-            "managed block set drifted from the supported ownership set"
+    fn supported_managed_block_set_is_empty() {
+        let owned = owned_agents_regions();
+        assert!(
+            owned.is_empty(),
+            "ownership rule violated: only a tool that publishes an AGENTS.md \
+             region may write it, but pretender claims {owned:?} — WAI and DONT \
+             are authored by wai and dont"
         );
     }
 }
