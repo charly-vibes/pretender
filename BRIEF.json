@@ -1,0 +1,277 @@
+{
+  "ok": true,
+  "envelope_version": "0.1",
+  "cli_version": "0.1.0",
+  "envelope_kind": "ok",
+  "data": {
+    "schema_version": "brief.v1",
+    "as_of": "2026-11-18",
+    "generated_at": "2026-11-18T21:12:08.736486237Z",
+    "sources": [
+      {
+        "name": "beads",
+        "status": "present",
+        "observed_at": "2026-11-18T16:06:39Z",
+        "staleness": "fresh",
+        "detail": "12 malformed line(s) skipped in .beads/issues.jsonl"
+      },
+      {
+        "name": "git",
+        "status": "present",
+        "observed_at": "2026-11-18T16:08:16Z",
+        "staleness": "fresh",
+        "detail": null
+      },
+      {
+        "name": "openspec",
+        "status": "present",
+        "observed_at": "2026-11-18T19:56:14.999045457Z",
+        "staleness": "fresh",
+        "detail": null
+      },
+      {
+        "name": "whisper",
+        "status": "present",
+        "observed_at": "2026-11-04T19:55:25Z",
+        "staleness": "fresh",
+        "detail": null
+      },
+      {
+        "name": "curation",
+        "status": "present",
+        "observed_at": "2026-11-18T21:12:08.730748817Z",
+        "staleness": "fresh",
+        "detail": null
+      }
+    ],
+    "curation": {
+      "updated_at": "2026-11-18T21:12:08.730748817Z",
+      "confirmed_at": null
+    },
+    "purpose_lite": null,
+    "focus": [],
+    "in_flight": [
+      {
+        "id": "pretender-nvn",
+        "title": "docs: apply README front-door standard v0.4 (§5.1)",
+        "status": "open",
+        "priority": 1,
+        "blocked_by": [],
+        "age_days": 2,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-4cs",
+        "title": "Terminate hanging or noisy external scanners within configured budgets",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [
+          "pretender-fqk"
+        ],
+        "age_days": 40,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-6tt",
+        "title": "Rust extractor does not populate params metric — params_max unenforced for Rust",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-fqk",
+        "title": "Distinguish external scanner failures from clean quality results",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 40,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-gv5",
+        "title": "void_mutator detection is nondeterministic across scans — gate 'known' count flaps 55↔49 on an unchanged tree",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-t1b",
+        "title": "Deployed spec drift: reserved-command and reserved-staged scenarios contradict shipped behavior",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-2uv",
+        "title": "openspec 1.x upgrade blocked: 10 validation failures under @fission-ai/openspec@1.14.2",
+        "status": "open",
+        "priority": 3,
+        "blocked_by": [],
+        "age_days": 33,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-c60",
+        "title": "Configure cargo runner in .espectacular + reconcile contract test entries",
+        "status": "open",
+        "priority": 3,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      }
+    ],
+    "blocked": [
+      {
+        "id": "pretender-4cs",
+        "title": "Terminate hanging or noisy external scanners within configured budgets",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [
+          "pretender-fqk"
+        ],
+        "age_days": 40,
+        "reason": null,
+        "confirmed_at": null
+      }
+    ],
+    "next": [
+      {
+        "id": "pretender-nvn",
+        "title": "docs: apply README front-door standard v0.4 (§5.1)",
+        "status": "open",
+        "priority": 1,
+        "blocked_by": [],
+        "age_days": 2,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-6tt",
+        "title": "Rust extractor does not populate params metric — params_max unenforced for Rust",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-fqk",
+        "title": "Distinguish external scanner failures from clean quality results",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 40,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-gv5",
+        "title": "void_mutator detection is nondeterministic across scans — gate 'known' count flaps 55↔49 on an unchanged tree",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      },
+      {
+        "id": "pretender-t1b",
+        "title": "Deployed spec drift: reserved-command and reserved-staged scenarios contradict shipped behavior",
+        "status": "open",
+        "priority": 2,
+        "blocked_by": [],
+        "age_days": 14,
+        "reason": null,
+        "confirmed_at": null
+      }
+    ],
+    "parked": [],
+    "needs_retriage": [],
+    "recent": [
+      {
+        "sha": "18a76a2d31553eeb1c7e7b4cb48dc18b08a1536d",
+        "committed_at": "2026-11-18T16:08:16Z",
+        "subject": "beads: close pretender-1ap",
+        "outcome": null
+      },
+      {
+        "sha": "5b78ac8836d1a3eeb24f5f5dc13cbc489ebe7743",
+        "committed_at": "2026-11-18T16:02:42Z",
+        "subject": "chore(gates): render the managed gate blocks from .ddl/config.toml",
+        "outcome": null
+      },
+      {
+        "sha": "72e18ed8c5e1693ad2f7addf688ee7932cdbd6dc",
+        "committed_at": "2026-11-18T15:53:08Z",
+        "subject": "fix(init): stop writing AGENTS.md regions pretender does not own",
+        "outcome": null
+      },
+      {
+        "sha": "58450f1e54104240ef3b1a4ae96f8df2a4af06f1",
+        "committed_at": "2026-11-18T15:02:32Z",
+        "subject": "chore(openspec): migrate project.md into config.yaml; pin 2.1.0",
+        "outcome": null
+      },
+      {
+        "sha": "a793212554282fb382fb58f4bfe5491756a9e377",
+        "committed_at": "2026-11-18T15:02:26Z",
+        "subject": "chore(openspec): adopt the 2.1 artifact layout",
+        "outcome": null
+      }
+    ],
+    "health": {
+      "status": "amber",
+      "basis": "signals",
+      "signals": [
+        {
+          "kind": "orphan_commits",
+          "reason": "18 commits in the 14-day window link no tracker id or open work-item path: 036b4b38b71797882cf5c4d19743d338d7e9d2e7 (Merge pull request #53 from charly-vibes/feat/update-app-threshold-defaults); 0a89aada947a20b529c3f0c60c9576ddf552cea5 (chore(beads): file void_mutator nondeterminism observed from tambor gate runs); 49b10e06778702e6e4ad9cb4ce64a57e79d744c7 (Merge pull request #52 from charly-vibes/proposal/update-app-threshold-defaults); 532f346c9f59e9b3a62875680840476868da3d2e (ci(release): keep tap/scoop publishing when crates.io upload fails); 58450f1e54104240ef3b1a4ae96f8df2a4af06f1 (chore(openspec): migrate project.md into config.yaml; pin 2.1.0); 5b78ac8836d1a3eeb24f5f5dc13cbc489ebe7743 (chore(gates): render the managed gate blocks from .ddl/config.toml); 5e8e5cabd1cb1845fa8292788a253c869623fda5 (beads: file the foreign-region overwrite defect); 6b60acd39afa1d68820942a402ba9e2b9e417117 (docs: apply issue-review fixes to README/release tickets); 6f39b674401db4d8411f5abb7c9f93d7df51158e (chore(release): v0.11.1 — dot-prefixed exclude globs, pending-commit diff mode); 72e18ed8c5e1693ad2f7addf688ee7932cdbd6dc (fix(init): stop writing AGENTS.md regions pretender does not own); 856824097a5c190281fa50efeaa6d4c871f2bc02 (fix(gate): match dot-prefixed walked paths against exclude globs; cover worktree in diff mode); 86a91a7f15b774bf2e4da495c3eed995b62cfe35 (feat(config): tighten threshold defaults, add init threshold presets); 972f4fa2fcd8c504372808543846dda23442de50 (docs: file README front-door and release tickets); a793212554282fb382fb58f4bfe5491756a9e377 (chore(openspec): adopt the 2.1 artifact layout); c229b2990dd20aed4b4101811b6aa26fbb0be191 (fix(gates): unblock pre-commit — contract adoption, spk gate retarget, baseline); cf49a70cabf228778d1fe390d5b532812c6091bf (fix(init): stop injecting the retired OPENSPEC block; ignore build output); f0a0a106c88d8ff5726819abbe25ef7dd5a0d922 (chore(release): v0.11.0); f3fa56a1fa95a222b5a22fde8f5700a8dd3a660b (docs: apply issue-review fixes to README/release tickets)"
+        },
+        {
+          "kind": "spec_change_without_bead",
+          "reason": "openspec changes link no tracker id: `add-data-model-checks` changed 0 days ago, `adopt-genesis` changed 0 days ago, `update-app-threshold-defaults` changed 14 days ago"
+        }
+      ],
+      "owner": null,
+      "reason": "orphan_commits: 18 commits in the 14-day window link no tracker id or open work-item path: 036b4b38b71797882cf5c4d19743d338d7e9d2e7 (Merge pull request #53 from charly-vibes/feat/update-app-threshold-defaults); 0a89aada947a20b529c3f0c60c9576ddf552cea5 (chore(beads): file void_mutator nondeterminism observed from tambor gate runs); 49b10e06778702e6e4ad9cb4ce64a57e79d744c7 (Merge pull request #52 from charly-vibes/proposal/update-app-threshold-defaults); 532f346c9f59e9b3a62875680840476868da3d2e (ci(release): keep tap/scoop publishing when crates.io upload fails); 58450f1e54104240ef3b1a4ae96f8df2a4af06f1 (chore(openspec): migrate project.md into config.yaml; pin 2.1.0); 5b78ac8836d1a3eeb24f5f5dc13cbc489ebe7743 (chore(gates): render the managed gate blocks from .ddl/config.toml); 5e8e5cabd1cb1845fa8292788a253c869623fda5 (beads: file the foreign-region overwrite defect); 6b60acd39afa1d68820942a402ba9e2b9e417117 (docs: apply issue-review fixes to README/release tickets); 6f39b674401db4d8411f5abb7c9f93d7df51158e (chore(release): v0.11.1 — dot-prefixed exclude globs, pending-commit diff mode); 72e18ed8c5e1693ad2f7addf688ee7932cdbd6dc (fix(init): stop writing AGENTS.md regions pretender does not own); 856824097a5c190281fa50efeaa6d4c871f2bc02 (fix(gate): match dot-prefixed walked paths against exclude globs; cover worktree in diff mode); 86a91a7f15b774bf2e4da495c3eed995b62cfe35 (feat(config): tighten threshold defaults, add init threshold presets); 972f4fa2fcd8c504372808543846dda23442de50 (docs: file README front-door and release tickets); a793212554282fb382fb58f4bfe5491756a9e377 (chore(openspec): adopt the 2.1 artifact layout); c229b2990dd20aed4b4101811b6aa26fbb0be191 (fix(gates): unblock pre-commit — contract adoption, spk gate retarget, baseline); cf49a70cabf228778d1fe390d5b532812c6091bf (fix(init): stop injecting the retired OPENSPEC block; ignore build output); f0a0a106c88d8ff5726819abbe25ef7dd5a0d922 (chore(release): v0.11.0); f3fa56a1fa95a222b5a22fde8f5700a8dd3a660b (docs: apply issue-review fixes to README/release tickets); spec_change_without_bead: openspec changes link no tracker id: `add-data-model-checks` changed 0 days ago, `adopt-genesis` changed 0 days ago, `update-app-threshold-defaults` changed 14 days ago"
+    },
+    "truncation": {
+      "applied": true,
+      "omitted_counts": {
+        "next": 2,
+        "recent": 195
+      }
+    },
+    "head_sha": "18a76a2d31553eeb1c7e7b4cb48dc18b08a1536d",
+    "source_hash": "9f1d40077661fa6dc38e7dde00a2e29b1de9037b4f0a53a84b335529c9fd60a4",
+    "warnings": [
+      {
+        "source": "beads",
+        "code": "beads_parse_error",
+        "detail": "12 malformed line(s) skipped in .beads/issues.jsonl"
+      }
+    ]
+  },
+  "warnings": [],
+  "hints": [],
+  "meta": {
+    "duration_ms": 0,
+    "tx": null,
+    "request_id": null
+  }
+}
