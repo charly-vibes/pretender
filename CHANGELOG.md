@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **`pretender init` no longer writes the retired `OPENSPEC` managed block** —
+  openspec 1.0.0 stopped publishing its AGENTS.md block (it writes
+  `openspec/config.yaml` instead), so pretender was a second writer into a
+  retired region. Init now injects only the `WAI` and `DONT` blocks, and a unit
+  test pins that set. Fixes the ddl doctor advisory `ddl.repo.blocks`
+  ("AGENTS.md carries the retired OPENSPEC:START managed block") that turned
+  ddl CI red on repos where `pretender init` had run.
+
 ## [0.11.1] - 2026-11-15
 
 ### Fixed

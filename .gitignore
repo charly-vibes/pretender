@@ -33,3 +33,6 @@ docs/src/release.md
 
 # tool data dirs (managed by `ddl init --gates`)
 .pretender/
+
+# Rust build output
+/target/

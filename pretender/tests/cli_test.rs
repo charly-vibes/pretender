@@ -1732,20 +1732,18 @@ fn test_init_injects_managed_blocks() {
         "AGENTS.md should contain WAI end marker"
     );
     assert!(
-        content.contains("<!-- OPENSPEC:START -->"),
-        "AGENTS.md should contain OPENSPEC managed block"
-    );
-    assert!(
-        content.contains("<!-- OPENSPEC:END -->"),
-        "AGENTS.md should contain OPENSPEC end marker"
-    );
-    assert!(
         content.contains("<!-- DONT:START -->"),
         "AGENTS.md should contain DONT managed block"
     );
     assert!(
         content.contains("<!-- DONT:END -->"),
         "AGENTS.md should contain DONT end marker"
+    );
+    // openspec retired its AGENTS.md block in 1.0.0 (it publishes
+    // openspec/config.yaml); pretender must not be a second writer there.
+    assert!(
+        !content.contains("<!-- OPENSPEC:"),
+        "AGENTS.md must not carry the retired OPENSPEC managed block: {content}"
     );
 }
 
@@ -1771,10 +1769,10 @@ fn test_init_injects_blocks_with_provenance_footer() {
         content
             .matches("<!-- provenance: generator=pretender version=")
             .count(),
-        3,
+        2,
         "each managed block should carry a provenance footer: {content}"
     );
-    for block in ["WAI", "OPENSPEC", "DONT"] {
+    for block in ["WAI", "DONT"] {
         let footer_line = content
             .lines()
             .find(|l| {

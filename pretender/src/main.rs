@@ -586,11 +586,6 @@ pub(crate) fn managed_block_specs() -> Vec<(BlockDef, String)> {
             "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n".to_string(),
         ),
         (
-            BlockDef::new("OPENSPEC"),
-            "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
-                .to_string(),
-        ),
-        (
             BlockDef::new("DONT"),
             "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n".to_string(),
         ),
@@ -615,6 +610,31 @@ fn inject_managed_blocks() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod managed_block_spec_tests {
+    use super::*;
+
+    /// The injected block set is a public surface: `pretender init` writes
+    /// these regions into the user's AGENTS.md. Pin it exactly so adding or
+    /// removing a block is a deliberate, test-visible change. In particular
+    /// only blocks whose owning tool still publishes them belong here —
+    /// openspec retired its AGENTS.md block in 1.0.0 (it writes
+    /// `openspec/config.yaml` instead), so pretender must not be a second
+    /// writer into a retired region.
+    #[test]
+    fn injected_block_set_is_exactly_supported_names() {
+        let names: Vec<String> = managed_block_specs()
+            .into_iter()
+            .map(|(block, _)| block.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec!["WAI".to_string(), "DONT".to_string()],
+            "managed block set drifted from the supported ownership set"
+        );
+    }
 }
 
 impl Executable for ComplexityArgs {

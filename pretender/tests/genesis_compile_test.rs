@@ -113,7 +113,7 @@ fn genesis_managed_block_accessible() {
     // Create a registry and injector
     let mut reg = BlockRegistry::new();
     reg.register(BlockDef::new("WAI"));
-    reg.register(BlockDef::new("OPENSPEC"));
+    reg.register(BlockDef::new("CUSTOM"));
     reg.register(BlockDef::new("DONT"));
 
     let injector = BlockInjector::new(reg);
@@ -122,7 +122,7 @@ fn genesis_managed_block_accessible() {
     let names = injector.registry().names();
     assert!(names.contains(&"WAI"));
     assert!(names.contains(&"DONT"));
-    assert!(names.contains(&"OPENSPEC"));
+    assert!(names.contains(&"CUSTOM"));
 }
 
 #[test]
