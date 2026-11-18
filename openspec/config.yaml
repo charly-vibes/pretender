@@ -1,0 +1,62 @@
+schema: spec-driven
+
+context: |
+  Pretender is a language-aware code-quality CLI that flags structural issues —
+  high complexity, missing assertions in tests, risky call patterns — before
+  merge. Success is measured as reducing undetected complexity regressions to
+  <5% of PRs within 3 months of adoption (CI-flagged issues versus post-merge
+  quality incidents, against a no-pretender baseline).
+
+  Binary: `pretender` · Config: `pretender.toml` · License: Apache 2.0
+
+  Stack: Rust; tree-sitter grammars compiled into the binary for supported
+  languages; clap; serde + toml config; serde_sarif for SARIF 2.1.0 emission;
+  rayon for parallel file processing; miette, thiserror, anyhow for diagnostics.
+
+  Current MVP surface — commands `init`, `check [paths...]`,
+  `complexity <path>`, `report`, `hooks install|uninstall`,
+  `ci generate github`; reserved (exit 2, "not yet implemented"):
+  `duplication`, `mutation`, `plugins list|add|remove`, `explain <metric>`.
+  `check` formats: human, json, sarif. `report` formats: human, markdown, html.
+  Not yet implemented in `check`: `--staged`, `--diff-only`,
+  `--diff-base <ref>`, `--format junit|markdown`.
+
+  Conventions: Rust 2021; rustfmt; clippy with warnings denied in CI; no
+  `unwrap()` in library-style paths unless tests/fixtures justify it. Two core
+  layers: a universal code model consumed by metrics, and per-language adapters
+  that populate it from tree-sitter queries; metrics are pure functions over the
+  universal model. Tests: unit tests for metric/config logic, integration tests
+  executing the CLI against fixtures, no network calls; `cargo test`,
+  `cargo fmt --check`, and `cargo clippy -- -D warnings` pass before commit.
+  Built-in parsers: C, C++, Go, Java, JavaScript, Python, Ruby, Rust, TypeScript.
+
+  Constraints: hook generation installs a repository-wide `pretender check .`
+  shim until diff filtering lands; SARIF output stays compatible with SARIF
+  2.1.0; plugin manifests are parsed but plugin runtime loading is not
+  implemented.
+
+  Agent instrumentation: `pretender init` injects only the managed blocks the
+  tool owns. It must never overwrite a block authored by another tool (a
+  wai-authored WAI block stays byte-identical, see pretender-1ap).
+
+rules:
+  proposal:
+    - Name the metric or command surface the change affects and which
+      declaration the finding belongs to (complexity, assertions, call pattern)
+    - State whether the change touches the universal model, an adapter, or the
+      CLI surface
+  specs:
+    - Every finding keeps its rule ID, file, line range, and severity so JSON,
+      SARIF, and report output stay consistent
+  tasks:
+    - Map each task to a spec scenario and a red→green→refactor cycle
+
+operations:
+  apply:
+    guidance:
+      - Add fixture-based integration coverage for any new metric or format
+      - Run `just test` (testaruda selection) and the full suite before pushing
+  archive:
+    guidance:
+      - Confirm the archived capability's formats still agree on the same
+        finding data
