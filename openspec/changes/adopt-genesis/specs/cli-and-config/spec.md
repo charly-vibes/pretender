@@ -12,6 +12,17 @@ pretender's `--format json` output SHALL wrap every payload in `genesis::envelop
 - **THEN** the emitted JSON SHALL have top-level keys `ok`, `envelope_version`, `cli_version`, `envelope_kind`, `data`, `warnings`, `hints`, `meta`
 - **AND** the per-file findings array SHALL be nested under `data`.
 
+#### Scenario: JSON report is emitted
+
+- **WHEN** `pretender check path/to/file.py --format json` is run
+- **THEN** stdout contains valid JSON describing file reports and unit metrics
+- **AND** that JSON is wrapped in the shared genesis envelope
+
+#### Scenario: SARIF validates
+
+- **WHEN** Pretender emits SARIF output from `pretender check`
+- **THEN** the output conforms to the SARIF 2.1.0 schema
+
 ### Requirement: Init Command
 
 `pretender init` SHALL inject suite managed blocks (`<!-- WAI:START -->`, `<!-- OPENSPEC:START -->`, `<!-- DONT:START -->`) via `genesis::managed_block`, so pretender participates in the suite's AGENTS.md managed-block system like wai/dont/espectacular.
@@ -21,6 +32,16 @@ pretender's `--format json` output SHALL wrap every payload in `genesis::envelop
 - **WHEN** `pretender init` is run in a fresh repo
 - **THEN** `AGENTS.md` SHALL contain the WAI/OPENSPEC/DONT managed blocks
 - **AND** the injector mechanics SHALL come from `genesis::managed_block`, not local code.
+
+#### Scenario: Non-interactive creates config
+
+- **WHEN** `pretender init --non-interactive` is run in a repository without `pretender.toml`
+- **THEN** the system writes a default `pretender.toml` and exits with code 0
+
+#### Scenario: Interactive init can install hook and workflow
+
+- **WHEN** `pretender init` is run interactively and the user opts into hook and CI setup
+- **THEN** the system writes `pretender.toml`, `.git/hooks/pre-commit`, and `.github/workflows/pretender.yml`
 
 ## ADDED Requirements
 
