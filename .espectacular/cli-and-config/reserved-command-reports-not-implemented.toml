@@ -1,5 +1,5 @@
 id = "reserved-command-reports-not-implemented"
-description = "DRIFT: scenario text says explain is a stub but explain ships (test_explain_known_metric_prints_doc). Spec update pending (bd); entry covers stub exit-2 behavior."
+description = "Reserved commands (duplication, mutation, plugins) exit 2 with a not-implemented message; explain ships and prints the metric doc (test_explain_known_metric_prints_doc)."
 archetype = "PF"
 status = "active"
 superseded_by = ""
