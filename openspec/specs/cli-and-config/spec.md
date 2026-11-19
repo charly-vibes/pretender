@@ -22,7 +22,7 @@ In the current MVP, hook installation writes a repository-wide fallback shim tha
 
 The system SHALL provide `pretender check [paths...]` as the implemented MVP scan command for explicit file and directory inputs. The command SHALL require at least one path, SHALL recursively scan directories, and SHALL support `--format human|json|sarif`, `--output <path>`, and `--mode guidance|tiered|gate`.
 
-`--staged` SHALL filter the scan to files staged in git (falling back to all present files on a repository with no prior commit) and SHALL exit `0` with a success message when the staging area is empty. `--diff-only` and `--diff-base <ref>` remain reserved CLI flags and SHALL exit with code `2` and a `not yet implemented` message when used.
+`--staged` SHALL filter the scan to files staged in git, diffing the git index against the repository's HEAD (or against the empty tree on a repository with no prior commit, so staged files are still detected; untracked unstaged files are never scanned) and SHALL exit `0` with a success message when the staging area is empty. `--diff-only` and `--diff-base <ref>` remain reserved CLI flags and SHALL exit with code `2` and a `not yet implemented` message when used.
 
 Mode behavior in the current MVP is:
 - `guidance`: always exits `0`
@@ -149,10 +149,10 @@ The system SHALL parse data-only plugin manifests made of `.scm` query files and
 
 ### Requirement: Reserved Commands
 
-The current MVP CLI SHALL expose the following reserved commands, which currently exit with code `2` and a `not yet implemented` message: `duplication`, `mutation`, and `plugins`. The `explain <metric>` command is implemented and SHALL print the documentation for the named metric.
+The current MVP CLI SHALL expose `plugins` as the reserved command, which exits with code `2` and a `not yet implemented` message. The `duplication <file>`, `mutation`, and `explain <metric>` commands are implemented: `duplication` and `explain` exit `0`, and `mutation` exits `0` or `1`.
 
 #### Scenario: Reserved command reports not implemented
-- **WHEN** `pretender duplication path/to/file.py` is run
+- **WHEN** `pretender plugins list` is run
 - **THEN** the command exits with code `2` and reports that the feature is not yet implemented
 
 ### Requirement: Language Support

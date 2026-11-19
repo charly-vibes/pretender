@@ -12,7 +12,6 @@ The `.espectacular/cli-and-config/` contracts for both scenarios carry `DRIFT` d
 ## What Changes
 
 - MODIFIED `Check Command` requirement: `--staged` is implemented (filters the scan to files staged in git, exit `0`, with a success message when nothing is staged); `--diff-only` and `--diff-base <ref>` remain reserved. The `Reserved staged flag is rejected` scenario is replaced by shipped `--staged` behavior (scenario id kept so the contract linkage holds).
-- MODIFIED `Reserved Commands` requirement: `explain` is removed from the reserved list; the scenario now exercises a still-reserved command (`duplication`) under the existing `Reserved command reports not implemented` id.
 - Docs-only: no code, no rule ids, no thresholds, no SARIF-affecting behavior.
 
 ## Impact
