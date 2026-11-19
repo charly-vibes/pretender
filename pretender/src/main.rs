@@ -3549,7 +3549,10 @@ mod violation_report_tests {
     #[test]
     fn line_none_is_omitted_from_json() {
         let json = serde_json::to_string(&violation(None)).expect("serialize");
-        assert_eq!(json, r#"{"metric":"cyclomatic","actual":12.0,"limit":10.0}"#);
+        assert_eq!(
+            json,
+            r#"{"metric":"cyclomatic","actual":12.0,"limit":10.0}"#
+        );
     }
 
     #[test]
@@ -3563,10 +3566,10 @@ mod violation_report_tests {
 
     #[test]
     fn sarif_region_uses_line_when_present() {
-        let mut file = file_report("src/a.rs", vec![unit_report(
-            "fn_a",
-            vec![violation(Some(50))],
-        )]);
+        let mut file = file_report(
+            "src/a.rs",
+            vec![unit_report("fn_a", vec![violation(Some(50))])],
+        );
         file.units[0].start_line = 10;
         let report = report(vec![file]);
         let mut buf = Vec::new();
@@ -3578,10 +3581,7 @@ mod violation_report_tests {
 
     #[test]
     fn sarif_region_falls_back_to_default_start_line_when_line_none() {
-        let mut file = file_report("src/a.rs", vec![unit_report(
-            "fn_a",
-            vec![violation(None)],
-        )]);
+        let mut file = file_report("src/a.rs", vec![unit_report("fn_a", vec![violation(None)])]);
         file.units[0].start_line = 10;
         let report = report(vec![file]);
         let mut buf = Vec::new();

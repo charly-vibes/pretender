@@ -47,11 +47,11 @@ Fixtures for generic-capable languages (Rust, Go, Java, C#, TypeScript) include 
 
 ## 8. Final integration
 
-- [ ] 8.1 Run `cargo test && cargo fmt --check && cargo clippy -- -D warnings`; fix any fallout. Verify: all three pass.
-- [ ] 8.2 Run `ah check` for spec-test correspondence and dogfood `pretender check . --staged` before committing. Verify: both clean.
-- [ ] 8.3 Update `CHANGELOG.md` under Unreleased with the new checks, config keys, and defaults. Verify: entry present.
-- [ ] 8.4 Update `docs/src/configuration.md`: add `excessive_fields_max`, `primitive_field_check`, and `domain_patterns` rows to the `[thresholds.app]` table that already lists `bool_cluster_max` / `primitive_param_check`, and list the new rule ids wherever rules are enumerated. Note in the docs that 10 is a provisional default pending calibration (pretender-uwz), that `primitive_field` is opt-in/experimental, and that generated/FFI-heavy paths should exclude or disable the check via role globs. Verify: documented defaults match `config.rs` defaults.
-- [ ] 8.5 Refresh the dogfood baseline: run `pretender check .` (full worktree), `--adopt` new `excessive_fields` findings into `pretender-baseline.json`, record the new-known count in the PR description. Verify: `pretender check . --staged` gate green afterward.
+- [x] 8.1 Run `cargo test && cargo fmt --check && cargo clippy -- -D warnings`; fix any fallout. Verify: all three pass.
+- [x] 8.2 Run `ah check` for spec-test correspondence and dogfood `pretender check . --staged` before committing. Verify: both clean.
+- [x] 8.3 Update `CHANGELOG.md` under Unreleased with the new checks, config keys, and defaults. Verify: entry present.
+- [x] 8.4 Update `docs/src/configuration.md`: add `excessive_fields_max`, `primitive_field_check`, and `domain_patterns` rows to the `[thresholds.app]` table that already lists `bool_cluster_max` / `primitive_param_check`, and list the new rule ids wherever rules are enumerated. Note in the docs that 10 is a provisional default pending calibration (pretender-uwz), that `primitive_field` is opt-in/experimental, and that generated/FFI-heavy paths should exclude or disable the check via role globs. Verify: documented defaults match `config.rs` defaults.
+- [x] 8.5 Refresh the dogfood baseline: run `pretender check .` (full worktree), `--adopt` new `excessive_fields` findings into `pretender-baseline.json`, record the new-known count in the PR description. Verify: `pretender check . --staged` gate green afterward.
 
 ## Workflow follow-up
 

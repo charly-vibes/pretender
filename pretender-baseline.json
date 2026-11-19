@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "adopted_at": "2026-11-19T19:08:53Z",
+  "adopted_at": "2026-11-19T19:36:21Z",
   "finding_ids": [
     "pretender/src/cluster_detector.rs::detect::function_lines_max",
     "pretender/src/config.rs::::excessive_fields",

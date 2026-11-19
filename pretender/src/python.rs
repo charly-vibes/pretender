@@ -72,12 +72,15 @@ mod tests {
         // Design D3: @dataclass ships as Class — no decorator refinement.
         assert_eq!(person.kind, TypeKind::Class);
         assert_eq!(person.language, Language::Python);
-        assert_eq!(person.span, Span { start_line: 7, end_line: 16 });
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 7,
+                end_line: 16
+            }
+        );
         assert!(
-            person
-                .name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_'),
+            person.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
             "captured name must be bare identifier, no grammar syntax: {:?}",
             person.name
         );
@@ -106,7 +109,13 @@ mod tests {
             .find(|t| t.name == "Account")
             .expect("Account captured");
         assert_eq!(account.kind, TypeKind::Class);
-        assert_eq!(account.span, Span { start_line: 19, end_line: 27 });
+        assert_eq!(
+            account.span,
+            Span {
+                start_line: 19,
+                end_line: 27
+            }
+        );
         let account_fields: Vec<(&str, Option<&str>)> = account
             .fields
             .iter()

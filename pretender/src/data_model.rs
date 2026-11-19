@@ -205,11 +205,7 @@ mod tests {
             TypeKind::Class,
             fields_of_type("String", 2), // names: String_0, String_1
         );
-        let order = type_def(
-            "Order",
-            TypeKind::Record,
-            vec![field("token", Some("i32"))],
-        );
+        let order = type_def("Order", TypeKind::Record, vec![field("token", Some("i32"))]);
         let violations = analyze(&[user, order], 0, true, &[]);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].subject, "Order.token");

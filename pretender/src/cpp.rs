@@ -70,7 +70,11 @@ mod tests {
 
         let names: Vec<&str> = widget.fields.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["width", "title", "visible"]);
-        let types: Vec<Option<&str>> = widget.fields.iter().map(|f| f.type_name.as_deref()).collect();
+        let types: Vec<Option<&str>> = widget
+            .fields
+            .iter()
+            .map(|f| f.type_name.as_deref())
+            .collect();
         assert_eq!(types, [Some("int"), Some("char"), Some("bool")]);
 
         let point = module

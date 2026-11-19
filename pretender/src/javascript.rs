@@ -79,7 +79,13 @@ mod tests {
             .expect("Person captured");
         assert_eq!(person.kind, TypeKind::Class);
         assert_eq!(person.language, Language::JavaScript);
-        assert_eq!(person.span, Span { start_line: 1, end_line: 9 });
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 1,
+                end_line: 9
+            }
+        );
         let person_fields: Vec<(&str, Option<&str>)> = person
             .fields
             .iter()

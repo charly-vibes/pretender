@@ -84,7 +84,13 @@ mod tests {
             .expect("Person captured");
         assert_eq!(person.kind, TypeKind::Struct);
         assert_eq!(person.language, Language::Julia);
-        assert_eq!(person.span, Span { start_line: 1, end_line: 5 });
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 1,
+                end_line: 5
+            }
+        );
         let person_fields: Vec<(&str, Option<&str>)> = person
             .fields
             .iter()
@@ -107,9 +113,7 @@ mod tests {
             .expect("parametric mutable struct captured");
         assert_eq!(pair.kind, TypeKind::Struct);
         assert!(
-            pair.name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_'),
+            pair.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
             "captured name must be bare identifier, no grammar syntax: {:?}",
             pair.name
         );

@@ -537,7 +537,12 @@ fn innermost_enclosing_type<'a>(
         .filter(|(_, def)| {
             def.node.start_byte() <= node.start_byte() && node.end_byte() <= def.node.end_byte()
         })
-        .max_by_key(|(_, def)| (def.node.start_byte(), std::cmp::Reverse(def.node.end_byte())))
+        .max_by_key(|(_, def)| {
+            (
+                def.node.start_byte(),
+                std::cmp::Reverse(def.node.end_byte()),
+            )
+        })
         .map(|(idx, _)| idx)
 }
 
@@ -1353,7 +1358,13 @@ mod tests {
         assert_eq!(def.name, "Outer");
         assert_eq!(def.kind, TypeKind::Struct);
         assert_eq!(def.language, Language::Rust);
-        assert_eq!(def.span, Span { start_line: 1, end_line: 4 });
+        assert_eq!(
+            def.span,
+            Span {
+                start_line: 1,
+                end_line: 4
+            }
+        );
 
         let field_names: Vec<&str> = def.fields.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(
@@ -1414,7 +1425,9 @@ mod tests {
         // Sibling language batches copy this test + fixture pair verbatim.
         let engine = rust_engine();
         let source = include_str!("../tests/fixtures/rust_types_sample.rs");
-        let (module, diags) = engine.parse(Path::new("rust_types_sample.rs"), source).unwrap();
+        let (module, diags) = engine
+            .parse(Path::new("rust_types_sample.rs"), source)
+            .unwrap();
 
         assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
 
@@ -1431,7 +1444,13 @@ mod tests {
             .expect("Person captured");
         assert_eq!(person.kind, TypeKind::Struct);
         assert_eq!(person.language, Language::Rust);
-        assert_eq!(person.span, Span { start_line: 1, end_line: 5 });
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 1,
+                end_line: 5
+            }
+        );
         let person_fields: Vec<(&str, Option<&str>)> = person
             .fields
             .iter()
@@ -1454,9 +1473,7 @@ mod tests {
             .expect("generic struct captured");
         assert_eq!(pair.kind, TypeKind::Struct);
         assert!(
-            pair.name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_'),
+            pair.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
             "captured name must be bare identifier, no grammar syntax: {:?}",
             pair.name
         );
@@ -1486,7 +1503,9 @@ mod tests {
     fn go_types_fixture_round_trip() {
         let engine = go_engine();
         let source = include_str!("../tests/fixtures/go_types_sample.go");
-        let (module, diags) = engine.parse(Path::new("go_types_sample.go"), source).unwrap();
+        let (module, diags) = engine
+            .parse(Path::new("go_types_sample.go"), source)
+            .unwrap();
 
         assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
 
@@ -1503,7 +1522,13 @@ mod tests {
             .expect("Person captured");
         assert_eq!(person.kind, TypeKind::Struct);
         assert_eq!(person.language, Language::Go);
-        assert_eq!(person.span, Span { start_line: 3, end_line: 7 });
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 3,
+                end_line: 7
+            }
+        );
         let person_fields: Vec<(&str, Option<&str>)> = person
             .fields
             .iter()
@@ -1526,9 +1551,7 @@ mod tests {
             .expect("generic struct captured");
         assert_eq!(bar.kind, TypeKind::Struct);
         assert!(
-            bar.name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_'),
+            bar.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
             "captured name must be bare identifier, no grammar syntax: {:?}",
             bar.name
         );

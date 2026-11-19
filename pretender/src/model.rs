@@ -347,7 +347,10 @@ mod tests {
         let value = serde_json::to_value(&module).expect("model should serialize to JSON");
         assert_eq!(value["type_definitions"][0]["name"], "User");
         assert_eq!(value["type_definitions"][0]["kind"], "Struct");
-        assert_eq!(value["type_definitions"][0]["fields"][1]["type_name"], "String");
+        assert_eq!(
+            value["type_definitions"][0]["fields"][1]["type_name"],
+            "String"
+        );
         let round_tripped: Module =
             serde_json::from_value(value).expect("model should deserialize from JSON");
         assert_eq!(round_tripped, module);

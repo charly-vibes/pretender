@@ -75,7 +75,13 @@ mod type_captures_tests {
             .expect("Person captured");
         assert_eq!(person.kind, TypeKind::Class);
         assert_eq!(person.language, Language::CSharp);
-        assert_eq!(person.span, Span { start_line: 3, end_line: 13 });
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 3,
+                end_line: 13
+            }
+        );
         let person_fields: Vec<(&str, Option<&str>)> = person
             .fields
             .iter()
@@ -98,10 +104,7 @@ mod type_captures_tests {
             .expect("generic class captured");
         assert_eq!(boxed.kind, TypeKind::Class);
         assert!(
-            boxed
-                .name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_'),
+            boxed.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
             "captured name must be bare identifier, no grammar syntax: {:?}",
             boxed.name
         );
