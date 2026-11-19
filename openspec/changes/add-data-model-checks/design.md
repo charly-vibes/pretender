@@ -61,20 +61,22 @@ None blocking. Ruby `attr_accessor` field mapping and Python `@dataclass` kind r
 
 ## Appendix: Language Coverage Matrix
 
-Filled in by task 6.7; one row per built-in language adapter (13):
+Filled in by task 6.7; one row per built-in language adapter (13). Fixture paths are relative to the repository root; every fixture row's per-language round-trip test passes.
 
 | Language | Type nodes | Kinds captured | Fixture |
 |---|---|---|---|
-| C | _TBD (task 6.5)_ | _TBD_ | _TBD_ |
-| C++ | _TBD (task 6.5)_ | _TBD_ | _TBD_ |
-| C# | _TBD (task 6.3)_ | _TBD_ | _TBD_ |
-| Clojure | _TBD (task 6.6)_ | _TBD_ | _TBD_ |
-| Go | _TBD (task 6.1)_ | _TBD_ | _TBD_ |
-| Java | _TBD (task 6.3)_ | _TBD_ | _TBD_ |
-| JavaScript | _TBD (task 6.4)_ | _TBD_ | _TBD_ |
-| Julia | _TBD (task 6.6)_ | _TBD_ | _TBD_ |
-| Python | _TBD (task 6.2)_ | _TBD_ | _TBD_ |
-| R | _TBD (task 6.6)_ | _TBD_ | _TBD_ |
-| Ruby | _TBD (task 6.2)_ | _TBD_ | _TBD_ |
-| Rust | _TBD (task 6.1)_ | _TBD_ | _TBD_ |
-| TypeScript | _TBD (task 6.4)_ | _TBD_ | _TBD_ |
+| C | `struct_specifier` (unions are not captured) | `Struct` | `pretender/tests/fixtures/c_types_sample.c` |
+| C++ | `struct_specifier`, `class_specifier` | `Struct`, `Class` | `pretender/tests/fixtures/cpp_types_sample.cpp` |
+| C# | `class_declaration`, `record_declaration` | `Class`, `Record` | `pretender/tests/fixtures/csharp_types_sample.cs` |
+| Clojure | none — pinned `tree-sitter-clojure` 0.1.0 exposes no distinct `defrecord`/`deftype` nodes, so no natural capture targets exist | zero captures (empty `type_definitions`) | — |
+| Go | `struct_type` (in `type_spec`) | `Struct` | `pretender/tests/fixtures/go_types_sample.go` |
+| Java | `class_declaration`, `record_declaration` | `Class`, `Record` | `pretender/tests/fixtures/java_types_sample.java` |
+| JavaScript | `class_declaration` (fields are `property_identifier` members) | `Class` | `pretender/tests/fixtures/js_types_sample.js` |
+| Julia | `struct_definition` (`struct` / `mutable struct`) | `Struct` | `pretender/tests/fixtures/julia_types_sample.jl` |
+| Python | `class_definition` (fields are `assignment` members) | `Class` (`@dataclass` ships as `Class` per D3) | `pretender/tests/fixtures/python_types_sample.py` |
+| R | none — S3/S4/R6 are function-based; no natural type node | zero captures (documented per design D2) | `pretender/tests/fixtures/r_no_types_sample.R` |
+| Ruby | none — `attr_*` are method calls, not field nodes (per design D2); classes are not captured | zero captures (empty `type_definitions`) | — |
+| Rust | `struct_item` | `Struct` | `pretender/tests/fixtures/rust_types_sample.rs` |
+| TypeScript | `class_declaration` (fields are `property_signature`) | `Class` | `pretender/tests/fixtures/ts_types_sample.ts` |
+
+Zero-capture languages (Clojure, R, Ruby) ship with empty `type_definitions` and stay silent under the new checks — valid per design D2 and the "Language without type captures is silent" scenario.

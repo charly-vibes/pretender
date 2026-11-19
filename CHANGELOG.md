@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Data-model checks: `excessive_fields` and `primitive_field` (add-data-model-checks)** — type definitions are now first-class on the universal model: a `TypeDefinition` entity (name, kind, span, fields) populated by optional `@type.*` tree-sitter captures. Captured: Rust `struct_item` → Struct; Go `struct_type` → Struct; Python `class_definition` → Class (`@dataclass` ships as Class); Java and C# `class_declaration`/`record_declaration` → Class/Record; JavaScript and TypeScript `class_declaration` → Class (TS also captures class `property_signature` fields); C `struct_specifier` → Struct (unions not captured); C++ `struct_specifier`/`class_specifier` → Struct/Class; Julia `struct_definition` → Struct. Zero captures (empty `type_definitions`, checks stay silent): Clojure (pinned tree-sitter-clojure 0.1.0 has no distinct `defrecord`/`deftype` nodes), Ruby (`attr_*` are method calls), R (S3/S4/R6 are function-based).
+  - **`excessive_fields`** flags a type with more than `excessive_fields_max` fields (default 10; `0` disables). The default 10 is provisional pending corpus calibration (pretender-uwz) — documented precedents range from 7 (pylint) to 20 (SonarQube).
+  - **`primitive_field`** flags primitive-typed fields on captured types; **opt-in and experimental** (`primitive_field_check = false` by default), with a configurable `domain_patterns` list of regexes to whitelist domain-typed names.
+  - New config keys under `[thresholds.app]`: `excessive_fields_max` (integer, default 10), `primitive_field_check` (boolean, default false), and `domain_patterns` (string list, default empty — app-level only, not role-overridable).
+  - Findings (`ViolationReport`) now carry an optional `line` value, emitted in JSON and used for the SARIF region `start_line`; output stays byte-identical when no line is set.
+
 ### Fixed
 
 - **`pretender init` no longer injects the `WAI` and `DONT` blocks it does not

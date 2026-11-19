@@ -165,7 +165,16 @@ for files not matched by any other role).
 | `unwrap_max` | integer | `5` | Maximum `unwrap()`/`expect()` calls per file; `0` disables |
 | `bool_cluster_max` | integer | `3` | Maximum boolean parameters per function; `0` disables |
 | `primitive_param_check` | boolean | `false` | Flag `String`/`int` parameters that should be newtypes |
+| `excessive_fields_max` | integer | `10` | Maximum fields per type definition before the `excessive_fields` rule flags it; `0` disables. **Provisional default** pending calibration (pretender-uwz) |
+| `primitive_field_check` | boolean | `false` | Enable the **experimental, opt-in** `primitive_field` rule on type-definition fields |
+| `domain_patterns` | string list | `[]` | Additional regexes for domain-typed field names whitelisted by `primitive_field`; app-level only, not role-overridable |
 | `inheritance_depth_max` | integer | `2` | Maximum class inheritance depth; `0` disables |
+
+Notes on the data-model rules:
+
+- `excessive_fields_max` defaults to 10, a **provisional** policy choice pending corpus calibration (pretender-uwz); documented precedents range from 7 (pylint too-many-instance-attributes) to 20 (SonarQube S1820).
+- `primitive_field` is **opt-in and experimental**: it is off by default and its rule shape may change.
+- Generated and FFI-heavy paths (C `repr(C)` layouts, codegen output) routinely trip `excessive_fields`/`primitive_field`; exclude them or disable via role globs, e.g. `[thresholds.<role>] excessive_fields_max = 0`.
 
 > **Planned (not yet enforced):** Maintainability Index (`mi_min`), coverage
 > (`coverage_line_min` / `coverage_branch_min`), and mutation score (`mutation_min`)

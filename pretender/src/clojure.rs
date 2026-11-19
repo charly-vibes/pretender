@@ -68,7 +68,8 @@ mod tests {
         // zero type captures and empty `type_definitions`; parsing must
         // stay valid (spec: "Adapter without type captures stays valid").
         let engine = clojure_engine();
-        let source = "(defrecord Point [x y])\n\n(deftype Cell [held]\n  (proto)\n  (area [this] 1))\n";
+        let source =
+            "(defrecord Point [x y])\n\n(deftype Cell [held]\n  (proto)\n  (area [this] 1))\n";
         let (module, diags) = engine
             .parse(Path::new("clojure_types_sample.clj"), source)
             .unwrap();
