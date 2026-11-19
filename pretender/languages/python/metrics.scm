@@ -36,3 +36,18 @@
     attribute: (identifier) @meta.assert_attr)
   (#match? @meta.assert_obj "^(self|pytest)$")
   (#match? @meta.assert_attr "^(assert[A-Z].*|raises|warns)$")) @assert.call
+
+; Type definitions (universal model): class declarations → Class via
+; determine_type_kind; @dataclass ships as Class per design D3.
+(class_definition
+  name: (identifier) @type.name) @type.definition
+
+; Annotated attributes on the class body become typed fields. Direct
+; children of the class body block only: annotated locals inside method
+; bodies and self.x assignments must not leak into the field list.
+(class_definition
+  body: (block
+    (expression_statement
+      (assignment
+        left: (identifier) @type.field.name
+        type: (type) @type.field.type) @type.field)))

@@ -48,3 +48,19 @@
 
 ; TypeScript-specific: generic types (no metric impact)
 (type_arguments) @type.generic
+
+; Type definitions
+(class_declaration
+  name: (type_identifier) @type.name) @type.definition
+
+; Typed class properties -> fields; type text comes from the annotation
+(public_field_definition
+  name: (property_identifier) @type.field.name
+  type: (type_annotation
+          (_) @type.field.type)?) @type.field
+
+; Declared property signatures (ambient/declare class members)
+(property_signature
+  name: (property_identifier) @type.field.name
+  type: (type_annotation
+          (_) @type.field.type)?) @type.field

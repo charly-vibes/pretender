@@ -39,3 +39,40 @@ impl Parser for RParser {
         self.engine()?.parse(path, source)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::QueryEngine;
+    use std::path::Path;
+
+    fn r_engine() -> QueryEngine {
+        QueryEngine::new(tree_sitter_r::LANGUAGE.into(), Language::R, R_QUERY).unwrap()
+    }
+
+    #[test]
+    fn r_s3_s4_r6_class_systems_not_captured_zero_type_captures() {
+        // Zero-capture decision (tasks 6.6, design D3): R's class systems
+        // are function-based — `structure(..., class = "x")` / `setClass` /
+        // `R6Class` are plain call expressions in the grammar, with no
+        // type-definition node to anchor `@type.definition` on. Per D3
+        // the adapter ships with zero type captures; parsing must stay
+        // valid with an empty `type_definitions` list.
+        let engine = r_engine();
+        let source = r#"person <- structure(list(name = "a", age = 1), class = "Person")
+setClass("Slot", slots = c(x = "numeric"))
+klass <- R6Class("Cell", public = list(held = NULL))
+name_of <- function(p) p$name
+"#;
+        let (module, diags) = engine.parse(Path::new("r_sample.R"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert!(
+            module.type_definitions.is_empty(),
+            "function-based R class systems must not be captured, got: {:?}",
+            module.type_definitions
+        );
+        assert_eq!(module.units.len(), 1);
+        assert_eq!(module.units[0].name, "name_of");
+    }
+}

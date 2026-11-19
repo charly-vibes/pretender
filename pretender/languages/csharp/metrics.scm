@@ -46,3 +46,31 @@
   (identifier)
   .
   (_)) @assign
+
+; Type definitions — the pinned tree-sitter-c-sharp grammar (0.23.5) exposes
+; `record_declaration` as the only node for both record and record struct
+; declarations; record components arrive as parameters of that node.
+(class_declaration
+  name: (identifier) @type.name) @type.definition
+
+(record_declaration
+  name: (identifier) @type.name) @type.definition
+
+; Fields
+(field_declaration
+  (variable_declaration
+    type: (_) @type.field.type
+    (variable_declarator
+      name: (identifier) @type.field.name))) @type.field
+
+; Properties
+(property_declaration
+  type: (_) @type.field.type
+  name: (identifier) @type.field.name) @type.field
+
+; Record components
+(record_declaration
+  (parameter_list
+    (parameter
+      type: (_) @type.field.type
+      name: (identifier) @type.field.name)) @type.field)

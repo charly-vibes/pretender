@@ -42,3 +42,11 @@
 (augmented_assignment_expression) @assign
 (variable_declarator
   value: (_)) @assign
+
+; Type definitions
+(class_declaration
+  name: (identifier) @type.name) @type.definition
+
+; Class fields (JS has no type annotations)
+(field_definition
+  property: (property_identifier) @type.field.name) @type.field

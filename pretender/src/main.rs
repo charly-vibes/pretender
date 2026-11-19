@@ -1776,6 +1776,27 @@ fn analyze_path(
         }
     }
 
+    // Data-model checks (type definitions from the universal model).
+    // excessive_fields is role-overridable (effective thresholds);
+    // primitive_field/domain_patterns are app-level only (spec: not
+    // role-mergeable).
+    if thresholds.excessive_fields_max > 0 || config.thresholds.app.primitive_field_check {
+        let findings = data_model::analyze(
+            &module.type_definitions,
+            thresholds.excessive_fields_max,
+            config.thresholds.app.primitive_field_check,
+            &config.thresholds.app.domain_patterns,
+        );
+        for finding in findings {
+            file_violations.push(ViolationReport {
+                metric: finding.metric.to_string(),
+                actual: finding.actual as f64,
+                limit: finding.limit as f64,
+                line: Some(finding.span.start_line),
+            });
+        }
+    }
+
     // Inheritance depth check
     if config.thresholds.app.inheritance_depth_max > 0 {
         let ih = inheritance_depth::analyze(&source, &module.language);

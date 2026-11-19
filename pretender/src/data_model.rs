@@ -9,15 +9,12 @@ use crate::model::{Span, TypeDefinition};
 use crate::primitive_obsession::{is_bare_primitive_type, is_domain_param_name};
 
 /// Metric id for the field-count check.
-#[allow(dead_code)] // read by the main.rs wiring that builds ViolationReports
 pub const EXCESSIVE_FIELDS: &str = "excessive_fields";
 /// Metric id for the field primitive-obsession check.
-#[allow(dead_code)] // read by the main.rs wiring that builds ViolationReports
 pub const PRIMITIVE_FIELD: &str = "primitive_field";
 
 /// One data-model finding. Fields are read by the main.rs wiring when it
 /// builds `ViolationReport`s; the pure module only constructs them.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataModelViolation {
     pub metric: &'static str,
@@ -32,7 +29,6 @@ pub struct DataModelViolation {
 /// * `excessive_fields_max` — max field count before flagging (0 = disabled)
 /// * `primitive_field_check` — check fields for bare primitives with domain-like names
 /// * `domain_patterns` — additional domain name patterns from config
-#[allow(dead_code)] // called by the main.rs wiring that builds ViolationReports
 pub fn analyze(
     type_defs: &[TypeDefinition],
     excessive_fields_max: u32,
