@@ -53,11 +53,42 @@
 (class_declaration
   name: (type_identifier) @type.name) @type.definition
 
-; Typed class properties -> fields; type text comes from the annotation
+; Typed class properties -> fields; type text comes from the annotation.
+; Function-valued properties (arrow functions, function expressions)
+; are CodeUnits, not data fields — members are not duplicated, so the
+; value is only paired with non-function expression kinds.
 (public_field_definition
+  !value
   name: (property_identifier) @type.field.name
   type: (type_annotation
           (_) @type.field.type)?) @type.field
+
+(public_field_definition
+  name: (property_identifier) @type.field.name
+  type: (type_annotation
+          (_) @type.field.type)?
+  value: [
+    (assignment_expression) (augmented_assignment_expression)
+    (await_expression) (binary_expression) (call_expression)
+    (identifier) (member_expression) (new_expression)
+    (parenthesized_expression) (sequence_expression) (subscript_expression)
+    (template_string) (string) (number) (regex)
+    (true) (false) (null) (undefined) (object) (array) (class)
+    (unary_expression) (update_expression)
+    (as_expression) (non_null_expression)
+  ]) @type.field
+
+; Function-valued class properties are CodeUnits (methods).
+(public_field_definition
+  name: (property_identifier) @function.name
+  value: [
+    (arrow_function
+      parameters: (_) @function.parameters
+      body: (_) @function.body)
+    (function_expression
+      parameters: (_) @function.parameters
+      body: (statement_block) @function.body)
+  ]) @function.definition
 
 ; Declared property signatures (ambient/declare class members)
 (property_signature

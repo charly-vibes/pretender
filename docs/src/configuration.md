@@ -167,7 +167,7 @@ for files not matched by any other role).
 | `primitive_param_check` | boolean | `false` | Flag `String`/`int` parameters that should be newtypes |
 | `excessive_fields_max` | integer | `10` | Maximum fields per type definition before the `excessive_fields` rule flags it; `0` disables. **Provisional default** pending calibration (pretender-uwz) |
 | `primitive_field_check` | boolean | `false` | Enable the **experimental, opt-in** `primitive_field` rule on type-definition fields |
-| `domain_patterns` | string list | `[]` | Additional regexes for domain-typed field names whitelisted by `primitive_field`; app-level only, not role-overridable |
+| `domain_patterns` | string list | `[]` | Additional name patterns (case-insensitive substring match) extending the domain-name set `primitive_field` uses to flag candidate domain-typed fields; app-level only, not role-overridable |
 | `inheritance_depth_max` | integer | `2` | Maximum class inheritance depth; `0` disables |
 
 Notes on the data-model rules:

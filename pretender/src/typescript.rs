@@ -64,7 +64,7 @@ impl Parser for TypeScriptXParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Span, TypeKind};
+    use crate::model::{Span, TypeKind, UnitKind};
     use std::path::Path;
 
     fn engine() -> QueryEngine {
@@ -152,6 +152,62 @@ mod tests {
         assert!(
             person.fields.iter().all(|f| f.name != "greet"),
             "methods must not be duplicated as fields"
+        );
+    }
+
+    #[test]
+    fn ts_function_valued_class_properties_are_units_not_fields() {
+        // Contract: members-not-duplicated — function-valued class
+        // properties are CodeUnits (kind follows the existing TS
+        // convention, where method_definition members are Function too)
+        // and never data fields.
+        let e = engine();
+        let source = "\
+class Widget {
+  label: string = 'ok';
+
+  onClick = (): void => {
+    return;
+  };
+
+  render(): string {
+    return this.label;
+  }
+}
+";
+        let (module, diags) = e.parse(Path::new("widget.ts"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+
+        let widget = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Widget")
+            .expect("Widget captured");
+        let field_names: Vec<&str> = widget.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            field_names,
+            vec!["label"],
+            "arrow-valued property is a CodeUnit, not a data field"
+        );
+
+        let unit_names: Vec<&str> = module.units.iter().map(|u| u.name.as_str()).collect();
+        assert_eq!(
+            unit_names,
+            vec!["onClick", "render"],
+            "function-valued property surfaces as a CodeUnit like methods"
+        );
+        for name in ["onClick", "render"] {
+            let unit = module.units.iter().find(|u| u.name == name).unwrap();
+            assert_eq!(
+                unit.kind,
+                UnitKind::Function,
+                "{name} follows the existing TS member kind convention"
+            );
+        }
+        assert!(
+            widget.fields.iter().all(|f| f.name != "onClick"),
+            "members must not be duplicated as fields"
         );
     }
 }

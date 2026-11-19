@@ -455,6 +455,11 @@ impl QueryEngine {
             let Some(owner) = owner else {
                 continue;
             };
+            // Members of a deliberately uncaptured nested type must not
+            // be attributed to the enclosing captured definition.
+            if field_inside_uncaptured_type(field.node, defs[owner].node, &seen) {
+                continue;
+            }
             owned.push((
                 owner,
                 field.node.start_byte(),
@@ -544,6 +549,49 @@ fn innermost_enclosing_type<'a>(
             )
         })
         .map(|(idx, _)| idx)
+}
+
+/// True when the node kind introduces a type-definition body.
+/// Grammar-agnostic name matching, mirroring `determine_type_kind`;
+/// bare body/list wrappers are skipped because a definition capture
+/// anchors on the definition node itself, not on its body child.
+fn is_type_body_kind(kind: &str) -> bool {
+    if kind.ends_with("_body") || kind.ends_with("_list") {
+        return false;
+    }
+    [
+        "struct",
+        "union",
+        "enum",
+        "class",
+        "interface",
+        "record",
+        "trait",
+    ]
+    .iter()
+    .any(|word| kind.contains(word))
+}
+
+/// True when `field_node` sits inside a type body that is neither the
+/// bound definition nor a captured definition itself — the member
+/// belongs to that deliberately uncaptured inner type (design D3),
+/// e.g. C/C++ anonymous unions/structs or Go inline struct types.
+fn field_inside_uncaptured_type(
+    field_node: tree_sitter::Node,
+    owner: tree_sitter::Node,
+    captured_def_ids: &std::collections::HashSet<usize>,
+) -> bool {
+    let mut current = field_node.parent();
+    while let Some(node) = current {
+        if node.id() == owner.id() {
+            return false;
+        }
+        if is_type_body_kind(node.kind()) && !captured_def_ids.contains(&node.id()) {
+            return true;
+        }
+        current = node.parent();
+    }
+    false
 }
 
 fn determine_unit_kind(node: tree_sitter::Node, name: &str) -> UnitKind {
@@ -892,6 +940,15 @@ mod tests {
             tree_sitter_go::LANGUAGE.into(),
             Language::Go,
             include_str!("../languages/go/metrics.scm"),
+        )
+        .unwrap()
+    }
+
+    fn c_engine() -> QueryEngine {
+        QueryEngine::new(
+            tree_sitter_c::LANGUAGE.into(),
+            Language::C,
+            include_str!("../languages/c/metrics.scm"),
         )
         .unwrap()
     }
@@ -1386,6 +1443,86 @@ mod tests {
         assert_eq!(module.units.len(), 1);
         assert_eq!(module.units[0].name, "method");
         assert_eq!(module.units[0].kind, UnitKind::Function);
+    }
+
+    #[test]
+    fn c_anonymous_type_members_not_attributed_to_enclosing_struct() {
+        // Contract: universal-code-model — members of deliberately
+        // uncaptured nested types (C/C++ anonymous unions/structs, design
+        // D3) belong to the inner type, not to the enclosing captured
+        // struct. File-global field queries must not leak raw/scaled/calib
+        // into Sensor's field list.
+        let engine = c_engine();
+        let source = "\
+struct Sensor {
+    int reading;
+    union {
+        int raw;
+        double scaled;
+    };
+    struct {
+        int calib;
+    };
+    int unit;
+};
+";
+        let (module, diags) = engine.parse(Path::new("sensor.c"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert_eq!(
+            module.type_definitions.len(),
+            1,
+            "anonymous union/struct stay uncaptured (design D3)"
+        );
+        let sensor = &module.type_definitions[0];
+        let field_names: Vec<&str> = sensor.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            field_names,
+            vec!["reading", "unit"],
+            "anonymous union/struct members are not Sensor fields"
+        );
+    }
+
+    #[test]
+    fn go_inline_struct_members_not_attributed_to_enclosing_struct() {
+        // Contract: universal-code-model — an inline struct type
+        // (uncaptured per design D3) nested inside a captured struct's
+        // field must not leak its members into the enclosing definition,
+        // and an inline struct inside a function stays outside the type
+        // model entirely.
+        let engine = go_engine();
+        let source = "\
+package main
+
+type Config struct {
+    Options struct {
+        Verbose bool
+    }
+    Name string
+}
+
+func run() {
+    var local struct {
+        Depth int
+    }
+    _ = local
+}
+";
+        let (module, diags) = engine.parse(Path::new("config.go"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert_eq!(
+            module.type_definitions.len(),
+            1,
+            "inline struct types are not captured (design D3)"
+        );
+        let config = &module.type_definitions[0];
+        let field_names: Vec<&str> = config.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            field_names,
+            vec!["Options", "Name"],
+            "inline struct members are not Config fields"
+        );
     }
 
     #[test]
