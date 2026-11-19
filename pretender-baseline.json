@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "adopted_at": "2026-11-19T18:44:38Z",
+  "adopted_at": "2026-11-19T18:54:02Z",
   "finding_ids": [
     "pretender/src/cluster_detector.rs::detect::function_lines_max",
     "pretender/src/config.rs::::file_lines",
@@ -14,6 +14,8 @@
     "pretender/src/coupling.rs::dfs_cycle::cognitive_max",
     "pretender/src/coupling.rs::dfs_cycle::function_lines_max",
     "pretender/src/coupling.rs::dfs_cycle::nesting_max",
+    "pretender/src/data_model.rs::analyze::function_lines_max",
+    "pretender/src/data_model.rs::analyze::nesting_max",
     "pretender/src/doctor.rs::run::function_lines_max",
     "pretender/src/duplication.rs::::unwraps",
     "pretender/src/duplication.rs::detect_clones::function_lines_max",
@@ -30,6 +32,7 @@
     "pretender/src/engine.rs::classify_lines::nesting_max",
     "pretender/src/engine.rs::collect_nested_blocks::function_lines_max",
     "pretender/src/engine.rs::extract_params::function_lines_max",
+    "pretender/src/engine.rs::go_types_fixture_round_trip::function_lines_max",
     "pretender/src/engine.rs::new_with_branch_weights::abc_max",
     "pretender/src/engine.rs::new_with_branch_weights::function_lines_max",
     "pretender/src/engine.rs::parse::abc_max",
@@ -37,6 +40,7 @@
     "pretender/src/engine.rs::parse::cyclomatic_max",
     "pretender/src/engine.rs::parse::function_lines_max",
     "pretender/src/engine.rs::parse::nesting_max",
+    "pretender/src/engine.rs::rust_types_fixture_round_trip::function_lines_max",
     "pretender/src/engine.rs::type_captures_populate_type_definition::function_lines_max",
     "pretender/src/engine.rs::visit_child::function_lines_max",
     "pretender/src/external_plugin.rs::::unwraps",
