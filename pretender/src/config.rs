@@ -260,6 +260,9 @@ pub struct AppThresholds {
     pub unwrap_max: u32,
     pub bool_cluster_max: u32,
     pub primitive_param_check: bool,
+    pub excessive_fields_max: u32,
+    pub primitive_field_check: bool,
+    pub domain_patterns: Vec<String>,
     pub inheritance_depth_max: u32,
 }
 
@@ -279,6 +282,9 @@ impl Default for AppThresholds {
             unwrap_max: 5,
             bool_cluster_max: 3,
             primitive_param_check: false,
+            excessive_fields_max: 10,
+            primitive_field_check: false,
+            domain_patterns: Vec::new(),
             inheritance_depth_max: 2,
         }
     }
@@ -298,6 +304,7 @@ pub struct TestThresholds {
     pub void_mutators_max: u32,
     pub unwrap_max: u32,
     pub lazy_cluster_min: u32,
+    pub excessive_fields_max: u32,
 }
 
 impl Default for TestThresholds {
@@ -314,6 +321,7 @@ impl Default for TestThresholds {
             void_mutators_max: 0,
             unwrap_max: 5,
             lazy_cluster_min: 3,
+            excessive_fields_max: 10,
         }
     }
 }
@@ -920,5 +928,55 @@ mod tests {
         )
         .expect("config should parse");
         assert_eq!(config.roles.test.classname_root, "spec");
+    }
+
+    // ── data-model thresholds (openspec add-data-model-checks §5) ──────
+
+    #[test]
+    fn config_data_model_threshold_defaults_match_spec() {
+        let config = Config::default();
+        assert_eq!(config.thresholds.app.excessive_fields_max, 10);
+        assert!(!config.thresholds.app.primitive_field_check);
+        assert!(config.thresholds.app.domain_patterns.is_empty());
+    }
+
+    #[test]
+    fn config_test_role_table_overrides_excessive_fields_max() {
+        // "Test role disables excessive-field check" at merge level: the
+        // role-table value is what EffectiveThresholds::for_role layers
+        // over the app-level value.
+        let config = Config::parse_str(
+            r#"
+            [thresholds]
+            excessive_fields_max = 12
+
+            [thresholds.test]
+            excessive_fields_max = 0
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(config.thresholds.app.excessive_fields_max, 12);
+        assert_eq!(config.thresholds.test.excessive_fields_max, 0);
+    }
+
+    #[test]
+    fn config_domain_patterns_reaches_app_config_and_is_not_role_overridable() {
+        // domain_patterns is a single app-level list: role tables neither
+        // override nor merge into it (unknown-key tolerance drops the
+        // role-table key).
+        let config = Config::parse_str(
+            r#"
+            [thresholds]
+            domain_patterns = ["^Id$", "Code$"]
+
+            [thresholds.test]
+            domain_patterns = ["TestOnly"]
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(
+            config.thresholds.app.domain_patterns,
+            vec!["^Id$".to_string(), "Code$".to_string()]
+        );
     }
 }
