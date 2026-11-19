@@ -5,6 +5,7 @@ mod config;
 mod coupling;
 mod cpp;
 mod csharp;
+mod data_model;
 mod doctor;
 mod duplication;
 mod engine;

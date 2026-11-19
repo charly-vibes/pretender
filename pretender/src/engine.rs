@@ -882,6 +882,15 @@ mod tests {
         .unwrap()
     }
 
+    fn go_engine() -> QueryEngine {
+        QueryEngine::new(
+            tree_sitter_go::LANGUAGE.into(),
+            Language::Go,
+            include_str!("../languages/go/metrics.scm"),
+        )
+        .unwrap()
+    }
+
     fn julia_engine() -> QueryEngine {
         QueryEngine::new(
             tree_sitter_julia::LANGUAGE.into(),
@@ -1395,5 +1404,153 @@ mod tests {
         assert!(module.type_definitions.is_empty());
         assert_eq!(module.units.len(), 1);
         assert_eq!(module.units[0].name, "hello");
+    }
+
+    #[test]
+    fn rust_types_fixture_round_trip() {
+        // Reusable harness pattern (tasks 6.1): the language's real
+        // metrics.scm parses a fixture file; assert TypeDefinition
+        // count/kind/ordered fields and that CodeUnits stay separate.
+        // Sibling language batches copy this test + fixture pair verbatim.
+        let engine = rust_engine();
+        let source = include_str!("../tests/fixtures/rust_types_sample.rs");
+        let (module, diags) = engine.parse(Path::new("rust_types_sample.rs"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+
+        assert_eq!(
+            module.type_definitions.len(),
+            2,
+            "both structs captured, impl/fn items are not type definitions"
+        );
+
+        let person = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Person")
+            .expect("Person captured");
+        assert_eq!(person.kind, TypeKind::Struct);
+        assert_eq!(person.language, Language::Rust);
+        assert_eq!(person.span, Span { start_line: 1, end_line: 5 });
+        let person_fields: Vec<(&str, Option<&str>)> = person
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            person_fields,
+            vec![
+                ("name", Some("String")),
+                ("age", Some("u8")),
+                ("email", Some("String")),
+            ],
+            "named fields only, in declaration order"
+        );
+
+        let pair = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Pair")
+            .expect("generic struct captured");
+        assert_eq!(pair.kind, TypeKind::Struct);
+        assert!(
+            pair.name
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_'),
+            "captured name must be bare identifier, no grammar syntax: {:?}",
+            pair.name
+        );
+        let pair_fields: Vec<(&str, Option<&str>)> = pair
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            pair_fields,
+            vec![("first", Some("T")), ("second", Some("T"))],
+            "generic parameter text never leaks into names or type names"
+        );
+
+        // CodeUnits remain separate from type members.
+        assert_eq!(module.units.len(), 2);
+        let mut unit_names: Vec<&str> = module.units.iter().map(|u| u.name.as_str()).collect();
+        unit_names.sort_unstable();
+        assert_eq!(unit_names, vec!["greet", "standalone"]);
+        assert!(
+            person.fields.iter().all(|f| f.name != "greet"),
+            "methods must not be duplicated as fields"
+        );
+    }
+
+    #[test]
+    fn go_types_fixture_round_trip() {
+        let engine = go_engine();
+        let source = include_str!("../tests/fixtures/go_types_sample.go");
+        let (module, diags) = engine.parse(Path::new("go_types_sample.go"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+
+        assert_eq!(
+            module.type_definitions.len(),
+            2,
+            "both struct type specs captured; funcs are not type definitions"
+        );
+
+        let person = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Person")
+            .expect("Person captured");
+        assert_eq!(person.kind, TypeKind::Struct);
+        assert_eq!(person.language, Language::Go);
+        assert_eq!(person.span, Span { start_line: 3, end_line: 7 });
+        let person_fields: Vec<(&str, Option<&str>)> = person
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            person_fields,
+            vec![
+                ("Name", Some("string")),
+                ("Age", Some("uint8")),
+                ("Email", Some("string")),
+            ],
+            "named fields only, in declaration order"
+        );
+
+        let bar = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Bar")
+            .expect("generic struct captured");
+        assert_eq!(bar.kind, TypeKind::Struct);
+        assert!(
+            bar.name
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_'),
+            "captured name must be bare identifier, no grammar syntax: {:?}",
+            bar.name
+        );
+        let bar_fields: Vec<(&str, Option<&str>)> = bar
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            bar_fields,
+            vec![("First", Some("T")), ("Second", Some("T"))],
+            "type parameter syntax must not leak into captured values"
+        );
+
+        // CodeUnits remain separate from type members.
+        assert_eq!(module.units.len(), 2);
+        let mut unit_names: Vec<&str> = module.units.iter().map(|u| u.name.as_str()).collect();
+        unit_names.sort_unstable();
+        assert_eq!(unit_names, vec!["Greet", "Standalone"]);
+        assert!(
+            person.fields.iter().all(|f| f.name != "Greet"),
+            "methods must not be duplicated as fields"
+        );
     }
 }
