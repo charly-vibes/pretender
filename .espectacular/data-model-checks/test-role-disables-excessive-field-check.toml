@@ -1,0 +1,9 @@
+id = "test-role-disables-excessive-field-check"
+description = "[thresholds.test] excessive_fields_max = 0 disables the field-count check for test-role files: a type definition with 15 fields there yields no excessive_fields violation."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_test_role_threshold_disables_excessive_fields"}, {flags = "config_test_role_table_overrides_excessive_fields_max"}]
