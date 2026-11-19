@@ -29,3 +29,11 @@
 (macro_invocation
   macro: (identifier) @assertion.macro_name
   (#match? @assertion.macro_name "^(assert|assert_eq|assert_ne|debug_assert|debug_assert_eq|debug_assert_ne|panic|unreachable)$")) @assert.macro_invocation
+
+; Type definitions (universal code model)
+(struct_item
+  name: (type_identifier) @type.name) @type.definition
+
+(field_declaration
+  name: (field_identifier) @type.field.name
+  type: (_) @type.field.type) @type.field

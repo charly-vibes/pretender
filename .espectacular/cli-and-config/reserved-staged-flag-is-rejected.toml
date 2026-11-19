@@ -1,5 +1,5 @@
 id = "reserved-staged-flag-is-rejected"
-description = "DRIFT: scenario text says --staged is rejected but --staged ships and is tested. Spec update pending (bd); entry pins implemented behavior."
+description = "check --staged filters the scan to staged files and exits 0 (success message when nothing is staged); --diff-only and --diff-base remain reserved. Family: test_check_staged_*."
 archetype = "PF"
 status = "active"
 superseded_by = ""

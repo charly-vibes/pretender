@@ -1,0 +1,9 @@
+id = "additional-domain-pattern-extends-the-base-set"
+description = "domain_patterns extends the primitive_field base pattern set: a bare-primitive field matching only an added domain pattern is flagged as a primitive_field violation."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "primitive_field_extra_domain_pattern_respected"}, {flags = "config_domain_patterns_reaches_app_config_and_is_not_role_overridable"}]

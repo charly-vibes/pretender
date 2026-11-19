@@ -39,3 +39,29 @@ impl Parser for RubyParser {
         self.engine()?.parse(path, source)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ruby_types_zero_capture_round_trip() {
+        // Design D2: Ruby ships with ZERO type captures — attr_accessor /
+        // attr_writer are method calls in the grammar, not field nodes.
+        // The documented zero-capture case: the adapter parses cleanly
+        // with an empty type_definitions list.
+        let parser = RubyParser;
+        let source = include_str!("../tests/fixtures/ruby_sample.rb");
+        let (module, diags) = parser.parse(Path::new("ruby_sample.rb"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert!(
+            module.type_definitions.is_empty(),
+            "Ruby adapter must produce no type definitions"
+        );
+        assert!(
+            !module.units.is_empty(),
+            "ruby methods must still be captured as CodeUnits"
+        );
+    }
+}

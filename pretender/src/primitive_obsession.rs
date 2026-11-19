@@ -71,23 +71,9 @@ pub fn analyze(
 
                 // Check for primitive domain params
                 if primitive_param_check {
-                    if let Some(ref type_name) = param.type_name {
-                        let type_trimmed = type_name.trim();
-                        let is_primitive = matches!(
-                            type_trimmed,
-                            "String"
-                                | "str"
-                                | "int"
-                                | "i32"
-                                | "i64"
-                                | "u32"
-                                | "u64"
-                                | "Int"
-                                | "Integer"
-                                | "number"
-                                | "string"
-                        );
-                        if is_primitive && is_domain_param_name(&param.name, extra_domain_patterns)
+                    if let Some(type_name) = &param.type_name {
+                        if is_bare_primitive_type(type_name)
+                            && is_domain_param_name(&param.name, extra_domain_patterns)
                         {
                             analysis.violations.push(PrimitiveViolation {
                                 kind: PrimitiveViolationKind::PrimitiveDomainParam,
@@ -133,11 +119,32 @@ pub fn analyze(
     results
 }
 
+/// Check if a declared type name is a bare primitive (no domain type).
+///
+/// Shared notion used by the parameter-level check here and the
+/// field-level check in `data_model`.
+pub(crate) fn is_bare_primitive_type(type_name: &str) -> bool {
+    matches!(
+        type_name.trim(),
+        "String"
+            | "str"
+            | "int"
+            | "i32"
+            | "i64"
+            | "u32"
+            | "u64"
+            | "Int"
+            | "Integer"
+            | "number"
+            | "string"
+    )
+}
+
 /// Check if a parameter name suggests a domain concept that should be a type.
 ///
 /// Excludes common false positives: `id`, `name`, `path` — these are
 /// legitimate primitive uses in most contexts.
-fn is_domain_param_name(name: &str, extra_patterns: &[String]) -> bool {
+pub(crate) fn is_domain_param_name(name: &str, extra_patterns: &[String]) -> bool {
     let domain_patterns = [
         "email",
         "url",

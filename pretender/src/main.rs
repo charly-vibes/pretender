@@ -5,6 +5,7 @@ mod config;
 mod coupling;
 mod cpp;
 mod csharp;
+mod data_model;
 mod doctor;
 mod duplication;
 mod engine;
@@ -1687,6 +1688,7 @@ fn analyze_path(
                 metric: "mock_count".to_string(),
                 actual: analysis.total_usage as f64,
                 limit: config.thresholds.test.mock_count_max as f64,
+                line: None,
             });
         }
         analysis
@@ -1707,6 +1709,7 @@ fn analyze_path(
                 metric: "void_mutator".to_string(),
                 actual: mutators.len() as f64,
                 limit: thresholds.void_mutators_max as f64,
+                line: None,
             });
         }
     }
@@ -1721,6 +1724,7 @@ fn analyze_path(
                 metric: "mut_ratio".to_string(),
                 actual: ratio,
                 limit: config.thresholds.app.mut_ratio_max,
+                line: None,
             });
         }
     }
@@ -1733,6 +1737,7 @@ fn analyze_path(
                 metric: "unwraps".to_string(),
                 actual: sites.len() as f64,
                 limit: thresholds.unwrap_max as f64,
+                line: None,
             });
         }
     }
@@ -1755,6 +1760,7 @@ fn analyze_path(
                     metric: "bool_cluster".to_string(),
                     actual: result.bool_param_count as f64,
                     limit: config.thresholds.app.bool_cluster_max as f64,
+                    line: None,
                 });
             }
             for v in &result.violations {
@@ -1763,9 +1769,31 @@ fn analyze_path(
                         metric: "primitive_param".to_string(),
                         actual: 1.0,
                         limit: 1.0,
+                        line: None,
                     });
                 }
             }
+        }
+    }
+
+    // Data-model checks (type definitions from the universal model).
+    // excessive_fields is role-overridable (effective thresholds);
+    // primitive_field/domain_patterns are app-level only (spec: not
+    // role-mergeable).
+    if thresholds.excessive_fields_max > 0 || config.thresholds.app.primitive_field_check {
+        let findings = data_model::analyze(
+            &module.type_definitions,
+            thresholds.excessive_fields_max,
+            config.thresholds.app.primitive_field_check,
+            &config.thresholds.app.domain_patterns,
+        );
+        for finding in findings {
+            file_violations.push(ViolationReport {
+                metric: finding.metric.to_string(),
+                actual: finding.actual as f64,
+                limit: finding.limit as f64,
+                line: Some(finding.span.start_line),
+            });
         }
     }
 
@@ -1778,6 +1806,7 @@ fn analyze_path(
                     metric: "inheritance_depth".to_string(),
                     actual: class.depth as f64,
                     limit: config.thresholds.app.inheritance_depth_max as f64,
+                    line: None,
                 });
             }
         }
@@ -1792,6 +1821,7 @@ fn analyze_path(
                 metric: "lazy_cluster".to_string(),
                 actual: cluster.count as f64,
                 limit: config.thresholds.test.lazy_cluster_min as f64,
+                line: None,
             });
         }
     }
@@ -2155,6 +2185,7 @@ fn push_limit_violation(
             metric: metric.to_string(),
             actual: actual as f64,
             limit: max as f64,
+            line: None,
         });
     }
 }
@@ -2170,6 +2201,7 @@ fn push_limit_violation_f64(
             metric: metric.to_string(),
             actual,
             limit: max as f64,
+            line: None,
         });
     }
 }
@@ -2180,6 +2212,7 @@ fn push_min_violation(out: &mut Vec<ViolationReport>, metric: &'static str, actu
             metric: metric.to_string(),
             actual: actual as f64,
             limit: min as f64,
+            line: None,
         });
     }
 }
@@ -2659,7 +2692,11 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
             .physical_location(
                 sarif::PhysicalLocation::builder()
                     .artifact_location(sarif::ArtifactLocation::builder().uri(file_path).build())
-                    .region(sarif::Region::builder().start_line(start_line).build())
+                    .region(
+                        sarif::Region::builder()
+                            .start_line(violation.line.map(i64::from).unwrap_or(start_line))
+                            .build(),
+                    )
                     .build(),
             )
             .build();
@@ -2864,6 +2901,8 @@ struct ViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3450,6 +3489,110 @@ mod exclude_glob_tests {
 }
 
 #[cfg(test)]
+mod violation_report_tests {
+    use super::*;
+
+    fn violation(line: Option<u32>) -> ViolationReport {
+        ViolationReport {
+            metric: "cyclomatic".to_string(),
+            actual: 12.0,
+            limit: 10.0,
+            line,
+        }
+    }
+
+    fn metric_values() -> MetricValues {
+        MetricValues {
+            cyclomatic: 1,
+            cognitive: 0,
+            assertions: 1,
+            function_lines: 0,
+            params: 0,
+            nesting_max: 0,
+            abc: 1.0,
+        }
+    }
+
+    fn unit_report(name: &str, violations: Vec<ViolationReport>) -> UnitReport {
+        UnitReport {
+            name: name.to_string(),
+            kind: "function".to_string(),
+            start_line: 10,
+            metrics: metric_values(),
+            violations,
+        }
+    }
+
+    fn file_report(path: &str, units: Vec<UnitReport>) -> FileReport {
+        FileReport {
+            path: path.to_string(),
+            role: "app".to_string(),
+            diagnostics: vec![],
+            file_violations: vec![],
+            units,
+            external_findings: vec![],
+            mock_findings: vec![],
+        }
+    }
+
+    fn report(files: Vec<FileReport>) -> CheckReport {
+        CheckReport {
+            files,
+            modules: vec![],
+            cycles: vec![],
+            test_findings: vec![],
+            history: None,
+        }
+    }
+
+    /// Byte-compat with existing JSON output: no `line` key when None.
+    #[test]
+    fn line_none_is_omitted_from_json() {
+        let json = serde_json::to_string(&violation(None)).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"metric":"cyclomatic","actual":12.0,"limit":10.0}"#
+        );
+    }
+
+    #[test]
+    fn line_some_is_emitted_in_json() {
+        let json = serde_json::to_string(&violation(Some(42))).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"metric":"cyclomatic","actual":12.0,"limit":10.0,"line":42}"#
+        );
+    }
+
+    #[test]
+    fn sarif_region_uses_line_when_present() {
+        let mut file = file_report(
+            "src/a.rs",
+            vec![unit_report("fn_a", vec![violation(Some(50))])],
+        );
+        file.units[0].start_line = 10;
+        let report = report(vec![file]);
+        let mut buf = Vec::new();
+        write_sarif_report(&mut buf, &report).expect("sarif");
+        let v: serde_json::Value = serde_json::from_slice(&buf).expect("parse sarif");
+        let region = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(region["startLine"], 50);
+    }
+
+    #[test]
+    fn sarif_region_falls_back_to_default_start_line_when_line_none() {
+        let mut file = file_report("src/a.rs", vec![unit_report("fn_a", vec![violation(None)])]);
+        file.units[0].start_line = 10;
+        let report = report(vec![file]);
+        let mut buf = Vec::new();
+        write_sarif_report(&mut buf, &report).expect("sarif");
+        let v: serde_json::Value = serde_json::from_slice(&buf).expect("parse sarif");
+        let region = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(region["startLine"], 10);
+    }
+}
+
+#[cfg(test)]
 mod baseline_gate_tests {
     use super::*;
 
@@ -3480,6 +3623,7 @@ mod baseline_gate_tests {
             metric: metric.to_string(),
             actual,
             limit,
+            line: None,
         }
     }
 

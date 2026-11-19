@@ -1,0 +1,9 @@
+id = "finding-is-consistent-across-output-formats"
+description = "An excessive_fields violation appears in both --format json and --format sarif output with the same file, line range, and metric id."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_data_model_violations_json"}, {flags = "test_check_sarif_data_model_rules_carry_fixture_lines"}]

@@ -28,7 +28,8 @@ context: |
   universal model. Tests: unit tests for metric/config logic, integration tests
   executing the CLI against fixtures, no network calls; `cargo test`,
   `cargo fmt --check`, and `cargo clippy -- -D warnings` pass before commit.
-  Built-in parsers: C, C++, Go, Java, JavaScript, Python, Ruby, Rust, TypeScript.
+  Built-in parsers: C, C++, C#, Clojure, Go, Java, JavaScript, Julia, Python, R,
+  Ruby, Rust, TypeScript (13).
 
   Constraints: hook generation installs a repository-wide `pretender check .`
   shim until diff filtering lands; SARIF output stays compatible with SARIF
