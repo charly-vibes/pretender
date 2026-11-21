@@ -8,7 +8,7 @@ Defines Pretender's command-line interface, configuration file schema, output fo
 
 The system SHALL provide `pretender init` to create `pretender.toml`, optionally install a pre-commit hook, and optionally generate GitHub Actions configuration. The command SHALL support `--non-interactive` and `--mode <mode>`.
 
-In the current MVP, hook installation writes a repository-wide fallback shim that runs `pretender check .` and documents that `--staged --diff-only` will replace it when diff filtering is implemented.
+In the current MVP, hook installation writes a repository-wide fallback shim that runs `pretender check . --staged`.
 
 #### Scenario: Non-interactive creates config
 - **WHEN** `pretender init --non-interactive` is run in a repository without `pretender.toml`
@@ -20,14 +20,7 @@ In the current MVP, hook installation writes a repository-wide fallback shim tha
 
 ### Requirement: Check Command
 
-The system SHALL provide `pretender check [paths...]` as the implemented MVP scan command for explicit file and directory inputs. The command SHALL require at least one path, SHALL recursively scan directories, and SHALL support `--format human|json|sarif`, `--output <path>`, and `--mode guidance|tiered|gate`.
-
-`--staged` SHALL filter the scan to files staged in git, diffing the git index against the repository's HEAD (or against the empty tree on a repository with no prior commit, so staged files are still detected; untracked unstaged files are never scanned) and SHALL exit `0` with a success message when the staging area is empty. `--diff-only` and `--diff-base <ref>` remain reserved CLI flags and SHALL exit with code `2` and a `not yet implemented` message when used.
-
-Mode behavior in the current MVP is:
-- `guidance`: always exits `0`
-- `tiered`: always exits `0` after annotating yellow/red findings
-- `gate`: exits non-zero when any file or unit threshold is violated
+The system SHALL provide `pretender check [paths...]` as the implemented MVP scan command for explicit file and directory inputs. The command SHALL require at least one path and SHALL recursively scan directories. It SHALL support `--format human|json|sarif` and `--output <path>`.
 
 Every successful `pretender check` run SHALL persist the report cache used by `pretender report`, regardless of output format.
 
@@ -35,17 +28,41 @@ Every successful `pretender check` run SHALL persist the report cache used by `p
 - **WHEN** `pretender check path/to/file.py` runs on a file with no threshold violations
 - **THEN** the command exits with code `0`
 
+#### Scenario: SARIF output is emitted
+- **WHEN** `pretender check path/to/file.py --format sarif` is run
+- **THEN** stdout contains valid SARIF 2.1.0 JSON for the analysed findings
+
+### Requirement: Check Modes
+
+`pretender check` SHALL support `--mode guidance|tiered|gate`. In `guidance` the command always exits `0`. In `tiered` it always exits `0` after annotating yellow/red findings. In `gate` it exits non-zero when any file or unit threshold is violated.
+
 #### Scenario: Guidance mode does not fail violating file
 - **WHEN** `pretender check path/to/file.py --mode guidance` runs on a file with threshold violations
 - **THEN** the command exits with code `0` after reporting the violations
+
+### Requirement: Staged Scan
+
+`--staged` SHALL filter the scan to files staged in git, diffing the git index against the repository's HEAD (or against the empty tree on a repository with no prior commit, so staged files are still detected; untracked unstaged files are never scanned). It SHALL exit `0` with a success message when the staging area is empty.
 
 #### Scenario: Reserved staged flag is rejected
 - **WHEN** `pretender check . --staged` is run in a repository with one staged file and one unstaged file
 - **THEN** the command exits with code `0` and reports only the staged file
 
-#### Scenario: SARIF output is emitted
-- **WHEN** `pretender check path/to/file.py --format sarif` is run
-- **THEN** stdout contains valid SARIF 2.1.0 JSON for the analysed findings
+### Requirement: Diff-Scoped Scan
+
+`--diff-only` SHALL restrict the scan to files changed relative to the base ref given by `--diff-base <ref>` (default: `origin/main`). The diff scope SHALL include unstaged worktree edits and newly staged files, including files staged for the first time.
+
+#### Scenario: Diff-only filters to changed files
+- **WHEN** `pretender check . --diff-only --diff-base=HEAD~1` runs with one file added since `HEAD~1`
+- **THEN** only that file is scanned
+
+#### Scenario: Diff-only includes unstaged worktree edits
+- **WHEN** `pretender check . --diff-only --diff-base=HEAD` runs with an unstaged edit in the worktree
+- **THEN** the edited file is scanned
+
+#### Scenario: Diff-only includes newly staged untracked file
+- **WHEN** `pretender check . --diff-only --diff-base=HEAD` runs with a new file staged for commit
+- **THEN** the staged file is scanned
 
 ### Requirement: Complexity Command
 
@@ -69,11 +86,11 @@ The system SHALL provide `pretender report` to render cached results from the la
 
 The system SHALL provide `pretender hooks install` to install a native pre-commit shim and `pretender hooks uninstall` to remove a shim previously installed by Pretender.
 
-In the current MVP, the installed shim SHALL run `pretender check .` and include a comment that diff-only filtering is deferred to future work.
+In the current MVP, the installed shim SHALL run `pretender check . --staged`.
 
 #### Scenario: Hook install writes fallback shim
 - **WHEN** `pretender hooks install` is run
-- **THEN** `.git/hooks/pre-commit` contains a Pretender-managed shim that executes `pretender check .`
+- **THEN** `.git/hooks/pre-commit` contains a Pretender-managed shim that executes `pretender check . --staged`
 
 #### Scenario: Hook uninstall removes Pretender shim
 - **WHEN** `pretender hooks uninstall` is run after Pretender installed the hook

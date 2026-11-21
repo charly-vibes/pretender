@@ -1,7 +1,12 @@
 # cli-core Specification
 
 ## Purpose
-TBD - created by archiving change upgrade-genesis. Update Purpose after archive.
+Defines how pretender's CLI entrypoint adopts the shared genesis guide
+scaffold: `main.rs` builds its command parser with `Guide::builder()`, command
+handlers return typed `Output<T>` or report through the `ErrorSink`, which
+prints errors with suggestion footers and writes the error scratch that powers
+`--from-last-error`.
+
 ## Requirements
 ### Requirement: CLI scaffold uses Guide
 
