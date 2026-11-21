@@ -1,0 +1,9 @@
+id = "diff-only-filters-to-changed-files"
+description = "Diff-only scan checks only files changed relative to the diff base."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_diff_only_filters_to_changed_files"}]

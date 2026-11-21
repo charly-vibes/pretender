@@ -48,15 +48,15 @@ The system SHALL represent control-flow points as `Branch` values with kind, spa
 
 ### Requirement: Tree-Sitter Query Contract
 
-Each implemented language adapter SHALL provide a `.scm` query file whose captures populate the universal model. The current MVP query engine requires captures for `@function.definition`, `@function.name`, `@function.parameters`, and `@function.body`; it also consumes optional branch, `@call`, `@call.callee`, `@assign`, and `@assert.*` captures.
-
-The query engine SHALL additionally consume optional type-definition captures: `@type.definition`, `@type.name`, `@type.field`, `@type.field.name`, and `@type.field.type`. Type captures SHALL populate the `type_definitions` list of the containing `Module`; when absent, the list SHALL be empty and parsing SHALL still succeed.
-
-Assertion captures SHALL contribute to the per-code-unit assertion count used by role-specific threshold checks.
+Each implemented language adapter SHALL provide a `.scm` query file whose captures populate the universal model. The current MVP query engine requires captures for `@function.definition`, `@function.name`, `@function.parameters`, and `@function.body`; it also consumes optional branch, `@call`, `@call.callee`, `@assign`, and `@assert.*` captures. Assertion captures SHALL contribute to the per-code-unit assertion count used by role-specific threshold checks.
 
 #### Scenario: Function captures populate code unit
 - **WHEN** a query captures `@function.definition`, `@function.name`, `@function.parameters`, and `@function.body`
 - **THEN** the adapter creates the corresponding `CodeUnit`
+
+### Requirement: Type-Definition Captures
+
+The query engine SHALL additionally consume optional type-definition captures: `@type.definition`, `@type.name`, `@type.field`, `@type.field.name`, and `@type.field.type`. Type captures SHALL populate the `type_definitions` list of the containing `Module`; when absent, the list SHALL be empty and parsing SHALL still succeed.
 
 #### Scenario: Type captures populate type definition
 - **WHEN** a query captures `@type.definition`, `@type.name`, and `@type.field` with `@type.field.name` captures
@@ -66,21 +66,33 @@ Assertion captures SHALL contribute to the per-code-unit assertion count used by
 
 The system SHALL preserve these invariants: code-unit body nesting starts at 0; nested blocks increment nesting by 1; branches carry nesting depth at capture time; files with tree-sitter parse errors emit a warning diagnostic and return an otherwise-empty `Module`; identical logical operator sequences at the same nesting level count once for cognitive complexity.
 
-In the current MVP query-engine-backed adapters, code units whose names begin with `_` are treated as not exported and other named units are treated as exported.
-
 #### Scenario: Parse error returns empty module with warning
 - **WHEN** tree-sitter reports a parse error for a source file
 - **THEN** the system emits a warning diagnostic and returns a `Module` with no `CodeUnit` values
+
+### Requirement: Export Heuristic
+
+In the current MVP query-engine-backed adapters, the system SHALL treat code units whose names begin with `_` as not exported and all other named units as exported.
+
+#### Scenario: Underscore-prefixed unit is not exported
+- **WHEN** a query-engine-backed adapter parses a code unit named `_helper`
+- **THEN** the unit is treated as not exported, while a unit named `helper` is treated as exported
 
 ### Requirement: Metric Functions
 
 The system SHALL compute metrics as pure functions over the universal model. Cyclomatic complexity SHALL be `1 + branch count`. Cognitive complexity SHALL sum branch cognitive weight multiplied by `1 + nesting_at`. Function lines SHALL use inclusive span lines. Parameter count SHALL be parameter length. Maximum nesting SHALL be the maximum block nesting value. ABC SHALL compute `sqrt(A^2 + B^2 + C^2)` using counted assignments, weighted branches, and weighted calls.
 
-In the current MVP, parsed `CallSite` values are assigned a default `smell_weight` of `1.0` by the parser, with smell-specific weighting applied later during metric evaluation.
-
 #### Scenario: Cyclomatic adds one to branches
 - **WHEN** a code unit has 4 branch nodes
 - **THEN** cyclomatic complexity is 5
+
+### Requirement: Call Site Weighting
+
+In the current MVP, the parser SHALL assign every parsed `CallSite` a default `smell_weight` of `1.0`, with smell-specific weighting applied later during metric evaluation.
+
+#### Scenario: Parsed call site gets default weight
+- **WHEN** the parser extracts a `CallSite` from source
+- **THEN** it carries the default `smell_weight` of `1.0` until smell-specific weighting applies during metric evaluation
 
 ### Requirement: Current Adapter Surface
 

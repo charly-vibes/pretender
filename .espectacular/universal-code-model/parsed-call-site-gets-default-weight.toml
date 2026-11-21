@@ -1,0 +1,9 @@
+id = "parsed-call-site-gets-default-weight"
+description = "Parser assigns every parsed call site the default smell_weight 1.0."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "parsed_call_site_gets_default_weight"}]

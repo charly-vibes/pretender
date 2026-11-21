@@ -995,6 +995,39 @@ mod tests {
         assert_eq!(module.units[0].assertions, 0);
     }
 
+    #[test]
+    fn underscore_prefixed_unit_is_not_exported() {
+        let engine = rust_engine();
+        let source = "fn _helper() {}\n\nfn helper() {}\n";
+        let (module, _) = engine.parse(Path::new("test.rs"), source).unwrap();
+        let hidden = module.units.iter().find(|u| u.name == "_helper").unwrap();
+        let public = module.units.iter().find(|u| u.name == "helper").unwrap();
+        assert!(!hidden.is_exported);
+        assert!(public.is_exported);
+    }
+
+    #[test]
+    fn parsed_call_site_gets_default_weight() {
+        let engine = rust_engine();
+        let source = "fn calls_helper() {\n    helper(1);\n}\n";
+        let (module, _) = engine.parse(Path::new("test.rs"), source).unwrap();
+        let unit = module
+            .units
+            .iter()
+            .find(|u| u.name == "calls_helper")
+            .unwrap();
+        let call = unit
+            .body
+            .children
+            .iter()
+            .find_map(|n| match n {
+                Node::Call(c) if c.callee == "helper" => Some(c),
+                _ => None,
+            })
+            .expect("call site captured");
+        assert_eq!(call.smell_weight, 1.0);
+    }
+
     fn weighted_engine(weights: BTreeMap<String, BranchWeights>) -> QueryEngine {
         QueryEngine::new_with_branch_weights(
             python_language(),

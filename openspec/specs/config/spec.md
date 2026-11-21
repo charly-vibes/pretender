@@ -1,7 +1,11 @@
 # config Specification
 
 ## Purpose
-TBD - created by archiving change upgrade-genesis. Update Purpose after archive.
+Defines how pretender adopts the shared genesis config stack: the tool's
+config struct implements `genesis::config::ConfigFile`, all config file I/O
+(read, write, parse) delegates to genesis, the config registers with the
+`ConfigRegistry` at startup, and superseded in-repo config code is removed.
+
 ## Requirements
 ### Requirement: Shared config management
 
