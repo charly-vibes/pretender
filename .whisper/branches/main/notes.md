@@ -20,7 +20,7 @@
 - 2026-11-19T18:18:02Z [id:8842d51603d9e22ad4d286f972c048523d67ec93b8be8cf32cf400101833cf28] (#resume-add-data-model-checks) ### 2026-11-19 18:17 UTC — snap: add-data-model-checks proposal finalized; board remediated; all pushed
   Format: 1
   Repo: charly-vibes/pretender (~/para/areas/dev/gh/charly/pretender), branch main @ 198323e, even with origin (push authorized + done, pre-push gate green).
-  Session: 01a1f4c7-8b3c-7345-be02-abb0543b94ca (/renew this topic to resume).
+  Session: 01a1f4c7-8b3c-7345-be02-abb0543b94ca (/renew this topic to resume). (superseded by 9d3e418aa45c646e533b5507dcd2a386c504a5ec0ebd43f1b5998fe6e3e8b341)
   
   **Objective:** finalize the add-data-model-checks openspec proposal after Rule-of-5 review against the cotorreo survey, and remediate the open issue board per issue-review.
   
@@ -39,3 +39,16 @@
   **Ownership:** jof + uwz unclaimed. **Validation:** strict validate green; ah check green; bd PASS 0 clean. **Unknowns:** user approval of revised proposal wording; choice of next ticket.
   
   **Evidence:** ~/cotorreo/raw/data-model-checks-survey/ (13-provider survey 2026-11-18); design.md "Evidence Base" section. Previous entry: none (new topic).
+- 2026-11-20T11:21:49Z [id:9d3e418aa45c646e533b5507dcd2a386c504a5ec0ebd43f1b5998fe6e3e8b341] (#resume-add-data-model-checks) ### 2026-11-20 11:21 UTC — snap: add-data-model-checks implemented+merged (PR #54); Dependabot wave 5/8 merged, 3 held red
+  Format: 1
+  Repo: charly-vibes/pretender (~/para/areas/dev/gh/charly/pretender), branch main @ 992ecc7, even with origin (merge authorized by user this session; pushes done over SSH).
+  Session: omp orchestrator session 2026-11-19→20; follow-up of session 01a1f4c7-8b3c-7345-be02-abb0543b94ca which authored the superseded entry. /renew this topic to resume.
+  Previous entry: 8842d51603d9e22ad4d286f972c048523d67ec93b8be8cf32cf400101833cf28 (fully replaced: proposal phase → implemented/merged).
+  
+  **Objective:** autonomously implement tickets jof/t1b/uwz via per-ticket TDD→ro5u→fix→commit pipeline, ship via feature branch + PR. DONE for jof/t1b.
+  **Phase:** merged/closed. PR #54 merged (13 commits, CI green, merge commit 81d349c). Changes archived: 2026-11-19-add-data-model-checks + 2026-11-19-fix-cli-spec-drift (deltas deployed, 12 .espectacular contract pins authored).
+  **Tickets:** pretender-jof CLOSED, pretender-t1b CLOSED (bd export+commit 54ddbc0). pretender-uwz OPEN by design: manifest+fetch+runner tooling merged (scripts/calibration/, smoke-tested offline); OSS corpus run + threshold pinning are HITL per its meter.
+  **Dependabot wave (user-authorized merge):** MERGED #41 serde_json, #23 deploy-pages (workflow-scope → local --no-ff + SSH push workaround), #21 clap, #25 clap_complete, #22 tree-sitter-c (only after forced @dependabot rebase + fresh CI; stale green rejected). HELD RED: #18 toml 0.8→1.1.6 (rebased, fresh CI fail 54s — needs 1.x API migration or close PR; user decision); #24 setup-just 2→4 + #20 rust-toolchain 1.98→1.120 (rebase comments queued 2026-11-19, Dependabot not yet picked up; old fails were 3m14s / 8s workflow-level). When #24/#20 rebase: fresh CI green required (user bar); BOTH touch .github/workflows → merge locally --no-ff + SSH push (gh token lacks workflow scope). #20 additionally needs the documented coordinated procedure: bump @1.98 refs in ci.yml+release.yml together with local rustup update.
+  **State/constraints:** working tree clean (pre-existing noise: .wai/.last-run deletion, .beads.gate.lock, .wai/projects/csharp-plugin/ untracked — leave). Baseline pretender-baseline.json 243 known findings incl. 7 self-detected excessive_fields ids (PR #54 description says 8 — Ro5 counted 7; correct in any follow-up). Gates at close: cargo test 414, fmt/clippy clean, ah check 0 issues, dogfood --staged green.
+  **Unresolved findings:** Ro5 LOW advisories not fixed (documented): TS abstract classes + C# plain structs not captured; no CLI leg for domain_patterns alone; openspec validate --specs --strict fails 4 specs PRE-EXISTING at main 198323e (cli-core/config placeholder Purposes, >500-char requirements) — hygiene ticket candidate. Board: 8 other ready tickets untouched (nvn P1 docs next-highest priority).
+  **Validation:** all gates listed above were run and green by the orchestrator at merge time. /renew resume-add-data-model-checks for the full state. (supersedes 8842d51603d9e22ad4d286f972c048523d67ec93b8be8cf32cf400101833cf28)
