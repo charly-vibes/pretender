@@ -16,23 +16,37 @@ pub fn staged_files(cwd: &Path) -> Result<HashSet<PathBuf>> {
     Ok(paths_from_diff(&root, &diff))
 }
 
-/// Returns canonical absolute paths of files changed between `base_ref` and HEAD.
+/// Returns canonical absolute paths of files changed relative to `base_ref`,
+/// covering the full checked-out state rather than only committed history:
+/// `base_ref..HEAD`, staged changes (HEAD..index), and unstaged worktree
+/// edits (index..worktree).
+///
+/// At pre-commit time the pending changes are staged or still in the worktree,
+/// so a base..HEAD-only diff would evaluate an earlier commit's files while
+/// the edit under review stays invisible. An untracked file that has just been
+/// `git add`ed is an index addition and is included via HEAD..index.
 pub fn diff_base_files(cwd: &Path, base_ref: &str) -> Result<HashSet<PathBuf>> {
     let repo = git2::Repository::discover(cwd)
         .context("failed to open git repository (is this a git repo?)")?;
     let root = workdir(&repo)?;
     let base_tree = resolve_tree(&repo, base_ref)?;
-    let head_tree = repo
-        .head()
-        .context("failed to get HEAD")?
-        .peel_to_commit()
-        .context("failed to peel HEAD to commit")?
-        .tree()
-        .context("failed to get HEAD commit tree")?;
-    let diff = repo
-        .diff_tree_to_tree(Some(&base_tree), Some(&head_tree), None)
-        .context("failed to diff trees")?;
-    Ok(paths_from_diff(&root, &diff))
+    let head_tree = head_tree(&repo);
+    let index = repo.index().context("failed to read git index")?;
+
+    let committed = repo
+        .diff_tree_to_tree(Some(&base_tree), head_tree.as_ref(), None)
+        .context("failed to diff base against HEAD")?;
+    let staged = repo
+        .diff_tree_to_index(head_tree.as_ref(), Some(&index), None)
+        .context("failed to diff index against HEAD")?;
+    let pending = repo
+        .diff_index_to_workdir(Some(&index), None)
+        .context("failed to diff worktree against index")?;
+
+    let mut files = paths_from_diff(&root, &committed);
+    files.extend(paths_from_diff(&root, &staged));
+    files.extend(paths_from_diff(&root, &pending));
+    Ok(files)
 }
 
 fn workdir(repo: &git2::Repository) -> Result<PathBuf> {

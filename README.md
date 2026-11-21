@@ -16,8 +16,7 @@
 > dashboards nobody checks — pretender puts cyclomatic/cognitive/abc/params
 > gates directly into CI, over exactly the code that changed, with CI configs
 > generated for you.
-> **Status:** [beta](docs/src/status.md) · init/report/ci-generate shipped · [Motivation & design](docs/src/status.md)
-
+> **Status:** [beta](docs/src/status.md) · init/report/ci-generate shipped · [Motivation & design](docs/src/status.md) · [charly-vibes Tool Ecosystem](https://charly-vibes.github.io/dulce-de-leche/ecosystem-map.html)
 [![tracked with wai](https://img.shields.io/badge/tracked%20with-wai-blue)](https://github.com/charly-vibes/wai)
 
 > **pretender will enable development teams using CI to detect structural quality
@@ -29,6 +28,16 @@
 Pretender is a Rust CLI for structural code-quality checks across multiple languages.
 
 ## Installation
+
+### Binary (curl)
+
+```bash
+V=$(basename "$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+  https://github.com/charly-vibes/pretender/releases/latest)" | sed 's/^v//')
+TGT="$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/^x86_64$/amd64/; s/^aarch64$/arm64/')"
+curl -fsSL "https://github.com/charly-vibes/pretender/releases/download/v${V}/pretender_${V}_${TGT}.tar.gz" | tar xz
+chmod +x pretender && sudo mv pretender /usr/local/bin/
+```
 
 ### Cargo (crates.io)
 
@@ -72,7 +81,7 @@ cargo build --release
 
 | Command | Description |
 |---------|-------------|
-| `pretender init` | Interactive wizard: write `pretender.toml`, install hook, generate CI |
+| `pretender init` | Interactive wizard: write `pretender.toml` (threshold preset default/strict), install hook, generate CI |
 | `pretender check <paths...>` | Fast pass/fail scan against configured thresholds |
 | `pretender doctor [--json]` | Diagnose configuration, hooks, and plugin health (warns if hook installed but no config) |
 | `pretender complexity <path>` | Show cyclomatic complexity per function, sorted worst-first |
@@ -103,7 +112,10 @@ pretender check <paths...> [flags]
 
   --format human|json|sarif     Output format (default: human)
   --output <path>               Write report to file instead of stdout
-  --mode guidance|tiered|gate   Override pretender.toml mode
+  --mode guidance|tiered|gate   Override pretender.toml mode (default: gate —
+                                advisory modes require --advisory-until DATE)
+  --advisory-until <DATE>       Advisory lease expiry (ISO YYYY-MM-DD) for
+                                tiered/guidance; expired lease fails closed
   --staged                      Check only git-staged files
   --diff-only                   Check only files changed vs --diff-base
   --diff-base <ref>             Base ref for --diff-only (default: origin/main)
@@ -132,14 +144,17 @@ Python, Rust, Go, JavaScript, TypeScript, Java, Ruby, C, C++
 
 ```toml
 [pretender]
-mode = "tiered"          # guidance | tiered | gate
+mode = "gate"            # gate (default, fail-closed) | tiered | guidance
+# advisory_until = "2027-03-31"  # REQUIRED for tiered/guidance — dated
+#                                # downgrade; expired lease fails closed
 languages = ["auto"]
 exclude = ["vendor/**", "node_modules/**", "**/*_generated.*"]
+respect_gitignore = true  # skip git-ignored dirs (target/, vendor/, …) when walking
 
 [thresholds]
 cyclomatic_max = 10
 cognitive_max = 15
-function_lines_max = 40
+function_lines_max = 30
 file_lines_max = 400
 nesting_max = 3
 params_max = 4
@@ -189,3 +204,8 @@ The LLM writes. The human knows what it should say.
 There is a distinction, even if looking at the commit history makes it hard to find. The distinction is that a machine can produce correct code without understanding anything, the same way a calculator can solve an integral without knowing what time is. Understanding what that integral is *for*, whether it actually solves the problem, whether the problem was the right problem to begin with — that remains human territory. For now.
 
 *[Leer en español](https://charly-vibes.github.io/charly-vibes/)*
+
+## Documentation provenance
+
+Rendered docs are generated artifacts; the repository sources are
+authoritative — edit the repo sources, not the rendered output.

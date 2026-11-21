@@ -1,0 +1,9 @@
+id = "language-without-type-captures-is-silent"
+description = "A supported language adapter with no @type.* captures produces no type definitions; the check completes without data-model violations or type-definition error diagnostics."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_r_without_type_captures_stays_silent"}]

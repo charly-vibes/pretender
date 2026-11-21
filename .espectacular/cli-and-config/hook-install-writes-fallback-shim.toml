@@ -1,6 +1,9 @@
 id = "hook-install-writes-fallback-shim"
-description = ""
+description = "hooks install writes the Pretender-managed pre-commit shim."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_hooks_install_and_uninstall_manage_pretender_shim"}]

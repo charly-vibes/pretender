@@ -33,3 +33,23 @@
 (assignment_expression) @assign
 (variable_declarator
   value: (_)) @assign
+
+; Type definitions
+(class_declaration
+  name: (identifier) @type.name) @type.definition
+
+(record_declaration
+  name: (identifier) @type.name) @type.definition
+
+; Instance fields
+(field_declaration
+  type: (_) @type.field.type
+  declarator: (variable_declarator
+    name: (identifier) @type.field.name)) @type.field
+
+; Record components (header parameters bind to the enclosing record)
+(record_declaration
+  (formal_parameters
+    (formal_parameter
+      type: (_) @type.field.type
+      name: (identifier) @type.field.name)) @type.field)

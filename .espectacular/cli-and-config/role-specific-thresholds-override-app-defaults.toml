@@ -1,6 +1,9 @@
 id = "role-specific-thresholds-override-app-defaults"
-description = ""
+description = "Role-specific thresholds override app defaults."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "role_thresholds_apply_overrides_before_metric_evaluation"}]

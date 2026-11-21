@@ -29,3 +29,14 @@
 (assignment_statement) @assign
 (short_var_declaration) @assign
 (var_declaration) @assign
+
+; Type definitions (universal code model)
+; Kind anchors on `struct_type` so only struct specs are captured
+; (aliases, interfaces, and func types are not) and map to Struct.
+(type_spec
+  name: (type_identifier) @type.name
+  type: (struct_type) @type.definition)
+
+(field_declaration
+  name: (field_identifier) @type.field.name
+  type: (_) @type.field.type) @type.field

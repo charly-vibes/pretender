@@ -76,20 +76,35 @@ pub fn has_errors(validations: &[ConfigValidation]) -> bool {
 #[serde(default)]
 pub struct PretenderSection {
     pub mode: Mode,
+    /// Advisory lease (pretender-1te): `tiered`/`guidance` are dated
+    /// downgrades from the gate default and require an `advisory_until`
+    /// ISO date (YYYY-MM-DD). An expired, missing, or unparseable lease
+    /// fails closed — the drift detector forcing a renewed, dated,
+    /// reviewable decision instead of a permanent silent advisory.
+    pub advisory_until: Option<String>,
     pub languages: Vec<String>,
     pub exclude: Vec<String>,
+    /// Honor .gitignore (plus global/core.excludesFile and .git/info/exclude)
+    /// when walking directories, so generated/vendored/scratch dirs stop
+    /// being scanned without per-repo exclude lists (pretender-094).
+    /// Explicitly passed file paths and --staged are never filtered.
+    pub respect_gitignore: bool,
 }
 
 impl Default for PretenderSection {
     fn default() -> Self {
         Self {
-            mode: Mode::Tiered,
+            // Gate is the fail-closed default (pretender-1te): advisory
+            // requires an explicit, dated downgrade.
+            mode: Mode::Gate,
+            advisory_until: None,
             languages: vec!["auto".to_string()],
             exclude: vec![
                 "vendor/**".to_string(),
                 "node_modules/**".to_string(),
                 "**/*_generated.*".to_string(),
             ],
+            respect_gitignore: true,
         }
     }
 }
@@ -100,6 +115,70 @@ pub enum Mode {
     Guidance,
     Tiered,
     Gate,
+}
+
+impl Mode {
+    /// Advisory modes are dated downgrades from the gate default
+    /// (pretender-1te): they fail closed without a current lease.
+    pub fn is_advisory(self) -> bool {
+        matches!(self, Mode::Guidance | Mode::Tiered)
+    }
+}
+
+/// True when an advisory lease is expired or unparseable. `None` is
+/// handled by the caller (advisory without a lease fails closed there);
+/// gate mode never consults leases.
+/// Date comparison is lexicographic on the ISO string — no date crate.
+pub fn is_lease_expired(lease: Option<&str>) -> bool {
+    let Some(lease) = lease else {
+        return false; // gate path; advisory-without-lease fails in lease check
+    };
+    if lease.len() != 10 || lease.as_bytes()[4] != b'-' || lease.as_bytes()[7] != b'-' {
+        return true;
+    }
+    if !lease
+        .bytes()
+        .enumerate()
+        .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
+    {
+        return true;
+    }
+    let month = match lease[5..7].parse::<u8>() {
+        Ok(m) if (1..=12).contains(&m) => m,
+        _ => return true,
+    };
+    let day = match lease[8..10].parse::<u8>() {
+        Ok(d) if (1..=31).contains(&d) => d,
+        _ => return true,
+    };
+    let _ = (month, day); // range-validated; comparison is lexicographic
+    let today = today_iso();
+    lease.as_bytes() <= today.as_bytes()
+}
+
+/// Today's date as ISO YYYY-MM-DD without a date crate:
+/// Hinnant's civil-from-days over the Unix epoch via std::time.
+fn today_iso() -> String {
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64 / 86_400)
+        .unwrap_or(0);
+    civil_from_days(days)
+}
+
+/// Howard Hinnant's civil_from_days: days since 1970-01-01 → ISO date.
+fn civil_from_days(z: i64) -> String {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -181,6 +260,9 @@ pub struct AppThresholds {
     pub unwrap_max: u32,
     pub bool_cluster_max: u32,
     pub primitive_param_check: bool,
+    pub excessive_fields_max: u32,
+    pub primitive_field_check: bool,
+    pub domain_patterns: Vec<String>,
     pub inheritance_depth_max: u32,
 }
 
@@ -189,18 +271,21 @@ impl Default for AppThresholds {
         Self {
             cyclomatic_max: 10,
             cognitive_max: 15,
-            function_lines_max: 40,
+            function_lines_max: 30,
             file_lines_max: 400,
             nesting_max: 3,
             params_max: 4,
             abc_max: 30,
             duplication_pct_max: 5,
-            void_mutators_max: 0,
-            mut_ratio_max: 0.0,
-            unwrap_max: 0,
-            bool_cluster_max: 0,
+            void_mutators_max: 3,
+            mut_ratio_max: 0.3,
+            unwrap_max: 5,
+            bool_cluster_max: 3,
             primitive_param_check: false,
-            inheritance_depth_max: 0,
+            excessive_fields_max: 10,
+            primitive_field_check: false,
+            domain_patterns: Vec::new(),
+            inheritance_depth_max: 2,
         }
     }
 }
@@ -219,6 +304,7 @@ pub struct TestThresholds {
     pub void_mutators_max: u32,
     pub unwrap_max: u32,
     pub lazy_cluster_min: u32,
+    pub excessive_fields_max: u32,
 }
 
 impl Default for TestThresholds {
@@ -231,10 +317,11 @@ impl Default for TestThresholds {
             cognitive_max: 5,
             duplication_pct_max: 30,
             min_assertions: Some(1),
-            mock_count_max: 0,
+            mock_count_max: 5,
             void_mutators_max: 0,
-            unwrap_max: 0,
-            lazy_cluster_min: 0,
+            unwrap_max: 5,
+            lazy_cluster_min: 3,
+            excessive_fields_max: 10,
         }
     }
 }
@@ -519,6 +606,54 @@ pub struct RoleMatcher {
 mod tests {
     use super::*;
 
+    // ── advisory-lease TTL tests (pretender-1te: gate-by-default, dated
+    // downgrades) ───────────────────────────────────────────────────────
+
+    #[test]
+    fn lease_date_validation_rejects_malformed_dates() {
+        assert!(is_lease_expired(Some("not-a-date")));
+        assert!(is_lease_expired(Some("2099-13-01"))); // month out of range
+        assert!(is_lease_expired(Some("2099-00-10")));
+        assert!(!is_lease_expired(Some("2099-12-31")));
+        assert!(is_lease_expired(Some("2000-01-01")));
+        assert!(!is_lease_expired(None)); // gate path; caller handles advisory
+    }
+
+    #[test]
+    fn advisory_mode_detection_covers_tiered_and_guidance() {
+        assert!(Mode::Tiered.is_advisory());
+        assert!(Mode::Guidance.is_advisory());
+        assert!(!Mode::Gate.is_advisory());
+    }
+
+    #[test]
+    fn advisory_mode_with_expired_or_missing_lease_fails_closed() {
+        // decide_exit_code contract: advisory + no/expired lease = FAILURE
+        // (behavioral test via decide_exit_code lives in main.rs; here we
+        // pin the config-side predicates it composes).
+        let lease = Some("2000-01-01".to_string());
+        assert!(is_lease_expired(lease.as_deref()));
+        let none: Option<String> = None;
+        assert!(none.as_deref().is_none());
+    }
+
+    #[test]
+    fn advisory_until_field_parses_from_toml() {
+        let config = Config::parse_str(
+            r#"
+            [pretender]
+            mode = "tiered"
+            advisory_until = "2099-06-30"
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(config.pretender.mode, Mode::Tiered);
+        assert_eq!(
+            config.pretender.advisory_until.as_deref(),
+            Some("2099-06-30")
+        );
+    }
+
     #[test]
     fn parses_full_config_schema_and_ignores_unknown_keys() {
         let config = Config::parse_str(
@@ -632,15 +767,30 @@ mod tests {
     fn default_config_matches_documented_conventions() {
         let config = Config::default();
 
-        assert_eq!(config.pretender.mode, Mode::Tiered);
+        // Gate is the fail-closed default (pretender-1te)
+        assert_eq!(config.pretender.mode, Mode::Gate);
+        assert_eq!(config.pretender.advisory_until, None);
         assert_eq!(config.pretender.languages, vec!["auto"]);
         assert_eq!(config.thresholds.app.cyclomatic_max, 10);
         assert_eq!(config.thresholds.app.cognitive_max, 15);
-        assert_eq!(config.thresholds.app.function_lines_max, 40);
+        // update-app-threshold-defaults: function length tightened 40 → 30
+        assert_eq!(config.thresholds.app.function_lines_max, 30);
         assert_eq!(config.thresholds.app.file_lines_max, 400);
         assert_eq!(config.thresholds.app.nesting_max, 3);
         assert_eq!(config.thresholds.app.params_max, 4);
         assert_eq!(config.thresholds.app.duplication_pct_max, 5);
+        // update-app-threshold-defaults: previously-disabled checks enabled
+        // at the values documented in openspec/changes/CONVENTIONS.md
+        assert_eq!(config.thresholds.app.void_mutators_max, 3);
+        assert_eq!(config.thresholds.app.mut_ratio_max, 0.3);
+        assert_eq!(config.thresholds.app.unwrap_max, 5);
+        assert_eq!(config.thresholds.app.bool_cluster_max, 3);
+        assert_eq!(config.thresholds.app.inheritance_depth_max, 2);
+        // test table: unwrap has no app fallback in EffectiveThresholds::for_role,
+        // so the test row is required (matches the shipped unwrap spec)
+        assert_eq!(config.thresholds.test.unwrap_max, 5);
+        assert_eq!(config.thresholds.test.mock_count_max, 5);
+        assert_eq!(config.thresholds.test.lazy_cluster_min, 3);
         assert_eq!(
             config.bands.cyclomatic.unwrap(),
             Band {
@@ -778,5 +928,55 @@ mod tests {
         )
         .expect("config should parse");
         assert_eq!(config.roles.test.classname_root, "spec");
+    }
+
+    // ── data-model thresholds (openspec add-data-model-checks §5) ──────
+
+    #[test]
+    fn config_data_model_threshold_defaults_match_spec() {
+        let config = Config::default();
+        assert_eq!(config.thresholds.app.excessive_fields_max, 10);
+        assert!(!config.thresholds.app.primitive_field_check);
+        assert!(config.thresholds.app.domain_patterns.is_empty());
+    }
+
+    #[test]
+    fn config_test_role_table_overrides_excessive_fields_max() {
+        // "Test role disables excessive-field check" at merge level: the
+        // role-table value is what EffectiveThresholds::for_role layers
+        // over the app-level value.
+        let config = Config::parse_str(
+            r#"
+            [thresholds]
+            excessive_fields_max = 12
+
+            [thresholds.test]
+            excessive_fields_max = 0
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(config.thresholds.app.excessive_fields_max, 12);
+        assert_eq!(config.thresholds.test.excessive_fields_max, 0);
+    }
+
+    #[test]
+    fn config_domain_patterns_reaches_app_config_and_is_not_role_overridable() {
+        // domain_patterns is a single app-level list: role tables neither
+        // override nor merge into it (unknown-key tolerance drops the
+        // role-table key).
+        let config = Config::parse_str(
+            r#"
+            [thresholds]
+            domain_patterns = ["^Id$", "Code$"]
+
+            [thresholds.test]
+            domain_patterns = ["TestOnly"]
+            "#,
+        )
+        .expect("config should parse");
+        assert_eq!(
+            config.thresholds.app.domain_patterns,
+            vec!["^Id$".to_string(), "Code$".to_string()]
+        );
     }
 }

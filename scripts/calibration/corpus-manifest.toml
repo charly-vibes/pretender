@@ -1,0 +1,153 @@
+# Corpus manifest — ticket pretender-uwz (calibrate `excessive_fields_max`).
+#
+# Schema (version 1):
+#   schema_version = 1                # integer; bump on any breaking schema change
+#   [[repo]]                          # one entry per corpus repo
+#     name        = string            # cache directory name (<cache-dir>/<name>)
+#     url         = string            # public https git URL; credentials rejected
+#     pin         = string            # released tag (preferred) or 40-hex commit;
+#                                     # fetch-corpus.sh fails loudly if it does not resolve
+#     license     = string            # SPDX expression, read off the repo's LICENSE* files
+#                                     # at the pin; re-verify when bumping a pin
+#     language    = string            # primary language: rust|go|python|java|csharp|typescript
+#     approx_loc  = integer           # ballpark source lines, planning only — never asserted
+#
+# Format choice — TOML over JSON: pretender's own config surface is TOML
+# (pretender.toml), TOML carries the per-entry and schema comments a corpus
+# needs for review, and the only parser the calibration scripts need is
+# python3's stdlib `tomllib` (>= 3.11). Both scripts already shell out to
+# python3 for JSON aggregation, so no new tool dependency is introduced.
+#
+# Pins: stable released tags only. Every result calibrate-fields.sh emits is
+# keyed by the pin recorded next to it, so a bumped pin visibly invalidates
+# earlier runs. A wrong pin aborts that repo's fetch with a clear error;
+# correct the pin in this file rather than working around the script.
+#
+# Licenses: all entries are permissive (MIT / Apache-2.0 / BSD-3-Clause /
+# Unlicense). Each value was transcribed from the repo's LICENSE* files at
+# the pinned tag while authoring this manifest; `fetch-corpus.sh
+# --check-licenses` re-greps the checked-out LICENSE*/COPYING* files against
+# the SPDX family as a tripwire, and pins should be re-verified manually on
+# bump (license files occasionally change with releases).
+
+schema_version = 1
+
+[[repo]]
+name = "serde"
+url = "https://github.com/serde-rs/serde.git"
+pin = "v1.0.219"
+license = "MIT OR Apache-2.0"
+language = "rust"
+approx_loc = 90000
+
+[[repo]]
+name = "clap"
+url = "https://github.com/clap-rs/clap.git"
+pin = "v4.5.23"
+license = "MIT OR Apache-2.0"
+language = "rust"
+approx_loc = 110000
+
+[[repo]]
+name = "ripgrep"
+url = "https://github.com/BurntSushi/ripgrep.git"
+pin = "14.1.0"
+license = "MIT OR Unlicense"
+language = "rust"
+approx_loc = 40000
+
+[[repo]]
+name = "gin"
+url = "https://github.com/gin-gonic/gin.git"
+pin = "v1.10.0"
+license = "MIT"
+language = "go"
+approx_loc = 35000
+
+[[repo]]
+name = "cobra"
+url = "https://github.com/spf13/cobra.git"
+pin = "v1.8.1"
+license = "Apache-2.0"
+language = "go"
+approx_loc = 20000
+
+[[repo]]
+name = "requests"
+url = "https://github.com/psf/requests.git"
+pin = "v2.32.3"
+license = "Apache-2.0"
+language = "python"
+approx_loc = 12000
+
+[[repo]]
+name = "httpx"
+url = "https://github.com/encode/httpx.git"
+pin = "0.28.1"
+license = "BSD-3-Clause"
+language = "python"
+approx_loc = 30000
+
+[[repo]]
+name = "pydantic"
+url = "https://github.com/pydantic/pydantic.git"
+pin = "v2.9.2"
+license = "MIT"
+language = "python"
+approx_loc = 70000
+
+[[repo]]
+name = "gson"
+url = "https://github.com/google/gson.git"
+pin = "gson-parent-2.11.0"
+license = "Apache-2.0"
+language = "java"
+approx_loc = 30000
+
+[[repo]]
+name = "retrofit"
+url = "https://github.com/square/retrofit.git"
+pin = "2.11.0"
+license = "Apache-2.0"
+language = "java"
+approx_loc = 25000
+
+[[repo]]
+name = "newtonsoft-json"
+url = "https://github.com/JamesNK/Newtonsoft.Json.git"
+pin = "13.0.3"
+license = "MIT"
+language = "csharp"
+approx_loc = 55000
+
+[[repo]]
+name = "serilog"
+url = "https://github.com/serilog/serilog.git"
+pin = "v4.0.2"
+license = "Apache-2.0"
+language = "csharp"
+approx_loc = 25000
+
+[[repo]]
+name = "humanizer"
+url = "https://github.com/Humanizr/Humanizer.git"
+pin = "v2.14.1"
+license = "MIT"
+language = "csharp"
+approx_loc = 40000
+
+[[repo]]
+name = "typescript"
+url = "https://github.com/microsoft/TypeScript.git"
+pin = "v5.5.4"
+license = "Apache-2.0"
+language = "typescript"
+approx_loc = 1000000
+
+[[repo]]
+name = "vuejs-core"
+url = "https://github.com/vuejs/core.git"
+pin = "v3.5.13"
+license = "MIT"
+language = "typescript"
+approx_loc = 50000

@@ -47,11 +47,13 @@ pretender init
 
 The wizard will:
 
-1. Ask which languages your project uses
-2. Suggest threshold values based on project size
-3. Write `pretender.toml` to the repo root
-4. Offer to install the pre-commit hook
-5. Offer to generate a CI workflow file
+1. Ask which mode to run (`guidance`/`tiered`/`gate`)
+2. Ask which threshold preset to write (`default`/`strict` — or pass
+   `--preset` to skip the question)
+3. Ask which languages your project uses
+4. Write `pretender.toml` to the repo root with the preset's threshold tables
+5. Offer to install the pre-commit hook
+6. Offer to generate a CI workflow file
 
 A minimal generated `pretender.toml` looks like:
 
@@ -63,9 +65,11 @@ languages = ["auto"]
 [thresholds]
 cyclomatic_max = 10
 cognitive_max  = 15
+function_lines_max = 30
 ```
 
-See the [Configuration reference](configuration.md) for every available key.
+See the [Configuration reference](configuration.md) for every available key
+and the [threshold presets](configuration.md#threshold-presets).
 
 ---
 
@@ -151,6 +155,33 @@ Recheck after refactoring:
 pretender check src/parser.py
 ```
 
+### Adopting a gate baseline
+
+Some violations are legitimate but hard to fix right now, and mechanical
+changes (a tree-wide reformat, a generated file) shouldn't read as "new"
+violations forever. `check --adopt` writes the current scan's violations into
+a gate baseline — `pretender-baseline.json`, next to `pretender.toml`:
+
+```sh
+pretender check --adopt
+# ✓ adopted 3 findings into pretender-baseline.json (file_lines 1, function_lines 2)
+```
+
+Commit that file. From then on, `pretender check --mode gate` fails **only
+on genuinely new violations** — findings whose stable ID (path, function
+name, rule — deliberately not line numbers) is not in the baseline. Known
+violations pass with a summary line:
+
+```
+→ gate: 3 known (baselined), 0 new
+```
+
+Without a baseline file, gate mode keeps its fail-closed behavior: any
+violation fails. A corrupt or unreadable baseline also fails the check
+rather than silently degrading. Adopted findings still appear in reports
+and resolution tracking — the baseline changes gate *semantics*, not
+visibility. Refresh the baseline by re-running with `--adopt`.
+
 ---
 
 ## 5. Install the pre-commit hook
@@ -198,3 +229,7 @@ on mutation score in CI, set `thresholds.mutation_min` in `pretender.toml`
 | Mutation testing flags and JSON output | [Mutation testing](mutation.md) |
 | Writing custom metric plugins | [Writing plugins](plugins.md) |
 | Language-specific tracked nodes | [languages/](../pretender/languages/) |
+
+## Ecosystem
+
+pretender is part of the [charly-vibes Tool Ecosystem](https://charly-vibes.github.io/dulce-de-leche/ecosystem-map.html) — the map shows how it relates to its sibling tools.

@@ -1,0 +1,9 @@
+id = "type-captures-populate-type-definition"
+description = "Query captures @type.definition, @type.name, and @type.field with @type.field.name populate the adapter's TypeDefinition with its captured fields."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "type_captures_populate_type_definition"}]

@@ -1,6 +1,9 @@
 id = "one-file-maps-to-one-module"
-description = ""
+description = "One parsed file yields one Module."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "parse_python_fixture"}]

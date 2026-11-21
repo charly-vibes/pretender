@@ -1,6 +1,9 @@
 id = "heuristic-role-is-used-when-no-pragma-or-glob-applies"
-description = ""
+description = "Heuristic assignment (vendor) when no pragma/glob applies."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "falls_back_to_heuristics_then_app"}]

@@ -1,6 +1,9 @@
 id = "cyclomatic-adds-one-to-branches"
-description = ""
+description = "Branch captures drive cyclomatic (+1 per branch)."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "captures_if_branch"},{flags = "captures_loop_branch"}]

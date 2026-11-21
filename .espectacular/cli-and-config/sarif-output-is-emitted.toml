@@ -1,6 +1,9 @@
 id = "sarif-output-is-emitted"
-description = ""
+description = "check --format sarif emits SARIF 2.1.0 structure."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_sarif_output_structure"}]

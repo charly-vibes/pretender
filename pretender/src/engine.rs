@@ -4,8 +4,8 @@ use std::path::Path;
 use streaming_iterator::StreamingIterator;
 
 use crate::model::{
-    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Import,
-    Language, Module, Parameter, Span, UnitKind,
+    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Field, Import,
+    Language, Module, Parameter, Span, TypeDefinition, TypeKind, UnitKind,
 };
 use crate::plugin::BranchWeights;
 
@@ -23,6 +23,11 @@ pub struct QueryEngine {
     call_callee_idx: Option<u32>,
     assign_idx: Option<u32>,
     import_idx: Option<u32>,
+    type_def_idx: Option<u32>,
+    type_name_idx: Option<u32>,
+    type_field_idx: Option<u32>,
+    type_field_name_idx: Option<u32>,
+    type_field_type_idx: Option<u32>,
     call_weights: BTreeMap<String, f64>,
 }
 
@@ -120,6 +125,15 @@ impl QueryEngine {
         let assign_idx = query.capture_index_for_name("assign");
         let import_idx = query.capture_index_for_name("import");
 
+        // Type captures are optional (D2): their absence leaves
+        // type_definitions empty instead of failing the query,
+        // mirroring how @import is handled.
+        let type_def_idx = query.capture_index_for_name("type.definition");
+        let type_name_idx = query.capture_index_for_name("type.name");
+        let type_field_idx = query.capture_index_for_name("type.field");
+        let type_field_name_idx = query.capture_index_for_name("type.field.name");
+        let type_field_type_idx = query.capture_index_for_name("type.field.type");
+
         Ok(Self {
             language,
             lang_kind,
@@ -134,6 +148,11 @@ impl QueryEngine {
             call_callee_idx,
             assign_idx,
             import_idx,
+            type_def_idx,
+            type_name_idx,
+            type_field_idx,
+            type_field_name_idx,
+            type_field_type_idx,
             call_weights: call_weights.clone(),
         })
     }
@@ -174,6 +193,7 @@ impl QueryEngine {
                     lines_comment,
                     units: Vec::new(),
                     imports: Vec::new(),
+                    ..Default::default()
                 },
                 diagnostics,
             ));
@@ -183,6 +203,9 @@ impl QueryEngine {
         let mut functions: Vec<FunctionCapture> = Vec::new();
         let mut captures = CaptureMap::default();
         let mut imports: Vec<Import> = Vec::new();
+        let mut type_defs: Vec<TypeDefCapture> = Vec::new();
+        let mut type_names: Vec<tree_sitter::Node> = Vec::new();
+        let mut type_fields: Vec<TypeFieldCapture> = Vec::new();
 
         let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
         while let Some(m) = query_matches.next() {
@@ -204,6 +227,11 @@ impl QueryEngine {
                 functions.push(fc);
             } else {
                 let mut pending_call: Option<(usize, Option<String>)> = None;
+                let mut type_def_node: Option<tree_sitter::Node> = None;
+                let mut type_name_node: Option<tree_sitter::Node> = None;
+                let mut type_field_node: Option<tree_sitter::Node> = None;
+                let mut type_field_name_node: Option<tree_sitter::Node> = None;
+                let mut type_field_type_node: Option<tree_sitter::Node> = None;
                 for capture in m.captures {
                     if let Some(spec) = self.branch_capture_for_index(capture.index) {
                         captures.branches.insert(capture.node.id(), spec);
@@ -235,10 +263,48 @@ impl QueryEngine {
                                 span: node_span(capture.node),
                             });
                         }
+                    } else if Some(capture.index) == self.type_def_idx {
+                        type_def_node = Some(capture.node);
+                    } else if Some(capture.index) == self.type_name_idx {
+                        type_name_node = Some(capture.node);
+                    } else if Some(capture.index) == self.type_field_idx {
+                        type_field_node = Some(capture.node);
+                    } else if Some(capture.index) == self.type_field_name_idx {
+                        type_field_name_node = Some(capture.node);
+                    } else if Some(capture.index) == self.type_field_type_idx {
+                        type_field_type_node = Some(capture.node);
                     }
                 }
                 if let Some((id, callee)) = pending_call {
                     captures.calls.insert(id, callee.unwrap_or_default());
+                }
+
+                match type_def_node {
+                    Some(def_node) => type_defs.push(TypeDefCapture {
+                        node: def_node,
+                        name_node: type_name_node,
+                    }),
+                    // A @type.name capture in a match of its own binds
+                    // positionally to the innermost enclosing definition
+                    // in build_type_definitions.
+                    None => {
+                        if let Some(name_node) = type_name_node {
+                            type_names.push(name_node);
+                        }
+                    }
+                }
+                if type_field_node.is_some() || type_field_name_node.is_some() {
+                    type_fields.push(TypeFieldCapture {
+                        node: type_field_node
+                            .or(type_field_name_node)
+                            .or(type_field_type_node)
+                            .unwrap(),
+                        name_node: type_field_name_node,
+                        type_node: type_field_type_node,
+                        // Definition id when the same match carried
+                        // @type.definition; otherwise resolved by position.
+                        owner: type_def_node.map(|n| n.id()),
+                    });
                 }
             }
         }
@@ -258,6 +324,9 @@ impl QueryEngine {
             })
             .collect();
 
+        let type_definitions =
+            self.build_type_definitions(type_defs, type_names, type_fields, source_bytes);
+
         Ok((
             Module {
                 path: path.to_path_buf(),
@@ -271,6 +340,7 @@ impl QueryEngine {
                 lines_comment,
                 units,
                 imports,
+                type_definitions,
             },
             diagnostics,
         ))
@@ -320,6 +390,96 @@ impl QueryEngine {
             has_test_attribute: has_test_marker(def_node, source),
         })
     }
+
+    /// Assemble `TypeDefinition`s from raw type captures. Fields whose
+    /// match carried no `@type.definition` bind to the innermost enclosing
+    /// definition; captures with no enclosing definition are dropped.
+    /// Fields keep source order.
+    fn build_type_definitions<'a>(
+        &self,
+        defs: Vec<TypeDefCapture<'a>>,
+        names: Vec<tree_sitter::Node<'a>>,
+        fields: Vec<TypeFieldCapture<'a>>,
+        source: &[u8],
+    ) -> Vec<TypeDefinition> {
+        // The same definition node can be captured by several patterns;
+        // keep the first capture per node id.
+        let mut seen = std::collections::HashSet::new();
+        let defs: Vec<TypeDefCapture> = defs
+            .into_iter()
+            .filter(|def| seen.insert(def.node.id()))
+            .collect();
+
+        let mut built: Vec<TypeDefinition> = defs
+            .iter()
+            .map(|def| TypeDefinition {
+                name: def
+                    .name_node
+                    .and_then(|n| n.utf8_text(source).ok())
+                    .unwrap_or_default()
+                    .to_string(),
+                kind: determine_type_kind(def.node.kind()),
+                span: node_span(def.node),
+                fields: Vec::new(),
+                language: self.lang_kind.clone(),
+            })
+            .collect();
+
+        // Split-pattern queries capture @type.name without the definition
+        // in the same match; bind those positionally, but only fill defs
+        // whose in-match name capture was absent.
+        for name_node in names {
+            if let Some(idx) = innermost_enclosing_type(&defs, name_node) {
+                if built[idx].name.is_empty() {
+                    if let Ok(text) = name_node.utf8_text(source) {
+                        built[idx].name = text.to_string();
+                    }
+                }
+            }
+        }
+
+        let mut owned: Vec<(usize, usize, Field)> = Vec::new();
+        for field in fields {
+            // The model contract requires each captured field to carry a
+            // name; entries without a name capture are not fields.
+            let Some(name_node) = field.name_node else {
+                continue;
+            };
+            let Ok(name) = name_node.utf8_text(source) else {
+                continue;
+            };
+            let owner = field
+                .owner
+                .and_then(|id| defs.iter().position(|def| def.node.id() == id))
+                .or_else(|| innermost_enclosing_type(&defs, field.node));
+            let Some(owner) = owner else {
+                continue;
+            };
+            // Members of a deliberately uncaptured nested type must not
+            // be attributed to the enclosing captured definition.
+            if field_inside_uncaptured_type(field.node, defs[owner].node, &seen) {
+                continue;
+            }
+            owned.push((
+                owner,
+                field.node.start_byte(),
+                Field {
+                    name: name.to_string(),
+                    type_name: field
+                        .type_node
+                        .and_then(|t| t.utf8_text(source).ok())
+                        .map(str::to_string),
+                    span: node_span(field.node),
+                },
+            ));
+        }
+        owned.sort_by_key(|(owner, start, _)| (*owner, *start));
+        for (owner, _, field) in owned {
+            built[owner].fields.push(field);
+        }
+
+        built
+    }
 }
 
 #[derive(Default)]
@@ -336,6 +496,102 @@ struct FunctionCapture<'a> {
     name_node: Option<tree_sitter::Node<'a>>,
     params_node: Option<tree_sitter::Node<'a>>,
     body_node: Option<tree_sitter::Node<'a>>,
+}
+
+struct TypeDefCapture<'a> {
+    node: tree_sitter::Node<'a>,
+    name_node: Option<tree_sitter::Node<'a>>,
+}
+
+struct TypeFieldCapture<'a> {
+    node: tree_sitter::Node<'a>,
+    name_node: Option<tree_sitter::Node<'a>>,
+    type_node: Option<tree_sitter::Node<'a>>,
+    /// Definition node id when the same match carried @type.definition.
+    owner: Option<usize>,
+}
+
+/// Best-effort kind mapping (D3): struct declarations → Struct, record
+/// declarations → Record, any other captured type node → Class.
+fn determine_type_kind(node_kind: &str) -> TypeKind {
+    match node_kind {
+        "struct_item" | "struct_declaration" | "struct_specifier" | "struct_definition" => {
+            TypeKind::Struct
+        }
+        "record_declaration" | "record_definition" | "defrecord" => TypeKind::Record,
+        other => {
+            if other.contains("record") {
+                TypeKind::Record
+            } else if other.contains("struct") {
+                TypeKind::Struct
+            } else {
+                TypeKind::Class
+            }
+        }
+    }
+}
+
+/// Index of the smallest captured definition whose byte range encloses
+/// `node` — the innermost enclosing @type.definition.
+fn innermost_enclosing_type<'a>(
+    defs: &[TypeDefCapture<'a>],
+    node: tree_sitter::Node<'a>,
+) -> Option<usize> {
+    defs.iter()
+        .enumerate()
+        .filter(|(_, def)| {
+            def.node.start_byte() <= node.start_byte() && node.end_byte() <= def.node.end_byte()
+        })
+        .max_by_key(|(_, def)| {
+            (
+                def.node.start_byte(),
+                std::cmp::Reverse(def.node.end_byte()),
+            )
+        })
+        .map(|(idx, _)| idx)
+}
+
+/// True when the node kind introduces a type-definition body.
+/// Grammar-agnostic name matching, mirroring `determine_type_kind`;
+/// bare body/list wrappers are skipped because a definition capture
+/// anchors on the definition node itself, not on its body child.
+fn is_type_body_kind(kind: &str) -> bool {
+    if kind.ends_with("_body") || kind.ends_with("_list") {
+        return false;
+    }
+    [
+        "struct",
+        "union",
+        "enum",
+        "class",
+        "interface",
+        "record",
+        "trait",
+    ]
+    .iter()
+    .any(|word| kind.contains(word))
+}
+
+/// True when `field_node` sits inside a type body that is neither the
+/// bound definition nor a captured definition itself — the member
+/// belongs to that deliberately uncaptured inner type (design D3),
+/// e.g. C/C++ anonymous unions/structs or Go inline struct types.
+fn field_inside_uncaptured_type(
+    field_node: tree_sitter::Node,
+    owner: tree_sitter::Node,
+    captured_def_ids: &std::collections::HashSet<usize>,
+) -> bool {
+    let mut current = field_node.parent();
+    while let Some(node) = current {
+        if node.id() == owner.id() {
+            return false;
+        }
+        if is_type_body_kind(node.kind()) && !captured_def_ids.contains(&node.id()) {
+            return true;
+        }
+        current = node.parent();
+    }
+    false
 }
 
 fn determine_unit_kind(node: tree_sitter::Node, name: &str) -> UnitKind {
@@ -675,6 +931,24 @@ mod tests {
             tree_sitter_rust::LANGUAGE.into(),
             Language::Rust,
             include_str!("../languages/rust/metrics.scm"),
+        )
+        .unwrap()
+    }
+
+    fn go_engine() -> QueryEngine {
+        QueryEngine::new(
+            tree_sitter_go::LANGUAGE.into(),
+            Language::Go,
+            include_str!("../languages/go/metrics.scm"),
+        )
+        .unwrap()
+    }
+
+    fn c_engine() -> QueryEngine {
+        QueryEngine::new(
+            tree_sitter_c::LANGUAGE.into(),
+            Language::C,
+            include_str!("../languages/c/metrics.scm"),
         )
         .unwrap()
     }
@@ -1097,5 +1371,346 @@ mod tests {
             }
         }
         branches
+    }
+
+    // --- Phase 6: Type captures ---
+
+    #[test]
+    fn type_captures_populate_type_definition() {
+        // Contract: universal-code-model / type-captures-populate-type-definition —
+        // definition and field captures arrive in separate matches, so fields
+        // must bind to the innermost enclosing @type.definition. The tuple
+        // field type is an anonymous inner type: captured as declared text,
+        // never as its own TypeDefinition. The method stays a CodeUnit.
+        let query_source = r#"
+(function_item
+  name: (identifier) @function.name
+  parameters: (parameters) @function.parameters
+  body: (block) @function.body) @function.definition
+
+(struct_item
+  name: (type_identifier) @type.name) @type.definition
+
+(field_declaration
+  name: (field_identifier) @type.field.name
+  type: [(type_identifier) (tuple_type)] @type.field.type) @type.field
+"#;
+        let engine = QueryEngine::new(
+            tree_sitter_rust::LANGUAGE.into(),
+            Language::Rust,
+            query_source,
+        )
+        .unwrap();
+        let source = "struct Outer {\n    name: String,\n    inner: (i32, bool),\n}\n\nimpl Outer {\n    fn method(&self) -> u32 {\n        self.name.len() as u32\n    }\n}\n";
+        let (module, diags) = engine.parse(Path::new("test.rs"), source).unwrap();
+
+        assert!(diags.is_empty(), "type captures must not emit diagnostics");
+
+        assert_eq!(
+            module.type_definitions.len(),
+            1,
+            "exactly one TypeDefinition"
+        );
+        let def = &module.type_definitions[0];
+        assert_eq!(def.name, "Outer");
+        assert_eq!(def.kind, TypeKind::Struct);
+        assert_eq!(def.language, Language::Rust);
+        assert_eq!(
+            def.span,
+            Span {
+                start_line: 1,
+                end_line: 4
+            }
+        );
+
+        let field_names: Vec<&str> = def.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            field_names,
+            vec!["name", "inner"],
+            "only struct-level fields, in declaration order"
+        );
+        assert_eq!(def.fields[0].type_name.as_deref(), Some("String"));
+        assert_eq!(
+            def.fields[1].type_name.as_deref(),
+            Some("(i32, bool)"),
+            "anonymous inner type captured as declared text"
+        );
+        assert!(
+            def.fields.iter().all(|f| f.name != "method"),
+            "methods must not be duplicated as fields"
+        );
+
+        assert_eq!(module.units.len(), 1);
+        assert_eq!(module.units[0].name, "method");
+        assert_eq!(module.units[0].kind, UnitKind::Function);
+    }
+
+    #[test]
+    fn c_anonymous_type_members_not_attributed_to_enclosing_struct() {
+        // Contract: universal-code-model — members of deliberately
+        // uncaptured nested types (C/C++ anonymous unions/structs, design
+        // D3) belong to the inner type, not to the enclosing captured
+        // struct. File-global field queries must not leak raw/scaled/calib
+        // into Sensor's field list.
+        let engine = c_engine();
+        let source = "\
+struct Sensor {
+    int reading;
+    union {
+        int raw;
+        double scaled;
+    };
+    struct {
+        int calib;
+    };
+    int unit;
+};
+";
+        let (module, diags) = engine.parse(Path::new("sensor.c"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert_eq!(
+            module.type_definitions.len(),
+            1,
+            "anonymous union/struct stay uncaptured (design D3)"
+        );
+        let sensor = &module.type_definitions[0];
+        let field_names: Vec<&str> = sensor.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            field_names,
+            vec!["reading", "unit"],
+            "anonymous union/struct members are not Sensor fields"
+        );
+    }
+
+    #[test]
+    fn go_inline_struct_members_not_attributed_to_enclosing_struct() {
+        // Contract: universal-code-model — an inline struct type
+        // (uncaptured per design D3) nested inside a captured struct's
+        // field must not leak its members into the enclosing definition,
+        // and an inline struct inside a function stays outside the type
+        // model entirely.
+        let engine = go_engine();
+        let source = "\
+package main
+
+type Config struct {
+    Options struct {
+        Verbose bool
+    }
+    Name string
+}
+
+func run() {
+    var local struct {
+        Depth int
+    }
+    _ = local
+}
+";
+        let (module, diags) = engine.parse(Path::new("config.go"), source).unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert_eq!(
+            module.type_definitions.len(),
+            1,
+            "inline struct types are not captured (design D3)"
+        );
+        let config = &module.type_definitions[0];
+        let field_names: Vec<&str> = config.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            field_names,
+            vec!["Options", "Name"],
+            "inline struct members are not Config fields"
+        );
+    }
+
+    #[test]
+    fn adapter_without_type_captures_stays_valid() {
+        // Contract: universal-code-model / adapter-without-type-captures-stays-valid —
+        // a query with only @function.* captures parses to an empty
+        // type_definitions list with no error diagnostic.
+        let query_source = r#"
+(function_definition
+  name: (identifier) @function.name
+  parameters: (parameters) @function.parameters
+  body: (block) @function.body) @function.definition
+"#;
+        let engine = QueryEngine::new(
+            tree_sitter_python::LANGUAGE.into(),
+            Language::Python,
+            query_source,
+        )
+        .unwrap();
+        let source = "def hello(x):\n    return x\n";
+        let (module, diags) = engine.parse(Path::new("test.py"), source).unwrap();
+
+        assert!(
+            diags.is_empty(),
+            "missing type captures must not be a parse failure"
+        );
+        assert!(module.type_definitions.is_empty());
+        assert_eq!(module.units.len(), 1);
+        assert_eq!(module.units[0].name, "hello");
+    }
+
+    #[test]
+    fn rust_types_fixture_round_trip() {
+        // Reusable harness pattern (tasks 6.1): the language's real
+        // metrics.scm parses a fixture file; assert TypeDefinition
+        // count/kind/ordered fields and that CodeUnits stay separate.
+        // Sibling language batches copy this test + fixture pair verbatim.
+        let engine = rust_engine();
+        let source = include_str!("../tests/fixtures/rust_types_sample.rs");
+        let (module, diags) = engine
+            .parse(Path::new("rust_types_sample.rs"), source)
+            .unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+
+        assert_eq!(
+            module.type_definitions.len(),
+            2,
+            "both structs captured, impl/fn items are not type definitions"
+        );
+
+        let person = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Person")
+            .expect("Person captured");
+        assert_eq!(person.kind, TypeKind::Struct);
+        assert_eq!(person.language, Language::Rust);
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 1,
+                end_line: 5
+            }
+        );
+        let person_fields: Vec<(&str, Option<&str>)> = person
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            person_fields,
+            vec![
+                ("name", Some("String")),
+                ("age", Some("u8")),
+                ("email", Some("String")),
+            ],
+            "named fields only, in declaration order"
+        );
+
+        let pair = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Pair")
+            .expect("generic struct captured");
+        assert_eq!(pair.kind, TypeKind::Struct);
+        assert!(
+            pair.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
+            "captured name must be bare identifier, no grammar syntax: {:?}",
+            pair.name
+        );
+        let pair_fields: Vec<(&str, Option<&str>)> = pair
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            pair_fields,
+            vec![("first", Some("T")), ("second", Some("T"))],
+            "generic parameter text never leaks into names or type names"
+        );
+
+        // CodeUnits remain separate from type members.
+        assert_eq!(module.units.len(), 2);
+        let mut unit_names: Vec<&str> = module.units.iter().map(|u| u.name.as_str()).collect();
+        unit_names.sort_unstable();
+        assert_eq!(unit_names, vec!["greet", "standalone"]);
+        assert!(
+            person.fields.iter().all(|f| f.name != "greet"),
+            "methods must not be duplicated as fields"
+        );
+    }
+
+    #[test]
+    fn go_types_fixture_round_trip() {
+        let engine = go_engine();
+        let source = include_str!("../tests/fixtures/go_types_sample.go");
+        let (module, diags) = engine
+            .parse(Path::new("go_types_sample.go"), source)
+            .unwrap();
+
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+
+        assert_eq!(
+            module.type_definitions.len(),
+            2,
+            "both struct type specs captured; funcs are not type definitions"
+        );
+
+        let person = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Person")
+            .expect("Person captured");
+        assert_eq!(person.kind, TypeKind::Struct);
+        assert_eq!(person.language, Language::Go);
+        assert_eq!(
+            person.span,
+            Span {
+                start_line: 3,
+                end_line: 7
+            }
+        );
+        let person_fields: Vec<(&str, Option<&str>)> = person
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            person_fields,
+            vec![
+                ("Name", Some("string")),
+                ("Age", Some("uint8")),
+                ("Email", Some("string")),
+            ],
+            "named fields only, in declaration order"
+        );
+
+        let bar = module
+            .type_definitions
+            .iter()
+            .find(|t| t.name == "Bar")
+            .expect("generic struct captured");
+        assert_eq!(bar.kind, TypeKind::Struct);
+        assert!(
+            bar.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
+            "captured name must be bare identifier, no grammar syntax: {:?}",
+            bar.name
+        );
+        let bar_fields: Vec<(&str, Option<&str>)> = bar
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.type_name.as_deref()))
+            .collect();
+        assert_eq!(
+            bar_fields,
+            vec![("First", Some("T")), ("Second", Some("T"))],
+            "type parameter syntax must not leak into captured values"
+        );
+
+        // CodeUnits remain separate from type members.
+        assert_eq!(module.units.len(), 2);
+        let mut unit_names: Vec<&str> = module.units.iter().map(|u| u.name.as_str()).collect();
+        unit_names.sort_unstable();
+        assert_eq!(unit_names, vec!["Greet", "Standalone"]);
+        assert!(
+            person.fields.iter().all(|f| f.name != "Greet"),
+            "methods must not be duplicated as fields"
+        );
     }
 }

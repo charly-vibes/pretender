@@ -58,22 +58,18 @@ paths = ["tests/integration/**"]
 [thresholds]
 cyclomatic_max        = 10     # Max cyclomatic complexity per function
 cognitive_max         = 15     # Nesting-weighted cognitive complexity
-function_lines_max    = 40     # Max lines per function body
+function_lines_max    = 30     # Max lines per function body
 file_lines_max        = 400    # Max lines per file
 nesting_max           = 3      # Max control-flow nesting depth
 params_max            = 4      # Max formal parameters per function
 abc_max               = 30     # Max ABC score per function
 duplication_pct_max   = 5      # Max structural duplication (%)
-mi_min                = 20     # Min Maintainability Index
-coverage_line_min     = 80     # Min line coverage (%)
-coverage_branch_min   = 70     # Min branch coverage (%)
-mutation_min          = 60     # Min mutation score (%)
-void_mutators_max     = 0      # Max void-mutator functions (0=disabled)
-mut_ratio_max         = 0.0    # Max mutable-binding ratio (0.0=disabled)
-unwrap_max            = 0      # Max unwrap()/.expect() calls (0=disabled)
-bool_cluster_max      = 0      # Max bool params per function (0=disabled)
+void_mutators_max     = 3      # Max void-mutator functions (0=disabled)
+mut_ratio_max         = 0.3    # Max mutable-binding ratio (0.0=disabled)
+unwrap_max            = 5      # Max unwrap()/.expect() calls (0=disabled)
+bool_cluster_max      = 3      # Max bool params per function (0=disabled)
 primitive_param_check = false  # Flag String/int params that should be newtypes
-inheritance_depth_max = 0      # Max class inheritance depth (0=disabled)
+inheritance_depth_max = 2      # Max class inheritance depth (0=disabled)
 
 # ── Thresholds — test role ──────────────────────────────────────────
 #
@@ -88,10 +84,10 @@ nesting_max         = 2
 params_max          = 2
 duplication_pct_max = 30      # Shared setup is normal in tests
 min_assertions      = 1       # Each test must assert something
-mock_count_max      = 0       # Max mocks per file (0=disabled)
+mock_count_max      = 5       # Max mocks per file (0=disabled)
 void_mutators_max   = 0       # Max void-mutator functions (0=disabled)
-unwrap_max          = 0       # Max unwrap()/.expect() calls (0=disabled)
-lazy_cluster_min    = 0       # Min identical-test-cluster count (0=disabled)
+unwrap_max          = 5       # Max unwrap()/.expect() calls (0=disabled)
+lazy_cluster_min    = 3       # Min identical-test-cluster count (0=disabled)
 
 # ── Thresholds — unit-test sub-role ─────────────────────────────────
 #

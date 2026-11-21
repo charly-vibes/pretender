@@ -1,6 +1,6 @@
 # Summary
-
 - [Getting Started](getting-started.md)
+- [Release Status](./release.md)
 - [Configuration Reference](configuration.md)
 - [Mutation Testing](mutation.md)
 - [Writing Plugins](plugins.md)
@@ -25,3 +25,4 @@
 - [`cli-core`](./specs/cli-core.md)
 - [`config`](./specs/config.md)
 - [`universal-code-model`](./specs/universal-code-model.md)
+

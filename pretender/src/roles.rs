@@ -204,6 +204,7 @@ pub struct EffectiveThresholds {
     pub require_docstring: bool,
     pub void_mutators_max: u32,
     pub unwrap_max: u32,
+    pub excessive_fields_max: u32,
     pub duration_max_ms: u32,
 }
 
@@ -222,6 +223,7 @@ impl EffectiveThresholds {
                 effective.min_assertions = thresholds.test.min_assertions;
                 effective.void_mutators_max = thresholds.test.void_mutators_max;
                 effective.unwrap_max = thresholds.test.unwrap_max;
+                effective.excessive_fields_max = thresholds.test.excessive_fields_max;
             }
             Role::UnitTest => {
                 effective.cyclomatic_max = thresholds.test.cyclomatic_max;
@@ -233,6 +235,7 @@ impl EffectiveThresholds {
                 effective.min_assertions = thresholds.test.min_assertions;
                 effective.void_mutators_max = thresholds.test.void_mutators_max;
                 effective.unwrap_max = thresholds.test.unwrap_max;
+                effective.excessive_fields_max = thresholds.test.excessive_fields_max;
                 effective.duration_max_ms = thresholds.unit_test.duration_max_ms;
             }
             Role::IntegrationTest => {
@@ -245,6 +248,7 @@ impl EffectiveThresholds {
                 effective.min_assertions = thresholds.test.min_assertions;
                 effective.void_mutators_max = thresholds.test.void_mutators_max;
                 effective.unwrap_max = thresholds.test.unwrap_max;
+                effective.excessive_fields_max = thresholds.test.excessive_fields_max;
                 effective.duration_max_ms = thresholds.integration_test.duration_max_ms;
             }
             Role::Library => {
@@ -279,6 +283,7 @@ impl EffectiveThresholds {
             require_docstring: false,
             void_mutators_max: thresholds.app.void_mutators_max,
             unwrap_max: thresholds.app.unwrap_max,
+            excessive_fields_max: thresholds.app.excessive_fields_max,
             duration_max_ms: 0,
         }
     }

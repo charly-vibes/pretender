@@ -1,6 +1,9 @@
 id = "report-reads-cached-human-check-results"
-description = ""
+description = "report --format markdown renders from cached human check."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_report_markdown_reads_last_human_check"}]
