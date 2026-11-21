@@ -550,9 +550,7 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
     };
     let content =
         std::fs::read_to_string(cargo_path).context(format!("failed to read {cargo_path}"))?;
-    let value: toml::Value = content
-        .parse::<toml::Value>()
-        .context("failed to parse Cargo.toml")?;
+    let value: toml::Value = toml::from_str(&content).context("failed to parse Cargo.toml")?;
     let package = value
         .get("package")
         .and_then(|v| v.get("repository"))
