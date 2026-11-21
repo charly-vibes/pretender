@@ -1,0 +1,9 @@
+id = "primitive-field-with-domain-name-is-flagged"
+description = "With primitive_field_check enabled, a bare-primitive field whose name matches a domain-like pattern (e.g. email declared as String) is flagged as a primitive_field violation on that type definition."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "primitive_field_flagged_when_enabled"}, {flags = "test_check_data_model_violations_json"}]

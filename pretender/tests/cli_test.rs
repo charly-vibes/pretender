@@ -2,13 +2,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn git_init(dir: &Path) {
-    assert!(Command::new("git")
+    let output = Command::new("git")
         .args(["init"])
         .current_dir(dir)
         .output()
-        .expect("git init")
-        .status
-        .success());
+        .expect("git init");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     Command::new("git")
         .args(["config", "user.email", "test@example.com"])
         .current_dir(dir)
@@ -46,6 +49,50 @@ fn pretender_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/pretender")
 }
 
+/// Neutral, shared empty file used as GIT_CONFIG_GLOBAL for every spawned
+/// pretender process: keeps core.hooksPath resolution (genesis multi-scope)
+/// hermetic — tests must never see the developer machine's real global
+/// config, nor write hooks into it.
+fn neutral_git_config_global() -> &'static std::path::Path {
+    static NEUTRAL: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    NEUTRAL
+        .get_or_init(|| {
+            let p = std::env::temp_dir().join(format!(
+                "pretender-test-empty-gitconfig-{}",
+                std::process::id()
+            ));
+            std::fs::write(&p, "").expect("write neutral gitconfig");
+            p
+        })
+        .as_path()
+}
+
+fn pretender_cmd() -> Command {
+    let mut cmd = Command::new(pretender_bin());
+    cmd.env("GIT_CONFIG_GLOBAL", neutral_git_config_global());
+    cmd
+}
+
+#[test]
+fn test_meter_gate_hook_stops_commit() {
+    // Ticket 15w acceptance, executable: the meter seeds a scratch repo with
+    // a violating function, installs the hook, and asserts the gate stops the
+    // commit with the function name + rule in the output.
+    let meter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/meter-gate-hook.sh");
+    let output = Command::new("sh")
+        .arg(meter)
+        .env("PRETENDER_BIN", pretender_bin())
+        .env_remove("GIT_CONFIG_GLOBAL")
+        .output()
+        .expect("run meter script");
+    assert!(
+        output.status.success(),
+        "meter failed; stdout+stderr: {}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 fn source_fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../tests/fixtures")
@@ -73,25 +120,45 @@ fn write_temp_file(relative: &str, source: &str) -> (PathBuf, PathBuf) {
 }
 
 fn tempdir() -> PathBuf {
+    // Atomic counter disambiguates parallel test threads that read the clock
+    // within the same tick — pid+nanos alone collided, making `git init` fail
+    // with 'File exists' when copying template hooks (seen 2026-10-01,
+    // pretender-ivo).
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("pretender-cli-{pid}-{nanos}"));
+    let dir = std::env::temp_dir().join(format!("pretender-cli-{pid}-{nanos}-{seq}"));
     std::fs::create_dir_all(&dir).expect("create tempdir");
     dir
 }
 
 fn check(path: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
-    cmd.arg("check").arg(path).env("NO_COLOR", "1");
+    let mut cmd = pretender_cmd();
+    // Output-focused helper: carries a current advisory lease so call sites
+    // keep advisory exit semantics (gate is now the default — pretender-1te).
+    // Exit-policy tests set --mode explicitly.
+    cmd.arg("check")
+        .arg(path)
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
+        .env("NO_COLOR", "1");
     cmd
 }
 
 fn check_default(dir: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
-    cmd.arg("check").env("NO_COLOR", "1");
+    let mut cmd = pretender_cmd();
+    cmd.arg("check")
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
+        .env("NO_COLOR", "1");
     cmd.current_dir(dir);
     cmd
 }
@@ -103,13 +170,13 @@ fn check_in(dir: &Path, path: &Path) -> Command {
 }
 
 fn report_in(dir: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("report").current_dir(dir).env("NO_COLOR", "1");
     cmd
 }
 
 fn ci_generate_in(dir: &Path, provider: &str) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("ci")
         .arg("generate")
         .arg(provider)
@@ -119,7 +186,7 @@ fn ci_generate_in(dir: &Path, provider: &str) -> Command {
 }
 
 fn hooks_in(dir: &Path, action: &str) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("hooks")
         .arg(action)
         .current_dir(dir)
@@ -127,15 +194,25 @@ fn hooks_in(dir: &Path, action: &str) -> Command {
     cmd
 }
 
+fn hooks_in_named(dir: &Path, action: &str, hook: &str) -> Command {
+    let mut cmd = pretender_cmd();
+    cmd.arg("hooks")
+        .arg(action)
+        .arg(hook)
+        .current_dir(dir)
+        .env("NO_COLOR", "1");
+    cmd
+}
+
 fn init_in(dir: &Path) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("init").current_dir(dir).env("NO_COLOR", "1");
     cmd
 }
 
 #[test]
 fn test_complexity_command() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("python_simple.py"))
         .output()
@@ -153,8 +230,28 @@ fn test_complexity_command() {
 }
 
 #[test]
+fn test_complexity_unsupported_extension_fails() {
+    // Contract: cli-and-config / unsupported-complexity-input-fails
+    let dir = tempdir();
+    let txt = dir.join("notes.txt");
+    std::fs::write(&txt, "just some text\n").expect("write txt file");
+
+    let output = pretender_cmd()
+        .arg("complexity")
+        .arg(&txt)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        !output.status.success(),
+        "complexity on an unsupported extension must exit non-zero"
+    );
+}
+
+#[test]
 fn test_complexity_multi_path() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("python_simple.py"))
         .arg(source_fixture("rust_simple.rs"))
@@ -184,7 +281,7 @@ fn test_complexity_directory_path() {
     // "failed to read source file" because directories were passed to
     // fs::read_to_string instead of being expanded to files.
     let dir = source_fixture("");
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(&dir)
         .output()
@@ -213,7 +310,7 @@ fn test_complexity_directory_with_non_source_files() {
     std::fs::create_dir_all(dir.join("sub")).expect("mkdir");
     std::fs::write(dir.join("sub/note.txt"), "hi\n").expect("write note");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(&dir)
         .output()
@@ -255,7 +352,7 @@ def very_complex(x):
     // No pretender.toml → defaults (app cyclomatic_max=10)
     let _ = dir;
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(&path)
         .output()
@@ -445,6 +542,55 @@ fn test_doctor_json_output_has_envelope_shape() {
 }
 
 #[test]
+fn test_check_rust_raw_local_no_parse_error_warning() {
+    // pretender-mlw: a local named `raw` referenced as `&raw` collided with
+    // the &raw const/mut expression lookahead in tree-sitter-rust 0.23.3,
+    // producing a false "Parse errors detected" warning (and, worse, empty
+    // metrics — the engine early-returns on has_error). Valid Rust must
+    // parse cleanly and yield metrics.
+    let dir = tempdir();
+    let source = dir.join("repro.rs");
+    std::fs::write(
+        &source,
+        "fn f(x: &str) -> usize {\n    let raw = x.to_string();\n    raw.len() + (&raw).len()\n}\n",
+    )
+    .expect("write repro.rs");
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+
+    let output = check_in(&dir, &source)
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "check should succeed; stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stdout.contains("Parse errors detected") && !stderr.contains("Parse errors detected"),
+        "valid Rust with a local named 'raw' must not warn; stdout: {stdout}, stderr: {stderr}"
+    );
+    // Metrics must actually compute — engine.rs early-returns empty units on
+    // has_error, so the warning's absence alone doesn't prove units parsed.
+    // `complexity` lists per-function scores.
+    let cx = pretender_cmd()
+        .arg("complexity")
+        .arg(&source)
+        .current_dir(dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run complexity");
+    let cx_out = String::from_utf8_lossy(&cx.stdout);
+    assert!(
+        cx_out.contains("f: "),
+        "metrics should compute (function f listed); stdout: {cx_out}"
+    );
+}
+
+#[test]
 fn test_check_warns_when_no_config() {
     let dir = tempdir();
     let source = dir.join("hello.py");
@@ -498,15 +644,21 @@ fn test_check_exits_zero_when_clean() {
 }
 
 #[test]
-fn test_check_tiered_mode_exits_zero_on_violation() {
+fn test_check_default_gate_mode_fails_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged).output().expect("failed to execute process");
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
 
+    // Gate is now the fail-closed default (pretender-1te): violations EXIT 1
     assert_eq!(
         output.status.code(),
-        Some(0),
-        "expected exit 0 in default tiered mode; stdout: {} stderr: {}",
+        Some(1),
+        "default gate mode must fail on violations; stdout: {} stderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -516,9 +668,13 @@ fn test_check_tiered_mode_exits_zero_on_violation() {
 fn test_check_tiered_mode_shows_advisory_not_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
         .output()
         .expect("failed to execute process");
 
@@ -537,11 +693,109 @@ fn test_check_tiered_mode_shows_advisory_not_violation() {
     );
 }
 
+/// GH #35: tiered without an advisory lease fails closed (rc=1) but used to
+/// emit an all-green report with no hint why. The diagnostic must land on
+/// stderr so stdout stays a parseable report.
+#[test]
+fn test_check_tiered_missing_lease_fails_closed_with_diagnostic() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .arg("--mode")
+        .arg("tiered")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing lease must fail closed; stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("tiered") && stderr.contains("advisory_until"),
+        "stderr must name the mode and the config remediation; got: {stderr}"
+    );
+    assert!(
+        stderr.contains("--advisory-until"),
+        "stderr must mention the CLI lease flag; got: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("all green"),
+        "stdout should still carry the normal report; got: {stdout}"
+    );
+}
+
+/// GH #35: the JSON envelope must not claim ok:true while the process exits 1.
+#[test]
+fn test_check_tiered_missing_lease_json_ok_false_with_warning() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--format")
+        .arg("json")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(output.status.code(), Some(1));
+    let json: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
+        .expect("stdout must remain valid JSON");
+    assert_eq!(
+        json["ok"],
+        serde_json::json!(false),
+        "envelope ok must agree with the exit code; got: {json}"
+    );
+    let warnings = json["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.iter().any(|w| {
+            let msg = w["message"].as_str().unwrap_or("");
+            msg.contains("tiered") && msg.contains("advisory_until")
+        }),
+        "envelope must carry a structured lease warning; got: {warnings:?}"
+    );
+}
+
+/// Regression: gate mode never consults the lease, so no advisory diagnostic
+/// may leak into its output (GH #35 fix scope guard).
+#[test]
+fn test_check_gate_mode_no_lease_no_advisory_diagnostic() {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .arg("--mode")
+        .arg("gate")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(output.status.success(), "gate + green files must pass");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("advisory"),
+        "gate mode must not emit lease diagnostics; got: {stderr}"
+    );
+}
+
 #[test]
 fn test_check_gate_mode_shows_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -751,9 +1005,13 @@ fn test_check_accepts_test_role_when_assertion_present() {
 fn test_check_guidance_mode_exits_zero_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("guidance")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
         .output()
         .expect("failed to execute process");
 
@@ -779,7 +1037,13 @@ fn test_check_gate_mode_from_config_fails_on_violation() {
     std::fs::write(dir.join("pretender.toml"), "[pretender]\nmode = \"gate\"\n")
         .expect("write config");
 
-    let output = check_in(&dir, &staged)
+    // Config-supplied mode must win — build raw so the helper's lease/mode
+    // flags don't shadow it (pretender-1te)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
         .output()
         .expect("failed to execute process");
 
@@ -818,7 +1082,9 @@ fn test_check_tiered_human_output_highlights_yellow_band() {
 fn test_check_gate_mode_fails_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -907,9 +1173,220 @@ fn test_check_sarif_output_structure() {
     }
 }
 
+// --- data-model checks: wiring + CLI integration (add-data-model-checks §7) ---
+
+/// The data-model fixtures live beside the crate (`pretender/tests/fixtures`),
+/// matching the adapter-wave convention for new `*_types_sample` fixtures;
+/// `source_fixture` above reads the repo-level `../tests/fixtures` copies of
+/// the older cli fixtures.
+fn data_model_source_fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
+fn stage_data_model_fixture(dir: &Path, fixture: &str) -> PathBuf {
+    let staged = dir.join(fixture);
+    std::fs::copy(data_model_source_fixture(fixture), &staged).expect("copy fixture");
+    staged
+}
+
+fn data_model_fixture_dir(fixture: &str) -> (PathBuf, PathBuf) {
+    let dir = tempdir();
+    let staged = stage_data_model_fixture(&dir, fixture);
+    std::fs::copy(
+        data_model_source_fixture("data_model_pretender.toml"),
+        dir.join("pretender.toml"),
+    )
+    .expect("copy fixture toml");
+    (dir, staged)
+}
+
+#[test]
+fn test_check_data_model_violations_json() {
+    // §7.1: a 10-field struct with an `email: String` field emits both
+    // `excessive_fields` (actual=10, limit=10, line = type def start) and
+    // `primitive_field` (actual=1, limit=1, line = field start) in JSON.
+    let (dir, staged) = data_model_fixture_dir("rust_data_model_sample.rs");
+
+    let output = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+    let violations = json["data"]["files"][0]["file_violations"]
+        .as_array()
+        .expect("file_violations array");
+
+    let excessive = violations
+        .iter()
+        .find(|v| v["metric"] == "excessive_fields")
+        .expect("excessive_fields violation expected in json output");
+    assert_eq!(excessive["actual"].as_f64(), Some(10.0));
+    assert_eq!(excessive["limit"].as_f64(), Some(10.0));
+    assert_eq!(
+        excessive["line"].as_u64(),
+        Some(6),
+        "line must be the type definition start line"
+    );
+
+    let primitive = violations
+        .iter()
+        .find(|v| v["metric"] == "primitive_field")
+        .expect("primitive_field violation expected in json output");
+    assert_eq!(primitive["actual"].as_f64(), Some(1.0));
+    assert_eq!(primitive["limit"].as_f64(), Some(1.0));
+    assert_eq!(
+        primitive["line"].as_u64(),
+        Some(8),
+        "line must be the field start line"
+    );
+}
+
+#[test]
+fn test_check_test_role_threshold_disables_excessive_fields() {
+    // §7.2: `[thresholds.test] excessive_fields_max = 0` silences the check
+    // for the pragma-assigned test-role fixture, while the default test
+    // threshold (10) still flags the same 10-field struct (role merge proof).
+    let dir = tempdir();
+    let staged = stage_data_model_fixture(&dir, "rust_test_role_data_model_sample.rs");
+
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write default config");
+    let baseline = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+    let baseline_json: serde_json::Value =
+        serde_json::from_slice(&baseline.stdout).expect("baseline stdout should be valid json");
+    let baseline_violations = baseline_json["data"]["files"][0]["file_violations"]
+        .as_array()
+        .expect("file_violations array");
+    assert!(
+        baseline_violations
+            .iter()
+            .any(|v| v["metric"] == "excessive_fields"),
+        "default test threshold must flag the 10-field struct; violations: {baseline_violations:?}"
+    );
+
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[thresholds.test]\nexcessive_fields_max = 0\n",
+    )
+    .expect("write override config");
+    let output = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+    let violations = json["data"]["files"][0]["file_violations"]
+        .as_array()
+        .expect("file_violations array");
+    assert!(
+        violations.iter().all(|v| v["metric"] != "excessive_fields"),
+        "test-role excessive_fields_max = 0 must disable the check; violations: {violations:?}"
+    );
+}
+
+#[test]
+fn test_check_sarif_data_model_rules_carry_fixture_lines() {
+    // §7.3: SARIF 2.1.0 output for the §7.1 fixture carries the
+    // excessive_fields and primitive_field rule ids with the fixture line
+    // regions (ViolationReport.line threaded into region.startLine).
+    let (dir, staged) = data_model_fixture_dir("rust_data_model_sample.rs");
+
+    let output = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("sarif")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let sarif: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid SARIF json");
+    assert_eq!(sarif["version"].as_str(), Some("2.1.0"));
+
+    let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+        .as_array()
+        .expect("rules array");
+    let rule_ids: Vec<&str> = rules.iter().filter_map(|r| r["id"].as_str()).collect();
+    assert!(
+        rule_ids.contains(&"excessive_fields"),
+        "rule ids must include excessive_fields: {rule_ids:?}"
+    );
+    assert!(
+        rule_ids.contains(&"primitive_field"),
+        "rule ids must include primitive_field: {rule_ids:?}"
+    );
+
+    let results = sarif["runs"][0]["results"]
+        .as_array()
+        .expect("results array");
+    let line_for = |rule_id: &str| -> Option<i64> {
+        results
+            .iter()
+            .find(|r| r["ruleId"] == rule_id)
+            .and_then(|r| r["locations"][0]["physicalLocation"]["region"]["startLine"].as_i64())
+    };
+    assert_eq!(line_for("excessive_fields"), Some(6));
+    assert_eq!(line_for("primitive_field"), Some(8));
+}
+
+#[test]
+fn test_check_r_without_type_captures_stays_silent() {
+    // "Language without type captures is silent": R ships zero type
+    // captures, so its module must parse cleanly with no data-model
+    // violations and no diagnostics.
+    let dir = tempdir();
+    let staged = stage_data_model_fixture(&dir, "r_no_types_sample.R");
+
+    let output = check_in(&dir, &staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+    let file = &json["data"]["files"][0];
+    let diagnostics = file["diagnostics"].as_array().expect("diagnostics array");
+    assert!(
+        diagnostics.is_empty(),
+        "R fixture must parse without diagnostics: {diagnostics:?}"
+    );
+    let violations = file["file_violations"]
+        .as_array()
+        .expect("file_violations array");
+    assert!(
+        violations
+            .iter()
+            .all(|v| v["metric"] != "excessive_fields" && v["metric"] != "primitive_field"),
+        "R without type captures must produce no data-model violations: {violations:?}"
+    );
+}
+
 #[test]
 fn test_mutation_dry_run_python() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args([
             "mutation",
             "--dry-run",
@@ -940,7 +1417,7 @@ fn test_mutation_dry_run_directory() {
     // "no supported source files found" because directories were passed
     // to detect_language() which checks file extensions.
     let dir = source_fixture("");
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["mutation", "--dry-run", dir.to_str().unwrap()])
         .output()
         .expect("failed to execute process");
@@ -955,7 +1432,7 @@ fn test_mutation_dry_run_directory() {
 #[test]
 fn test_stub_subcommands_exit_two() {
     let cmd = vec!["plugins", "list"];
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(&cmd)
         .output()
         .expect("failed to execute process");
@@ -975,7 +1452,7 @@ fn test_stub_subcommands_exit_two() {
 
 #[test]
 fn test_typo_suggestion_for_misspelled_command() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["complxity"])
         .output()
         .expect("failed to execute process");
@@ -997,12 +1474,12 @@ fn test_feedback_dry_run_prints_body_and_gh_line() {
     std::fs::create_dir_all(&cache).expect("create cache dir");
 
     // First simulate an error so --from-last-error has data
-    let _ = Command::new(pretender_bin())
+    let _ = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .env("XDG_CACHE_HOME", &cache)
         .output();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["feedback", "bug", "--dry-run", "--from-last-error"])
         .env("XDG_CACHE_HOME", &cache)
         .output()
@@ -1017,7 +1494,7 @@ fn test_feedback_dry_run_prints_body_and_gh_line() {
 
 #[test]
 fn test_non_zero_exit_shows_feedback_footer() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .output()
         .expect("failed to execute process");
@@ -1071,7 +1548,7 @@ fn test_error_scratch_records_full_argv() {
     let cache = tempdir().join("cache");
     std::fs::create_dir_all(&cache).expect("create cache dir");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .env("XDG_CACHE_HOME", &cache)
         .output()
@@ -1106,7 +1583,7 @@ fn test_error_scratch_records_full_argv() {
 
 #[test]
 fn test_explain_known_metric_prints_doc() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "cyclomatic"])
         .output()
         .expect("failed to execute process");
@@ -1130,7 +1607,7 @@ fn test_explain_known_metric_prints_doc() {
 
 #[test]
 fn test_explain_unknown_metric_exits_nonzero() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["explain", "not_a_real_metric"])
         .output()
         .expect("failed to execute process");
@@ -1145,7 +1622,7 @@ fn test_explain_unknown_metric_exits_nonzero() {
 
 #[test]
 fn test_rust_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("rust_simple.rs"))
         .output()
@@ -1175,7 +1652,7 @@ fn test_rust_complexity() {
 fn test_rust_nested_function_complexity() {
     // Nested definitions (Rust function_item) must not contribute branches
     // to the enclosing function. outer has one if; inner's if belongs to inner.
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("rust_nested.rs"))
         .output()
@@ -1199,7 +1676,7 @@ fn test_rust_nested_function_complexity() {
 
 #[test]
 fn test_javascript_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("js_simple.js"))
         .output()
@@ -1228,7 +1705,7 @@ fn test_javascript_complexity() {
 #[test]
 fn test_javascript_nested_function_complexity() {
     // Nested function_declaration branches must not count toward outer.
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("js_nested.js"))
         .output()
@@ -1252,7 +1729,7 @@ fn test_javascript_nested_function_complexity() {
 
 #[test]
 fn test_typescript_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("ts_sample.ts"))
         .output()
@@ -1286,7 +1763,7 @@ fn test_check_parallel_results_are_deterministic() {
     }
 
     let run = || {
-        let output = Command::new(pretender_bin())
+        let output = pretender_cmd()
             .arg("check")
             .arg(&dir)
             .arg("--format")
@@ -1304,10 +1781,103 @@ fn test_check_parallel_results_are_deterministic() {
 
     let first = run();
     let second = run();
+    // Resolution tracking (ticket u8a) intentionally varies across runs:
+    // run 1 reports findings as "new", run 2 as "still open" with a rate.
+    // Compare everything except the volatile history.resolution block.
+    // Resolution tracking (ticket u8a) intentionally varies across runs:
+    // run 1 reports findings as "new", run 2 as "still open" with a rate.
+    // Compare everything except the volatile history block. NOTE: always
+    // remove history from the parsed tree (not conditionally) so runs with
+    // and without a history block normalize to the same shape.
+    let normalize = |s: &str| {
+        let mut v: serde_json::Value = serde_json::from_str(s).expect("valid json");
+        if let Some(data) = v.get_mut("data").and_then(|d| d.as_object_mut()) {
+            data.remove("history");
+        }
+        serde_json::to_string(&v).expect("serialize")
+    };
     assert_eq!(
-        first, second,
-        "json output must be deterministic across runs"
+        normalize(&first),
+        normalize(&second),
+        "json output must be deterministic across runs (excluding resolution deltas)"
     );
+}
+
+#[test]
+fn test_resolution_tracking_reports_delta_across_runs() {
+    // Ticket u8a: run 1 flags a finding ("new"); run 2 in the same repo sees
+    // it fixed ("1 fixed, 0 still open") because a clean run updates the
+    // snapshot. The fix was to remove the violation between runs.
+    let dir = tempdir();
+    let violator = dir.join("violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &violator).expect("copy fixture");
+
+    let check = || {
+        pretender_cmd()
+            .arg("check")
+            .arg(".")
+            .current_dir(&dir)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("run check")
+    };
+
+    // Run 1: finding appears — all new, rate undefined.
+    let first = check();
+    let first_out = String::from_utf8_lossy(&first.stdout).to_string();
+    assert!(
+        first_out.contains("resolution: 0 fixed, 0 still open, 1 new"),
+        "run 1 stdout: {first_out}"
+    );
+
+    // Fix the violation (reduce to 3 params).
+    std::fs::write(
+        violator.as_path(),
+        "def fewer_params(a, b, c):\n    return a + b + c\n",
+    )
+    .expect("fix violation");
+
+    let second = check();
+    let second_out = String::from_utf8_lossy(&second.stdout).to_string();
+    assert!(
+        second_out.contains("1 fixed"),
+        "run 2 must report the fix; stdout: {second_out}"
+    );
+
+    // Clean run logs nothing to events.jsonl but updates the snapshot: a
+    // third run must still see 1 fixed, proving "fixed" != "not rescanned".
+    let third = check();
+    let third_out = String::from_utf8_lossy(&third.stdout).to_string();
+    assert!(
+        !third_out.contains("resolution: 1 fixed"),
+        "clean run 3 must not re-report run 1's fix; stdout: {third_out}"
+    );
+}
+
+#[test]
+fn test_resolution_rate_appears_in_json_history() {
+    let dir = tempdir();
+    let violator = dir.join("violator.py");
+    std::fs::copy(source_fixture("python_violator.py"), &violator).expect("copy");
+    let run = || {
+        pretender_cmd()
+            .arg("check")
+            .arg(".")
+            .current_dir(&dir)
+            .arg("--format")
+            .arg("json")
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("run check")
+    };
+    run();
+    let second = run();
+    let json: serde_json::Value = serde_json::from_slice(&second.stdout).expect("json");
+    let resolution = &json["data"]["history"]["resolution"];
+    assert_eq!(resolution["fixed"], 0);
+    assert_eq!(resolution["still_open"], 1);
+    assert_eq!(resolution["new"], 0);
+    assert_eq!(resolution["rate"], 0.0);
 }
 
 #[test]
@@ -1347,46 +1917,98 @@ fn test_init_non_interactive_writes_config_with_mode_override() {
     assert!(config.contains("[roles.test]"), "config: {config}");
 }
 
-#[test]
-fn test_init_injects_managed_blocks() {
-    let dir = tempdir();
+const FOREIGN_AGENTS: &str = "\
+# AGENTS.md
 
-    let output = init_in(&dir)
+<!-- WAI:START -->
+Run `wai status` to orient yourself.
+<!-- WAI:END -->
+
+<!-- DONT:START -->
+See .dont/ for grounded-claim workflow.
+<!-- DONT:END -->
+";
+
+/// Seed an AGENTS.md carrying wai- and dont-authored blocks, run
+/// `pretender init --non-interactive`, and return the AGENTS.md path.
+fn seed_foreign_blocks_and_init(dir: &std::path::Path) -> std::path::PathBuf {
+    // pretender-1ap: pretender owns no AGENTS.md region. WAI and DONT are
+    // authored by wai and dont, so `pretender init` must not write into
+    // either block, and the doctor must not report a foreign block as
+    // drifted against a pretender generator it never published.
+    git_init(dir);
+    let agents = dir.join("AGENTS.md");
+    std::fs::write(&agents, FOREIGN_AGENTS).expect("seed AGENTS.md");
+    let output = init_in(dir)
         .arg("--non-interactive")
         .output()
         .expect("run init");
-
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let agents_path = dir.join("AGENTS.md");
-    assert!(agents_path.exists(), "AGENTS.md should be created by init");
-    let content = std::fs::read_to_string(&agents_path).expect("read AGENTS.md");
-    assert!(
-        content.contains("<!-- WAI:START -->"),
-        "AGENTS.md should contain WAI managed block"
+    agents
+}
+
+#[test]
+fn test_init_leaves_foreign_managed_blocks_untouched() {
+    let dir = tempdir();
+    let agents = seed_foreign_blocks_and_init(&dir);
+    let after_init = std::fs::read(&agents).expect("read AGENTS.md");
+    assert_eq!(
+        after_init,
+        FOREIGN_AGENTS.as_bytes(),
+        "pretender init must leave foreign managed blocks byte-identical"
+    );
+}
+
+#[test]
+fn test_check_and_doctor_report_no_foreign_block_drift() {
+    let dir = tempdir();
+    let agents = seed_foreign_blocks_and_init(&dir);
+
+    // A real source file keeps the scan non-empty, so a clean run proves the
+    // absence of block findings rather than of work.
+    std::fs::write(dir.join("example.py"), "def answer():\n    return 42\n")
+        .expect("write fixture");
+
+    let check_output = check_default(&dir)
+        .arg("--json")
+        .output()
+        .expect("run check");
+    let check_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&check_output.stdout),
+        String::from_utf8_lossy(&check_output.stderr)
     );
     assert!(
-        content.contains("<!-- WAI:END -->"),
-        "AGENTS.md should contain WAI end marker"
+        !check_text.contains("managed_block_drift"),
+        "check must not emit a managed-block drift finding: {check_text}"
+    );
+
+    let doctor_output = doctor_in(&dir, &["--json"]).output().expect("run doctor");
+    let doctor_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&doctor_output.stdout),
+        String::from_utf8_lossy(&doctor_output.stderr)
     );
     assert!(
-        content.contains("<!-- OPENSPEC:START -->"),
-        "AGENTS.md should contain OPENSPEC managed block"
+        !doctor_text.contains("managed_block_drift"),
+        "doctor must not register a managed-block drift check: {doctor_text}"
     );
-    assert!(
-        content.contains("<!-- OPENSPEC:END -->"),
-        "AGENTS.md should contain OPENSPEC end marker"
-    );
-    assert!(
-        content.contains("<!-- DONT:START -->"),
-        "AGENTS.md should contain DONT managed block"
-    );
-    assert!(
-        content.contains("<!-- DONT:END -->"),
-        "AGENTS.md should contain DONT end marker"
+    for block in ["WAI", "DONT"] {
+        assert!(
+            !check_text.contains(block) && !doctor_text.contains(block),
+            "neither check nor doctor may name the {block} block it does not own"
+        );
+    }
+
+    let after_checks = std::fs::read(&agents).expect("re-read AGENTS.md");
+    assert_eq!(
+        after_checks,
+        FOREIGN_AGENTS.as_bytes(),
+        "check/doctor must not rewrite foreign managed blocks"
     );
 }
 
@@ -1406,7 +2028,9 @@ fn test_init_interactive_can_install_hook_and_ci() {
                 .stdin
                 .as_mut()
                 .expect("stdin")
-                .write_all(b"guidance\npython,rust\ny\ny\n")?;
+                // mode, preset (added by update-app-threshold-defaults),
+                // languages, hook, workflow
+                .write_all(b"guidance\n\npython,rust\ny\ny\n")?;
             child.wait_with_output()
         })
         .expect("run init interactively");
@@ -1531,6 +2155,43 @@ fn test_hooks_install_and_uninstall_manage_pretender_shim() {
         String::from_utf8_lossy(&uninstall.stderr)
     );
     assert!(!hook_path.exists(), "hook should be removed");
+}
+
+#[test]
+fn test_hooks_install_pre_push_installs_pre_push_hook() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
+
+    let install = hooks_in_named(&dir, "install", "pre-push")
+        .output()
+        .expect("run hooks install pre-push");
+    assert!(
+        install.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+
+    let hook_path = dir.join(".git/hooks/pre-push");
+    let hook = std::fs::read_to_string(&hook_path).expect("pre-push hook exists");
+    assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
+    assert!(
+        hook.contains("exec pretender check . --staged"),
+        "hook: {hook}"
+    );
+    assert!(
+        !dir.join(".git/hooks/pre-commit").exists(),
+        "pre-commit untouched"
+    );
+
+    let uninstall = hooks_in_named(&dir, "uninstall", "pre-push")
+        .output()
+        .expect("run hooks uninstall pre-push");
+    assert!(
+        uninstall.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&uninstall.stderr)
+    );
+    assert!(!hook_path.exists(), "pre-push hook should be removed");
 }
 
 #[test]
@@ -1829,7 +2490,7 @@ fn test_report_fails_without_cached_report() {
 #[test]
 fn test_smell_call_weights_elevate_abc() {
     let (_dir, path) = stage_fixture("python_smell_calls.py");
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg(&path)
         .arg("--format")
@@ -1873,7 +2534,7 @@ fn test_smell_call_weights_elevate_abc() {
 
 #[test]
 fn test_go_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("go_sample.go"))
         .output()
@@ -1903,7 +2564,7 @@ fn test_go_complexity() {
 fn test_go_nested_function_complexity() {
     // Anonymous function literal (func_literal) branches must not count
     // toward the enclosing function.
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("go_nested.go"))
         .output()
@@ -1923,7 +2584,7 @@ fn test_go_nested_function_complexity() {
 
 #[test]
 fn test_java_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("java_sample.java"))
         .output()
@@ -1951,7 +2612,7 @@ fn test_java_complexity() {
 
 #[test]
 fn test_ruby_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("ruby_sample.rb"))
         .output()
@@ -1979,7 +2640,7 @@ fn test_ruby_complexity() {
 
 #[test]
 fn test_c_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("c_sample.c"))
         .output()
@@ -2025,7 +2686,7 @@ fn test_check_staged_only_scans_staged_files() {
     let file_b = dir.join("file_b.py");
     std::fs::write(&file_b, "def func_b(): pass\n").unwrap();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--staged"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2060,7 +2721,7 @@ fn test_check_staged_empty_staging_area_exits_success() {
     git_commit(&dir, "init");
 
     // Nothing staged — check should succeed with no file output
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--staged"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2084,7 +2745,7 @@ fn test_check_staged_first_commit_no_head() {
     std::fs::write(&f, "def first(): pass\n").unwrap();
     git_add(&dir, &f);
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--staged"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2121,7 +2782,7 @@ fn test_check_diff_only_filters_to_changed_files() {
     git_commit(&dir, "second commit");
 
     // --diff-only --diff-base=HEAD~1 should only show file_new.py
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .args(["check", ".", "--diff-only", "--diff-base=HEAD~1"])
         .current_dir(&dir)
         .env("NO_COLOR", "1")
@@ -2145,8 +2806,174 @@ fn test_check_diff_only_filters_to_changed_files() {
 }
 
 #[test]
+fn test_check_diff_only_includes_unstaged_worktree_edits() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let baseline = dir.join("baseline.py");
+    std::fs::write(&baseline, "def baseline(): pass\n").unwrap();
+    git_add(&dir, &baseline);
+    let unchanged = dir.join("unchanged.py");
+    std::fs::write(&unchanged, "def unchanged(): pass\n").unwrap();
+    git_add(&dir, &unchanged);
+    git_commit(&dir, "baseline commit");
+
+    // Pending worktree edit: base..HEAD has nothing, so a commit-only diff
+    // would evaluate an older commit and miss this file entirely.
+    std::fs::write(&baseline, "def baseline():\n    return 1\n").unwrap();
+
+    let output = pretender_cmd()
+        .args(["check", ".", "--diff-only", "--diff-base=HEAD"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("baseline.py"),
+        "expected pending edit baseline.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("unchanged.py"),
+        "unexpected unchanged.py in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_diff_only_includes_newly_staged_untracked_file() {
+    let dir = tempdir();
+    git_init(&dir);
+
+    let baseline = dir.join("baseline.py");
+    std::fs::write(&baseline, "def baseline(): pass\n").unwrap();
+    git_add(&dir, &baseline);
+    git_commit(&dir, "baseline commit");
+
+    // Brand-new file, staged but never committed: an index addition.
+    let fresh = dir.join("fresh.py");
+    std::fs::write(&fresh, "def fresh(): pass\n").unwrap();
+    git_add(&dir, &fresh);
+
+    let output = pretender_cmd()
+        .args(["check", ".", "--diff-only", "--diff-base=HEAD"])
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("fresh.py"),
+        "expected newly staged fresh.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("baseline.py"),
+        "unexpected unchanged baseline.py in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_exclude_globs_match_walked_paths_from_dot() {
+    let dir = tempdir();
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[pretender]\nexclude = [\"tests/**\", \"vendor/**\"]\n",
+    )
+    .expect("write config");
+
+    for (relative, source) in [
+        ("src/app.py", "def app(): pass\n"),
+        ("tests/test_a.py", "def test_a(): pass\n"),
+        ("vendor/lib.py", "def vendored(): pass\n"),
+    ] {
+        let full = dir.join(relative);
+        std::fs::create_dir_all(full.parent().expect("parent dir")).expect("mkdir");
+        std::fs::write(full, source).expect("write source");
+    }
+
+    let output = check_in(&dir, Path::new("."))
+        .output()
+        .expect("failed to execute process");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("app.py"),
+        "expected app.py in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("test_a.py"),
+        "tests/** must exclude the dot-prefixed walked path: {stdout}"
+    );
+    assert!(
+        !stdout.contains("lib.py"),
+        "vendor/** must exclude the dot-prefixed walked path: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_exclude_dot_prefixed_glob_matches_walked_path() {
+    let dir = tempdir();
+    std::fs::write(
+        dir.join("pretender.toml"),
+        "[pretender]\nexclude = [\"./tests/**\"]\n",
+    )
+    .expect("write config");
+    std::fs::create_dir_all(dir.join("tests")).expect("mkdir tests");
+    std::fs::write(dir.join("tests").join("test_a.py"), "def test_a(): pass\n")
+        .expect("write test file");
+    std::fs::write(dir.join("app.py"), "def app(): pass\n").expect("write app file");
+
+    let dot = check_in(&dir, Path::new("."))
+        .output()
+        .expect("failed to execute process");
+    assert!(
+        dot.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&dot.stderr)
+    );
+    let dot_stdout = String::from_utf8_lossy(&dot.stdout);
+    assert!(dot_stdout.contains("app.py"), "stdout: {dot_stdout}");
+    assert!(
+        !dot_stdout.contains("test_a.py"),
+        "./tests/** must exclude the dot-prefixed walk: {dot_stdout}"
+    );
+
+    // Walking `tests` directly yields paths without the `./` prefix, so the
+    // pattern only matches once its own leading `./` is normalized away.
+    let bare = check_in(&dir, Path::new("tests"))
+        .output()
+        .expect("failed to execute process");
+    assert!(
+        bare.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&bare.stderr)
+    );
+    let bare_stdout = String::from_utf8_lossy(&bare.stdout);
+    assert!(
+        !bare_stdout.contains("test_a.py"),
+        "./tests/** must exclude walked tests/test_a.py: {bare_stdout}"
+    );
+}
+
+#[test]
 fn test_cpp_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("cpp_sample.cpp"))
         .output()
@@ -2282,11 +3109,49 @@ fn test_check_staged_no_files_prints_message() {
 }
 
 #[test]
+fn test_check_staged_no_files_json_envelope() {
+    // pretender-xgt: the short-circuit path must emit a parseable JSON
+    // envelope when --format json is requested, same shape as a normal run.
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n").expect("write file");
+
+    let output = check_in(&dir, &dir)
+        .arg("--staged")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("failed to execute process");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "should exit 0 with no staged files; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("--format json must emit a JSON envelope even when nothing is staged");
+
+    assert_eq!(json["ok"], true, "no findings on empty diff, ok=true");
+    assert_eq!(
+        json["envelope_kind"], "check",
+        "envelope_kind should be 'check'"
+    );
+    assert_eq!(
+        json["data"]["files"].as_array().map(Vec::len),
+        Some(0),
+        "data.files should be an empty array; got: {json}"
+    );
+}
+
+#[test]
 fn test_check_default_hides_clean_functions() {
     // python_simple has passing functions — default output should not list them
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -2306,7 +3171,9 @@ fn test_check_default_hides_clean_functions() {
 fn test_check_verbose_shows_all_functions() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .arg("--show-all")
@@ -2325,7 +3192,9 @@ fn test_check_human_output_rounds_violation_values() {
     // python_violator triggers integer violations; ensure they display without decimals
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&staged)
         .arg("--mode")
         .arg("gate")
         .output()
@@ -2365,9 +3234,13 @@ def complex_function(x, y, z):
     std::fs::write(dir.join("pretender.toml"), "[thresholds]\nabc_max = 1\n")
         .expect("write config");
 
-    let output = check_in(&dir, &path)
+    let output = pretender_cmd()
+        .arg("check")
+        .arg(&path)
         .arg("--mode")
         .arg("gate")
+        .env("NO_COLOR", "1")
+        .current_dir(&dir)
         .output()
         .expect("failed to execute process");
 
@@ -2433,7 +3306,7 @@ fn test_check_skips_binary_files_in_directory() {
 // No clap version set yet; move to a version-based test once #[command(version)] is added
 #[test]
 fn test_version_flag_works() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("--version")
         .output()
         .expect("failed to execute process");
@@ -2456,7 +3329,7 @@ fn test_version_flag_works() {
 
 #[test]
 fn test_version_short_flag_works() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("-V")
         .output()
         .expect("failed to execute process");
@@ -2473,12 +3346,20 @@ fn test_version_short_flag_works() {
     );
 }
 
+// Redirect git's global config to a neutral empty file so doctor's
+// core.hooksPath checks are hermetic regardless of the developer machine's
+// real ~/.gitconfig (some machines carry a global hooksPath shim).
+fn neutral_git_config() -> &'static std::path::Path {
+    neutral_git_config_global()
+}
+
 fn doctor_in(dir: &Path, extra_args: &[&str]) -> Command {
-    let mut cmd = Command::new(pretender_bin());
+    let mut cmd = pretender_cmd();
     cmd.arg("doctor")
         .args(extra_args)
         .current_dir(dir)
-        .env("NO_COLOR", "1");
+        .env("NO_COLOR", "1")
+        .env("GIT_CONFIG_GLOBAL", neutral_git_config());
     cmd
 }
 
@@ -2607,7 +3488,7 @@ fn test_check_warns_on_unsupported_language_paths() {
     )
     .expect("write haskell file");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg(&dir)
         .env("NO_COLOR", "1")
@@ -2632,7 +3513,7 @@ fn test_check_no_warning_when_supported_language_found() {
     std::fs::write(dir.join("main.clj"), "(ns my-app)\n").expect("write clojure file");
     std::fs::write(dir.join("main.py"), "def hello(): pass\n").expect("write python file");
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg(&dir)
         .env("NO_COLOR", "1")
@@ -2648,7 +3529,7 @@ fn test_check_no_warning_when_supported_language_found() {
 
 #[test]
 fn test_r_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("r_sample.R"))
         .output()
@@ -2676,7 +3557,7 @@ fn test_r_complexity() {
 
 #[test]
 fn test_julia_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("julia_sample.jl"))
         .output()
@@ -2704,7 +3585,7 @@ fn test_julia_complexity() {
 
 #[test]
 fn test_csharp_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("csharp_sample.cs"))
         .output()
@@ -2750,7 +3631,7 @@ fn test_csharp_check() {
 
 #[test]
 fn test_clojure_complexity() {
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("complexity")
         .arg(source_fixture("clojure_sample.clj"))
         .output()
@@ -2809,7 +3690,7 @@ fn duration_setup() -> (PathBuf, PathBuf, PathBuf) {
 fn test_duration_report_human_output() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -2839,7 +3720,7 @@ fn test_duration_report_human_output() {
 fn test_duration_report_json_contains_findings() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -2865,7 +3746,7 @@ fn test_duration_report_json_contains_findings() {
 fn test_duration_report_sarif_contains_findings() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -2911,7 +3792,7 @@ fn test_duration_no_threshold_no_findings() {
     );
     let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
@@ -2933,12 +3814,18 @@ fn test_duration_no_threshold_no_findings() {
 fn test_duration_cache_persisted() {
     let (dir, _test_file, report_path) = duration_setup();
 
-    let output = Command::new(pretender_bin())
+    let output = pretender_cmd()
         .arg("check")
         .arg("--test-report")
         .arg(&report_path)
         .arg("--format")
         .arg("json")
+        // raw build: tests exit policy (gate default) via its own config dir,
+        // helper flags would shadow it (pretender-1te)
+        .arg("--mode")
+        .arg("tiered")
+        .arg("--advisory-until")
+        .arg("2099-12-31")
         .env("NO_COLOR", "1")
         .current_dir(&dir)
         .output()
@@ -2952,5 +3839,62 @@ fn test_duration_cache_persisted() {
     assert!(
         cache_content.contains("test_findings"),
         "expected test_findings in cache: {cache_content}"
+    );
+}
+
+#[test]
+fn test_doctor_warns_when_global_hooks_path_redirects_hook() {
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+    write_pretender_hook(&dir);
+
+    // Global git config points core.hooksPath elsewhere (the lefthook-shim
+    // scenario): git will invoke hooks from the redirected dir, so the
+    // installed .git/hooks/pre-commit is inert.
+    let global_cfg = dir.join("redirect.gitconfig");
+    std::fs::write(
+        &global_cfg,
+        "[core]\n\thooksPath = /nonexistent-shim-hooks\n",
+    )
+    .expect("write redirect gitconfig");
+
+    let mut cmd = pretender_cmd();
+    cmd.arg("doctor")
+        .arg("--human")
+        .current_dir(&dir)
+        .env("NO_COLOR", "1")
+        .env("GIT_CONFIG_GLOBAL", &global_cfg);
+    let output = cmd.output().expect("run doctor");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Hook location"),
+        "expected a 'Hook location' doctor check; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("core.hooksPath"),
+        "warning should mention core.hooksPath; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("global"),
+        "warning should name the config scope; got: {stdout}"
+    );
+}
+
+#[test]
+fn test_doctor_hook_location_passes_when_hooks_path_default() {
+    let dir = tempdir();
+    git_init(&dir);
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").expect("write config");
+    write_pretender_hook(&dir);
+
+    let output = doctor_in(&dir, &["--human"]).output().expect("run doctor");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The check runs but must not warn under the default (no redirect).
+    assert!(
+        stdout.contains("✓ Hook location"),
+        "hook-location check should pass with default hooksPath; got: {stdout}"
     );
 }

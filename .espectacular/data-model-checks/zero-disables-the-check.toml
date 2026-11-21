@@ -1,0 +1,9 @@
+id = "zero-disables-the-check"
+description = "excessive_fields_max = 0 disables the field-count check: no excessive_fields violations are emitted for any file."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "excessive_fields_zero_disables"}]

@@ -1,0 +1,4 @@
+# Fixture config: `primitive_field_check` is off by default; the
+# data-model integration tests enable it here (add-data-model-checks §7.1).
+[thresholds]
+primitive_field_check = true

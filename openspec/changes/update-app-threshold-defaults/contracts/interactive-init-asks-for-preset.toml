@@ -1,0 +1,10 @@
+id = "interactive-init-asks-for-preset"
+description = "Interactive init offers the threshold-preset choice and emits the chosen preset's threshold tables."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[[tests.cargo]]
+name = "init_preset_prompt_writes_threshold_tables"
+file = "pretender/src/main.rs"

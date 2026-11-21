@@ -146,12 +146,54 @@ jobs:
           VERSION="${TAG#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           mkdir -p dist
+          # upload-artifact does not preserve file permissions across the
+          # artifact roundtrip — restore the exec bit or the archives ship
+          # 644 binaries and `curl | tar xz` installs are not runnable (DDL-3av).
+          chmod +x -- bins/*/*
           tar -czf "dist/pretender_${VERSION}_linux_amd64.tar.gz"  -C bins/linux_amd64  pretender
           tar -czf "dist/pretender_${VERSION}_linux_arm64.tar.gz"  -C bins/linux_arm64  pretender
           tar -czf "dist/pretender_${VERSION}_darwin_amd64.tar.gz" -C bins/darwin_amd64 pretender
           tar -czf "dist/pretender_${VERSION}_darwin_arm64.tar.gz" -C bins/darwin_arm64 pretender
           (cd bins/windows_amd64 && zip "../../dist/pretender_${VERSION}_windows_amd64.zip" pretender.exe)
           cd dist && sha256sum *.tar.gz *.zip > checksums.txt
+
+      # DDL-wof (SEC-03/06): publish cryptographically verifiable provenance
+      # for every supported binary. provenance.json binds each published
+      # artifact's sha256 to the publisher/build identity (repository,
+      # workflow, tag) that produced the release. ddl's installer rejects
+      # downloads whose manifest names an unexpected identity or whose bytes
+      # diverge from the listed digest; provenance.json is excluded from its
+      # own artifact map because a file cannot contain its own digest.
+      - name: Generate provenance manifest
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, os
+          dist = "dist"
+          artifacts = {}
+          for name in sorted(os.listdir(dist)):
+              if name == "provenance.json":
+                  continue
+              path = os.path.join(dist, name)
+              if not os.path.isfile(path):
+                  continue
+              h = hashlib.sha256()
+              with open(path, "rb") as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b""):
+                      h.update(chunk)
+              artifacts[name] = h.hexdigest()
+          provenance = {
+              "repository": os.environ["REPO"],
+              "workflow": "Release",
+              "tag": os.environ["TAG"],
+              "artifacts": artifacts,
+          }
+          with open(os.path.join(dist, "provenance.json"), "w") as f:
+              json.dump(provenance, f, indent=2, sort_keys=True)
+              f.write("\n")
+          EOF
 
       - name: Create GitHub release
         run: |
@@ -168,7 +210,8 @@ jobs:
             dist/pretender_${VERSION}_darwin_amd64.tar.gz \
             dist/pretender_${VERSION}_darwin_arm64.tar.gz \
             dist/pretender_${VERSION}_windows_amd64.zip \
-            dist/checksums.txt
+            dist/checksums.txt \
+            dist/provenance.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -178,6 +221,9 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Update Homebrew tap
+        # Distribution must not be hostage to crates.io auth: publish the
+        # package-manager manifests even when the crate upload fails.
+        if: always()
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
@@ -195,6 +241,7 @@ jobs:
           git push
 
       - name: Update Scoop bucket
+        if: always()
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |

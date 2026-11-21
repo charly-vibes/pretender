@@ -1,6 +1,9 @@
 id = "human-check-succeeds-on-clean-file"
-description = ""
+description = "check exits 0 on a clean file."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_exits_zero_when_clean"}]

@@ -1,6 +1,9 @@
 id = "github-workflow-includes-sarif-upload"
-description = ""
+description = "Generated GitHub workflow includes SARIF upload step."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_ci_generate_github_writes_workflow"}]

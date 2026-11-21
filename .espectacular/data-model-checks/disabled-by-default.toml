@@ -1,0 +1,9 @@
+id = "disabled-by-default"
+description = "primitive_field_check is disabled by default: when pretender.toml does not set it, no primitive_field violations are emitted."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "config_data_model_threshold_defaults_match_spec"}, {flags = "primitive_field_disabled_yields_none"}]

@@ -1,0 +1,9 @@
+id = "type-definition-at-threshold-is-flagged"
+description = "A type definition whose field count meets the threshold (10 fields with excessive_fields_max = 10) is flagged as an excessive_fields violation with actual = 10 and limit = 10."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "excessive_fields_at_threshold_flags_one"}, {flags = "test_check_data_model_violations_json"}]

@@ -1,0 +1,9 @@
+id = "adapter-without-type-captures-stays-valid"
+description = "A query file providing function captures but no type captures parses successfully with an empty type_definitions list."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "adapter_without_type_captures_stays_valid"}]

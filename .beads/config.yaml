@@ -53,4 +53,3 @@ no-db: true
 # - github.org
 # - github.repo
 
-sync.remote: "git+ssh://git@cv/charly-vibes/pretender.git"

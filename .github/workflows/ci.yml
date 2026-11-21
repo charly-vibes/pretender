@@ -18,7 +18,7 @@ jobs:
   ci:
     name: Test & Build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -38,7 +38,36 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
+      - name: Install ecosystem tools (§4 dogfood matrix, pinned)
+        run: |
+          cargo install --locked wai-cli@2026.9.28 dulce-de-leche@0.7.0
+          npm install -g @fission-ai/openspec@2.1.0
+      - name: Install bd (beads, pinned §4)
+        run: |
+          tmp=$(mktemp -d)
+          curl -fsSL https://github.com/gastownhall/beads/releases/download/v1.3.0/beads_1.3.0_linux_amd64.tar.gz -o "$tmp/bd.tgz"
+          # extract only the binary — the tarball also ships README/LICENSE/CHANGELOG
+          # which must not clobber the repo checkout
+          tar -xzf "$tmp/bd.tgz" -C "$tmp" bd
+          sudo mv "$tmp/bd" /usr/local/bin/bd
+      # §4 dogfood: installed tools must run, not just install
+      - name: Smoke dogfooded tools
+        env:
+          DO_NOT_TRACK: "1"
+        run: |
+          bd --version >/dev/null
+          ddl status >/dev/null
+          wai status >/dev/null
+          openspec validate --all >/dev/null
+      # DDL-43g: smoke our own live Pages URL — a 404'd book must fail this
+      # repo's CI immediately, not wait for the next hub conformance run.
+      - name: Smoke live Pages URL
+        run: curl -fsS --max-time 10 --retry 2 https://charly-vibes.github.io/pretender/ >/dev/null
       # Run the exact same command as local development
+      # DDL-43g: smoke our own live Pages URL — a 404'd book must fail this
+      # repo's CI immediately, not wait for the next hub conformance run.
+      - name: Smoke live Pages URL
+        run: curl -fsS --max-time 10 --retry 2 https://charly-vibes.github.io/pretender/ >/dev/null
       - name: Run CI pipeline
         run: just ci
 

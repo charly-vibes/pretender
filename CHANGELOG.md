@@ -1,6 +1,228 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Data-model checks: `excessive_fields` and `primitive_field` (add-data-model-checks)** — type definitions are now first-class on the universal model: a `TypeDefinition` entity (name, kind, span, fields) populated by optional `@type.*` tree-sitter captures. Captured: Rust `struct_item` → Struct; Go `struct_type` → Struct; Python `class_definition` → Class (`@dataclass` ships as Class); Java and C# `class_declaration`/`record_declaration` → Class/Record; JavaScript and TypeScript `class_declaration` → Class (TS also captures class `property_signature` fields); C `struct_specifier` → Struct (unions not captured); C++ `struct_specifier`/`class_specifier` → Struct/Class; Julia `struct_definition` → Struct. Zero captures (empty `type_definitions`, checks stay silent): Clojure (pinned tree-sitter-clojure 0.1.0 has no distinct `defrecord`/`deftype` nodes), Ruby (`attr_*` are method calls), R (S3/S4/R6 are function-based).
+  - **`excessive_fields`** flags a type with more than `excessive_fields_max` fields (default 10; `0` disables). The default 10 is provisional pending corpus calibration (pretender-uwz) — documented precedents range from 7 (pylint) to 20 (SonarQube).
+  - **`primitive_field`** flags primitive-typed fields on captured types; **opt-in and experimental** (`primitive_field_check = false` by default), with a configurable `domain_patterns` list extending the domain-name patterns (case-insensitive substring match) used to flag candidate domain-typed names.
+  - New config keys under `[thresholds.app]`: `excessive_fields_max` (integer, default 10), `primitive_field_check` (boolean, default false), and `domain_patterns` (string list, default empty — app-level only, not role-overridable).
+  - Findings (`ViolationReport`) now carry an optional `line` value, emitted in JSON and used for the SARIF region `start_line`; output stays byte-identical when no line is set.
+
+### Fixed
+
+- **`pretender init` no longer injects the `WAI` and `DONT` blocks it does not
+  own, and the doctor no longer reports their absent provenance as drift
+  (pretender-1ap)** — ownership follows publication: wai authors the `WAI`
+  block, dont authors `DONT`, and pretender publishes no AGENTS.md region, so
+  init had no business writing either one. `pretender init` now writes only
+  `pretender.toml` (plus the optional hook and CI workflow), leaving an existing
+  `AGENTS.md` byte-identical, and the `genesis.managed_block_drift` doctor check
+  is no longer registered — a wai- or dont-authored block can no longer be
+  reported as drifted against a pretender generator. A CLI test pins both the
+  byte-identical file and the absence of any drift finding naming `WAI` or
+  `DONT`.
+
+- **`pretender init` no longer writes the retired `OPENSPEC` managed block** —
+  openspec 1.0.0 stopped publishing its AGENTS.md block (it writes
+  `openspec/config.yaml` instead), so pretender was a second writer into a
+  retired region. Init's remaining blocks are gone too (see pretender-1ap
+  above). Fixes the ddl doctor advisory `ddl.repo.blocks`
+  ("AGENTS.md carries the retired OPENSPEC:START managed block") that turned
+  ddl CI red on repos where `pretender init` had run.
+
+## [0.11.1] - 2026-11-15
+
+### Fixed
+
+- **Exclude globs match dot-prefixed walked paths** — walking `.` yields
+  `./tests/x.rs`, which never matched `tests/**` (or the wizard defaults
+  `vendor/**`, `node_modules/**`), so configured exclusions were silently
+  inert. Paths are now matched raw and with leading `./` stripped, and
+  patterns are normalized the same way. Absolute paths keep prior behavior.
+- **`--diff-only` covers the pending commit** — `diff_base_files` diffed
+  only `base..HEAD`, so at pre-commit the staged/worktree changes were
+  invisible and the previous commit's files were gated instead. The diff now
+  unions `base..HEAD`, `HEAD..index` and `index..worktree`; newly staged
+  untracked files count as additions. Default base ref unchanged.
+
+## [0.11.0] - 2026-11-04
+
+### Changed
+
+- **Tightened built-in defaults (update-app-threshold-defaults)** —
+  `function_lines_max` 40 → 30 (dogfood p95 was 47), and the seven
+  previously-disabled shipped checks are now enabled at their documented
+  convention values: `unwrap_max = 5`, `void_mutators_max = 3`,
+  `bool_cluster_max = 3`, `mut_ratio_max = 0.3`, `inheritance_depth_max = 2`,
+  test `mock_count_max = 5`, test `unwrap_max = 5`, test `lazy_cluster_min = 3`.
+  **Gate-mode migration:** these activate on existing repos without config
+  changes — run `pretender check --adopt` to baseline the current state, or
+  switch to `mode = "tiered"` with an advisory lease. Rule IDs, SARIF schema,
+  and metric semantics are unchanged; repos with explicit thresholds in
+  `pretender.toml` are unaffected.
+
+### Added
+
+- **Threshold presets for `pretender init`** — the wizard now asks
+  `Threshold preset (default/strict) [default]:` after the mode question;
+  non-interactive runs accept `--preset <default|strict>` (default `default`,
+  and an explicit `--preset` suppresses the prompt, mirroring `--mode`). Init
+  writes the chosen preset's threshold tables explicitly into the generated
+  `pretender.toml`, making the config self-documenting and stable against
+  future default changes. The `strict` preset pins tighter headline limits
+  (app cyclomatic 8, cognitive 12, function lines 25, nesting 2, params 3,
+  ABC 25, duplication 4%, file lines 300; test cyclomatic 2, cognitive 3,
+  function lines 60, nesting 2). Combining gate mode with `strict` prints the
+  `check --adopt` / tiered-lease migration hint.
+
+### Fixed
+
+- `templates/pretender.toml.example` no longer lists `mi_min`,
+  `coverage_line_min`, `coverage_branch_min`, `mutation_min` — keys removed
+  from the schema in v0.5.0 that were silently ignored.
+
+## [0.10.0] - 2026-10-16
+
+### Added
+
+- **Gate baseline adoption (gently-if4)** — `pretender check --adopt` writes
+  the current scan's stable finding IDs into `pretender-baseline.json` next
+  to `pretender.toml`. With that baseline present, `check --mode gate` fails
+  only on genuinely new findings; known (baselined) violations pass with a
+  `gate: N known (baselined), M new` summary line. A mechanical reformat can
+  no longer hard-block gate mode with "0 new" findings. Without a baseline,
+  gate mode stays fail-closed (any violation fails). The IDs reuse the u8a
+  stable-finding scheme (`path::unit::rule`, no line numbers), and file-scope
+  violations (`file_lines`, `mock_count`, …) are now tracked in history too.
+
+## [0.9.0] — 2026-10-09
+
+### Added
+
+- **.gitignore-aware walk by default (pretender-094)** — when walking
+  directories, `pretender` now skips anything git-ignored (repo + nested
+  `.gitignore`, global `core.excludesFile`, `.git/info/exclude`), so
+  `target/`, `node_modules/`, and vendored code stop being scanned without
+  per-repo exclude lists. Kills the `./`-anchoring footgun class entirely:
+  walked paths no longer need `./target/**` twins of `target/**` patterns
+  (leaked 104 vendored-mermaid findings into specodelic's walk gate).
+  Opt out with `pretender.respect_gitignore = false` or
+  `check --scan-ignored`; explicitly passed file paths and `--staged` are
+  never filtered. Outside a git repo the walk stays unfiltered.
+
+### Fixed
+
+- **Executable release tarballs + curl install docs** — release artifacts
+  now carry the executable bit so `curl … | sh` installs work out of the
+  box; install docs and LLM summaries on Pages updated to match.
+- **genesis-vibes 0.11.1 → 0.12.3 (pretender-ipn)** — no API changes to
+  modules pretender uses (audit in PR #45); keeps the suite-current
+  infrastructure dep from drifting.
+
+## [0.8.0] — 2026-10-01
+
+### Added
+
+- **Managed-block provenance + drift check (pretender-ivo)** — `pretender init`
+  now injects WAI/OPENSPEC/DONT managed blocks via
+  `BlockInjector::with_provenance("pretender")`, stamping a provenance footer
+  (generator, version, source, sha8) into each block. A new doctor check,
+  `genesis.managed_block_drift`, warns when managed blocks drift from the
+  genesis specs or are missing from an existing AGENTS.md (foreign repos
+  without AGENTS.md stay quiet). Underlying genesis-vibes dependency bumped
+  0.8.3 → 0.11.1.
+
+### Fixed
+
+- **tree-sitter-rust 0.23 → 0.24.2 (pretender-mlw)** — Rust files using
+  `&raw` locals no longer trigger a false "Parse errors detected" warning.
+  The found impact was worse than noise: the engine early-returned empty
+  units on parse errors, so such files silently lost ALL metrics
+  (complexity, coupling, checks) — parse errors are now reported as
+  diagnostics and remaining files are still analyzed. ABI compatibility
+  with the tree-sitter 0.25 runtime verified by the full test suite.
+- **`check --staged` short-circuit is format-aware (pretender-xgt)** — when
+  nothing is staged (or changed under `--diff-only`/`--diff-base`), the
+  short-circuit printed human text regardless of `--format`, so JSON/SARIF
+  consumers got unparseable stdout. Human output keeps the friendly
+  one-liner; JSON now emits a proper empty `check` envelope (including the
+  `advisory-lease` warning when lease fail-closed triggers) and SARIF emits
+  an empty report. Exit code still honors lease fail-closed.
+
+## [0.7.1] — 2026-10-01
+
+### Fixed
+
+- **Advisory-lease fail-closed now explains itself (GH #35)** — when
+  `mode = "tiered"`/`"guidance"` runs without a current `advisory_until`
+  lease, `pretender check` exits 1 as designed, but now prints a remediation
+  diagnostic to stderr (`set advisory_until in pretender.toml, pass
+  --advisory-until YYYY-MM-DD, or switch to mode=gate`) instead of silently
+  failing with all-green output. The JSON envelope no longer claims
+  `"ok": true` on that path: it reports `"ok": false` and carries a
+  structured `advisory-lease` warning with the same message.
+
+## [0.7.0] — 2026-10-01
+
+### Changed
+
+- **Gate-by-default + advisory lease TTL (pretender-1te)** — `mode` now
+  defaults to `"gate"` (fail-closed). `tiered` and `guidance` are dated
+  downgrades: they require an `advisory_until` ISO date (YYYY-MM-DD) in
+  `pretender.toml` (or `--advisory-until DATE` on the CLI). An expired,
+  missing, or unparseable lease makes `pretender check` FAIL — the
+  quality-drift detector forcing a renewed, dated, reviewable decision
+  instead of a permanent silent advisory. Renewal = push the date forward
+  (a visible diff). Gate mode never consults the lease. Date math is
+  zero-dependency (lexicographic ISO compare + Hinnant civil-from-days).
+
+### Added
+
+- `PretenderSection.advisory_until` config field and `--advisory-until`
+  CLI flag (overrides the config lease when given).
+- `Mode::is_advisory()` + `is_lease_expired()` in `pretender::config`.
+
+### Fixed
+
+- cli_test output helpers (`check`, `check_default`) carry a current
+  lease so output-focused tests keep advisory semantics; exit-policy
+  tests build raw commands (appending `--mode` to the helper made clap
+  exit 2 — flag shadowing).
+
+---
+
 All notable changes to Pretender are documented here.
+
+## [0.6.0] — 2026-09-29
+
+### Changed
+
+- **Hook install/uninstall migrated onto `genesis::git_hooks`** (genesis-vibes
+  0.4 → 0.8.3) — private hook-management code in `main.rs` replaced by the
+  shared genesis module. Behavior upgrade: hook install now respects git's
+  `core.hooksPath` config. Foreign-hook refusal behavior and messages are
+  unchanged. JSON envelopes now carry `cli_version` (genesis 0.8 API).
+
+### Added
+
+- **`pretender hooks install pre-push` / `hooks uninstall pre-push`** —
+  pre-push hook support (previously only pre-commit). Defaults to pre-commit
+  when no hook name is given.
+- **Resolution tracking** — `pretender check` persists a stable finding-ID
+  snapshot (`path::unit_name::rule_key`; safe against line-number shifts) on
+  every run, including clean runs, and reports a delta on human output:
+  `→ resolution: 3 fixed, 5 still open, 2 new (43%)`. The delta plus a
+  resolution rate (`fixed / (fixed + still_open)`) also appears in JSON
+  output under `data.history.resolution` and in `summaries.json`, making
+  adoption value (fixed-vs-flagged ratio) measurable. New history artifact:
+  `history/last-findings.json`.
+- **`Hook location` doctor check** — resolves `core.hooksPath` across all
+  config scopes via `genesis::git_hooks::effective_hooks_dir` and warns when
+  git will invoke hooks from a directory other than where the pretender hook
+  was installed (e.g. a global `core.hooksPath` shim silently makes the gate
+  inert). An empty-string `core.hooksPath` (hooks disabled) is an error.
 
 ## [0.5.0] — 2026-08-05
 

@@ -1,0 +1,9 @@
+id = "members-are-not-duplicated"
+description = "A class definition with fields and methods yields one TypeDefinition holding fields only plus separate CodeUnit entries for each method."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "members_are_not_duplicated"}]

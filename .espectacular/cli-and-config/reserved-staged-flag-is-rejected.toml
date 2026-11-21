@@ -1,6 +1,9 @@
 id = "reserved-staged-flag-is-rejected"
-description = ""
+description = "check --staged filters the scan to staged files and exits 0 (success message when nothing is staged); --diff-only and --diff-base remain reserved. Family: test_check_staged_*."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_check_staged_only_scans_staged_files"}]

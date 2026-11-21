@@ -259,6 +259,7 @@ mod tests {
             lines_code: 8,
             lines_comment: 2,
             units: vec![],
+            type_definitions: Vec::new(),
             imports: imports
                 .into_iter()
                 .map(|i| Import {

@@ -1,0 +1,9 @@
+id = "struct-maps-to-type-definition"
+description = "A captured struct definition with two fields becomes one TypeDefinition on that file's Module with kind struct and two ordered fields."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "struct_maps_to_type_definition"}]

@@ -7,6 +7,7 @@ fn genesis_envelope_accessible() {
 
     // Create a success envelope
     let env = Envelope::success(
+        env!("CARGO_PKG_VERSION"),
         EnvelopeKind::Ok,
         serde_json::json!({"key": "value"}),
         vec![],
@@ -29,7 +30,7 @@ fn genesis_envelope_accessible() {
         }],
     )
     .expect("remediation must be non-empty");
-    let error_env = Envelope::error(err, vec![]);
+    let error_env = Envelope::error(env!("CARGO_PKG_VERSION"), err, vec![]);
     assert!(!error_env.ok);
     assert_eq!(error_env.envelope_kind, EnvelopeKind::Error);
 
@@ -112,7 +113,7 @@ fn genesis_managed_block_accessible() {
     // Create a registry and injector
     let mut reg = BlockRegistry::new();
     reg.register(BlockDef::new("WAI"));
-    reg.register(BlockDef::new("OPENSPEC"));
+    reg.register(BlockDef::new("CUSTOM"));
     reg.register(BlockDef::new("DONT"));
 
     let injector = BlockInjector::new(reg);
@@ -121,14 +122,13 @@ fn genesis_managed_block_accessible() {
     let names = injector.registry().names();
     assert!(names.contains(&"WAI"));
     assert!(names.contains(&"DONT"));
-    assert!(names.contains(&"OPENSPEC"));
+    assert!(names.contains(&"CUSTOM"));
 }
 
 #[test]
 fn genesis_constants_accessible() {
     // Verify constants compile and carry real values
     assert!(!genesis::envelope::ENVELOPE_VERSION.is_empty());
-    assert!(!genesis::envelope::CLI_VERSION.is_empty());
 }
 
 #[test]

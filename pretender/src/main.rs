@@ -5,6 +5,7 @@ mod config;
 mod coupling;
 mod cpp;
 mod csharp;
+mod data_model;
 mod doctor;
 mod duplication;
 mod engine;
@@ -33,23 +34,23 @@ mod rust;
 mod test_report;
 mod typescript;
 
-use crate::config::{Band, Bands, Config, Mode};
+use crate::config::{is_lease_expired, Band, Bands, Config, Mode};
 use crate::model::{Metric, Module};
 use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
-use genesis::envelope::{Envelope, EnvelopeKind};
+use genesis::envelope::{Envelope, EnvelopeKind, Warning};
 use genesis::feedback::scratch::{self, ErrorRecord};
 use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
+use genesis::git_hooks::{self as genesis_git_hooks, HookName};
 use genesis::guide::Guide;
-use genesis::managed_block::{BlockDef, BlockInjector, BlockRegistry};
 use genesis::status::{StatusContributor, StatusItem, StatusSection};
 use genesis::suggestions::SuggestionEngine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -167,6 +168,17 @@ struct InitArgs {
     /// Override default mode
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
+    /// Threshold preset to write into the generated config
+    #[arg(long, value_enum)]
+    preset: Option<ThresholdPreset>,
+}
+
+/// Threshold strictness preset for `init` (update-app-threshold-defaults):
+/// selects which threshold tables the generated pretender.toml emits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum ThresholdPreset {
+    Default,
+    Strict,
 }
 
 #[derive(Parser)]
@@ -198,15 +210,31 @@ struct CheckArgs {
     /// Override config `pretender.mode`
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
+    /// Advisory lease expiry (ISO YYYY-MM-DD) for tiered/guidance modes.
+    /// Required for advisory modes; an expired/missing lease fails closed —
+    /// renew by pushing the date forward (a visible, reviewable diff).
+    #[arg(long, value_name = "DATE")]
+    advisory_until: Option<String>,
     /// Show all functions with metrics, not just violating ones
     #[arg(long)]
     show_all: bool,
     /// Path to a JUnit XML report for test-duration analysis
     #[arg(long)]
     test_report: Option<PathBuf>,
+    /// Scan git-ignored files too (overrides the default .gitignore-aware
+    /// walk; same as setting `pretender.respect_gitignore = false`)
+    #[arg(long)]
+    scan_ignored: bool,
     /// Execute the configured test_cmd before analyzing test durations
     #[arg(long)]
     execute: bool,
+    /// Adopt every current violation into the gate baseline
+    /// (pretender-baseline.json): afterwards `check --mode gate` fails only on
+    /// genuinely new findings; known (baselined) violations pass with a
+    /// summary line. Refresh by re-running with --adopt. Without a baseline,
+    /// gate mode still fails on any violation (fail-closed).
+    #[arg(long)]
+    adopt: bool,
 }
 
 #[derive(Parser)]
@@ -245,10 +273,33 @@ struct MutationArgs {
 
 #[derive(Subcommand)]
 enum HooksCommand {
-    /// Write .git/hooks/pre-commit (native shim) or lefthook/pre-commit YAML
-    Install,
+    /// Write .git/hooks/<hook> (native shim) — default: pre-commit
+    Install {
+        /// Which git hook to install
+        #[arg(default_value = "pre-commit")]
+        hook: HookNameArg,
+    },
     /// Remove the hook file(s) previously installed by `pretender hooks install`
-    Uninstall,
+    Uninstall {
+        /// Which git hook to uninstall
+        #[arg(default_value = "pre-commit")]
+        hook: HookNameArg,
+    },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum HookNameArg {
+    PreCommit,
+    PrePush,
+}
+
+impl From<HookNameArg> for HookName {
+    fn from(value: HookNameArg) -> Self {
+        match value {
+            HookNameArg::PreCommit => HookName::PreCommit,
+            HookNameArg::PrePush => HookName::PrePush,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -301,7 +352,7 @@ enum LongReportFormat {
     Html,
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum ModeArg {
     Guidance,
     Tiered,
@@ -391,12 +442,13 @@ impl Executable for InitArgs {
         let options = if self.non_interactive {
             InitOptions {
                 mode: self.mode.unwrap_or(ModeArg::Tiered),
+                preset: self.preset.unwrap_or(ThresholdPreset::Default),
                 languages: vec!["auto".to_string()],
                 install_hook: false,
                 generate_github_actions: false,
             }
         } else {
-            prompt_init_options(self.mode)?
+            prompt_init_options(self.mode, self.preset)?
         };
 
         let cwd = std::env::current_dir().context("failed to get current directory")?;
@@ -413,6 +465,18 @@ impl Executable for InitArgs {
             eprintln!("pretender.toml already exists, skipping");
         }
 
+        // Strict on gate is an immediate wall of violations on an existing
+        // codebase — point at the migration path (spec: Strict Preset Gate
+        // Hint). Printed whenever gate+strict combine, written or not.
+        if options.mode == ModeArg::Gate && options.preset == ThresholdPreset::Strict {
+            println!(
+                "Strict preset with gate mode: existing code will likely violate the tighter thresholds."
+            );
+            println!(
+                "Baseline the current state first: pretender check --adopt, or use mode = \"tiered\" with an advisory lease."
+            );
+        }
+
         // Register in genesis discovery manifest
         genesis::discovery::register(
             &cwd,
@@ -423,11 +487,8 @@ impl Executable for InitArgs {
         )
         .map_err(|e| anyhow::anyhow!("failed to register in genesis manifest: {e}"))?;
 
-        // Inject suite managed blocks into AGENTS.md
-        inject_managed_blocks()?;
-
         if options.install_hook {
-            install_pre_commit_hook()?;
+            install_hook(HookName::PreCommit)?;
         }
         if options.generate_github_actions {
             write_github_ci_workflow()?;
@@ -489,9 +550,7 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
     };
     let content =
         std::fs::read_to_string(cargo_path).context(format!("failed to read {cargo_path}"))?;
-    let value: toml::Value = content
-        .parse::<toml::Value>()
-        .context("failed to parse Cargo.toml")?;
+    let value: toml::Value = toml::from_str(&content).context("failed to parse Cargo.toml")?;
     let package = value
         .get("package")
         .and_then(|v| v.get("repository"))
@@ -509,33 +568,29 @@ fn extract_repo_from_cargo_toml() -> Result<String> {
     Ok(repo_short)
 }
 
-fn inject_managed_blocks() -> Result<()> {
-    let mut reg = BlockRegistry::new();
-    reg.register(BlockDef::new("WAI"));
-    reg.register(BlockDef::new("OPENSPEC"));
-    reg.register(BlockDef::new("DONT"));
-    let injector = BlockInjector::new(reg);
+#[cfg(test)]
+mod managed_block_ownership_tests {
+    /// AGENTS.md regions pretender owns.
+    ///
+    /// Ownership rule: only the tool that publishes a region may write it.
+    /// pretender publishes none — WAI belongs to wai and DONT to dont — so
+    /// `pretender init` injects no blocks and the doctor registers no
+    /// block-drift target. A future entry here is a deliberate, test-visible
+    /// decision that must name the publishing tool first.
+    fn owned_agents_regions() -> Vec<&'static str> {
+        vec![]
+    }
 
-    let agents_path = std::path::Path::new("AGENTS.md");
-    let wai_content =
-        "\n<!-- wai: managed block -->\nRun `wai status` to orient yourself.\n".to_string();
-    let openspec_content =
-        "\n<!-- openspec: managed block -->\nSee openspec/ for spec-driven development.\n"
-            .to_string();
-    let dont_content =
-        "\n<!-- dont: managed block -->\nSee .dont/ for grounded-claim workflow.\n".to_string();
-
-    injector
-        .inject(agents_path, "WAI", &wai_content)
-        .context("failed to inject WAI managed block")?;
-    injector
-        .inject(agents_path, "OPENSPEC", &openspec_content)
-        .context("failed to inject OPENSPEC managed block")?;
-    injector
-        .inject(agents_path, "DONT", &dont_content)
-        .context("failed to inject DONT managed block")?;
-
-    Ok(())
+    #[test]
+    fn supported_managed_block_set_is_empty() {
+        let owned = owned_agents_regions();
+        assert!(
+            owned.is_empty(),
+            "ownership rule violated: only a tool that publishes an AGENTS.md \
+             region may write it, but pretender claims {owned:?} — WAI and DONT \
+             are authored by wai and dont"
+        );
+    }
 }
 
 impl Executable for ComplexityArgs {
@@ -593,6 +648,22 @@ impl Executable for CheckArgs {
         if let Some(mode) = self.mode {
             config.pretender.mode = mode.into();
         }
+        // CLI lease overrides config lease (same semantics either way)
+        if self.advisory_until.is_some() {
+            config.pretender.advisory_until = self.advisory_until.clone();
+        }
+
+        // Advisory-lease fail-closed (GH #35): when tiered/guidance run without
+        // a current lease the check still fails, but the user must be told why.
+        // The diagnostic goes to stderr so stdout stays a parseable report.
+        let lease_failed = lease_fail_closed(
+            config.pretender.mode,
+            config.pretender.advisory_until.as_deref(),
+        );
+        let lease_warning = lease_failed.then(|| lease_diagnostic(config.pretender.mode));
+        if let Some(msg) = &lease_warning {
+            eprintln!("error: {msg}");
+        }
 
         // Respect global --json / --human flags
         let args: Vec<String> = std::env::args().collect();
@@ -615,27 +686,48 @@ impl Executable for CheckArgs {
                 git::diff_base_files(&cwd, base)?
             };
             // Short-circuit: skip the full directory walk when nothing is staged/changed.
+            // pretender-xgt: the skipped output must still be format-aware —
+            // --format json/sarif consumers get a parseable empty report, not
+            // human text. Human keeps the friendly one-liner.
             if allowed.is_empty() {
-                if self.staged {
-                    println!("No staged files to check.");
-                } else {
-                    println!("No changed files to check.");
+                let report = CheckReport {
+                    files: vec![],
+                    modules: Vec::new(),
+                    cycles: Vec::new(),
+                    test_findings: Vec::new(),
+                    history: None,
+                };
+                match format {
+                    ReportFormat::Human => {
+                        if self.staged {
+                            println!("No staged files to check.");
+                        } else {
+                            println!("No changed files to check.");
+                        }
+                    }
+                    ReportFormat::Json | ReportFormat::Sarif => {
+                        let mut sink = open_report_sink(self.output.as_deref())?;
+                        match format {
+                            ReportFormat::Json => {
+                                write_json_report(sink.as_mut(), &report, lease_warning)?
+                            }
+                            ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
+                            ReportFormat::Human => unreachable!("handled above"),
+                        }
+                        sink.flush().context("failed to flush report output")?;
+                    }
                 }
                 return Ok(decide_exit_code(
-                    &CheckReport {
-                        files: vec![],
-                        modules: Vec::new(),
-                        cycles: Vec::new(),
-                        test_findings: Vec::new(),
-                        history: None,
-                    },
+                    &report,
                     config.pretender.mode,
+                    config.pretender.advisory_until.as_deref(),
+                    &HashSet::new(),
                 ));
             }
-            let all = collect_input_files(&self.paths, &config)?;
+            let all = collect_input_files_with_override(&self.paths, &config, self.scan_ignored)?;
             apply_file_filter(all, Some(&allowed), &cwd)
         } else {
-            collect_input_files(&self.paths, &config)?
+            collect_input_files_with_override(&self.paths, &config, self.scan_ignored)?
         };
 
         // Warn when explicit paths produce no files matching any supported grammar.
@@ -724,6 +816,12 @@ impl Executable for CheckArgs {
                 test_report::evaluate_duration(&timings, &detector, &config, &search_root);
         }
 
+        // ── Gate baseline (gently-if4) ───────────────────────────────
+        // The current scan's stable finding IDs — the u8a scheme — are what
+        // `--adopt` persists and what gate mode diffs the baseline against.
+        let findings = violation_findings(&report);
+        let current_ids = violation_finding_ids(&report);
+
         let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
         // Attach history before writing output so JSON format includes it
@@ -734,6 +832,51 @@ impl Executable for CheckArgs {
             writing_to_stdout,
             sink.as_mut(),
         );
+
+        // `--adopt` writes/refreshes the gate baseline from the current scan
+        // and reports what it adopted. The run still updates history, but the
+        // exit code is success by definition — adoption is the decision.
+        if self.adopt {
+            let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+            for finding in &findings {
+                *kinds.entry(finding.rule_key.as_str()).or_default() += 1;
+            }
+            let breakdown = kinds
+                .iter()
+                .map(|(rule, count)| format!("{rule} {count}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let baseline = history::persist_baseline(Path::new(BASELINE_PATH), &current_ids)
+                .context("failed to write gate baseline")?;
+            if matches!(format, ReportFormat::Human) {
+                println!(
+                    "\u{1b}[32m\u{2713}\u{1b}[0m adopted {} findings into {BASELINE_PATH} ({breakdown})",
+                    baseline.finding_ids.len()
+                );
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        // Gate mode with a baseline: known (adopted) violations pass; only
+        // genuinely new finding IDs gate. No baseline → every violation gates
+        // (fail-closed preserved). A corrupt baseline errors out — it must not
+        // silently degrade to "no baseline".
+        let (baselined, baseline_present) = if matches!(config.pretender.mode, Mode::Gate) {
+            match history::load_baseline(Path::new(BASELINE_PATH)) {
+                Ok(Some(baseline)) => {
+                    let known: HashSet<String> = current_ids
+                        .iter()
+                        .filter(|id| baseline.finding_ids.contains(*id))
+                        .cloned()
+                        .collect();
+                    (known, true)
+                }
+                Ok(None) => (HashSet::new(), false),
+                Err(err) => return Err(err.context("gate baseline unreadable — refusing to gate")),
+            }
+        } else {
+            (HashSet::new(), false)
+        };
         match format {
             ReportFormat::Human => {
                 let color = writing_to_stdout && color_enabled();
@@ -746,13 +889,36 @@ impl Executable for CheckArgs {
                     self.show_all,
                 )?;
             }
-            ReportFormat::Json => write_json_report(sink.as_mut(), &report)?,
+            ReportFormat::Json => write_json_report(sink.as_mut(), &report, lease_warning)?,
             ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
+        }
+        if baseline_present && matches!(format, ReportFormat::Human) {
+            let new_count = current_ids
+                .iter()
+                .filter(|id| !baselined.contains(*id))
+                .collect::<HashSet<_>>()
+                .len();
+            let color = writing_to_stdout && color_enabled();
+            let (cyan, reset) = if color {
+                ("\u{1b}[36m", "\u{1b}[0m")
+            } else {
+                ("", "")
+            };
+            writeln!(
+                sink,
+                "{cyan}\u{2192}{reset} gate: {} known (baselined), {new_count} new",
+                baselined.len()
+            )?;
         }
         persist_last_check_report(&report)?;
         sink.flush().context("failed to flush report output")?;
 
-        Ok(decide_exit_code(&report, config.pretender.mode))
+        Ok(decide_exit_code(
+            &report,
+            config.pretender.mode,
+            config.pretender.advisory_until.as_deref(),
+            &baselined,
+        ))
     }
 }
 
@@ -820,7 +986,13 @@ impl Executable for MutationArgs {
 
         match self.format {
             ReportFormat::Json => {
-                let env = Envelope::success(EnvelopeKind::Check, &report, vec![], vec![]);
+                let env = Envelope::success(
+                    env!("CARGO_PKG_VERSION"),
+                    EnvelopeKind::Check,
+                    &report,
+                    vec![],
+                    vec![],
+                );
                 println!("{}", serde_json::to_string_pretty(&env)?);
             }
             _ => print_mutation_report(&report),
@@ -918,12 +1090,12 @@ impl Executable for ReportArgs {
 impl Executable for HooksCommand {
     fn run(&self) -> Result<ExitCode> {
         match self {
-            HooksCommand::Install => {
-                install_pre_commit_hook()?;
+            HooksCommand::Install { hook } => {
+                install_hook((*hook).into())?;
                 Ok(ExitCode::SUCCESS)
             }
-            HooksCommand::Uninstall => {
-                uninstall_pre_commit_hook()?;
+            HooksCommand::Uninstall { hook } => {
+                uninstall_hook((*hook).into())?;
                 Ok(ExitCode::SUCCESS)
             }
         }
@@ -1031,15 +1203,77 @@ fn wait_with_timeout(
     }
 }
 
-fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
+/// Single source of truth for the advisory-lease fail-closed condition
+/// (GH #35): tiered/guidance with a missing or expired lease fail closed;
+/// gate never consults the lease.
+fn lease_fail_closed(mode: Mode, advisory_until: Option<&str>) -> bool {
+    mode.is_advisory() && (advisory_until.is_none() || is_lease_expired(advisory_until))
+}
+
+/// Human-readable remediation for a lease fail-closed (GH #35). Printed to
+/// stderr and surfaced as a structured envelope warning.
+fn lease_diagnostic(mode: Mode) -> String {
+    let mode_name = match mode {
+        Mode::Guidance => "guidance",
+        Mode::Tiered => "tiered",
+        Mode::Gate => "gate",
+    };
+    format!(
+        "mode={mode_name} requires a current advisory lease: set advisory_until in pretender.toml, \
+         pass --advisory-until YYYY-MM-DD, or switch to mode=gate"
+    )
+}
+
+#[test]
+fn test_lease_fail_closed_matrix() {
+    // advisory modes: missing or expired lease fails closed
+    assert!(lease_fail_closed(Mode::Tiered, None));
+    assert!(lease_fail_closed(Mode::Guidance, None));
+    assert!(lease_fail_closed(Mode::Tiered, Some("2000-01-01")));
+    assert!(lease_fail_closed(Mode::Guidance, Some("not-a-date")));
+    // valid lease passes
+    assert!(!lease_fail_closed(Mode::Tiered, Some("2099-12-31")));
+    // gate never consults the lease (GH #35 regression guard)
+    assert!(!lease_fail_closed(Mode::Gate, None));
+    assert!(!lease_fail_closed(Mode::Gate, Some("2000-01-01")));
+}
+
+#[test]
+fn test_lease_diagnostic_mentions_all_remediations() {
+    let msg = lease_diagnostic(Mode::Tiered);
+    assert!(msg.contains("tiered"), "names the mode: {msg}");
+    assert!(msg.contains("advisory_until"), "config remediation: {msg}");
+    assert!(msg.contains("--advisory-until"), "CLI remediation: {msg}");
+    assert!(msg.contains("mode=gate"), "gate fallback: {msg}");
+}
+
+/// Gate baseline location: next to pretender.toml (repo root), so it can be
+/// committed and gate mode behaves identically in CI.
+const BASELINE_PATH: &str = "pretender-baseline.json";
+
+fn decide_exit_code(
+    report: &CheckReport,
+    mode: Mode,
+    advisory_until: Option<&str>,
+    baselined: &HashSet<String>,
+) -> ExitCode {
+    // Advisory lease TTL (pretender-1te): tiered/guidance are dated
+    // downgrades from the gate default. Expired/missing/unparseable lease
+    // fails closed — the drift detector forcing a renewed, dated decision.
+    if lease_fail_closed(mode, advisory_until) {
+        return ExitCode::FAILURE;
+    }
     let has_skipped = report
         .files
         .iter()
         .any(|file| file.diagnostics.iter().any(|d| d.severity == "Error"));
-    let has_violation = report.files.iter().any(|file| {
-        !file.file_violations.is_empty()
-            || file.units.iter().any(|unit| !unit.violations.is_empty())
-    });
+    // gently-if4: a violation gates only when its stable finding ID is NOT in
+    // the adopted baseline (genuinely new). Baselined violations pass; the
+    // other gate categories (parse errors, coupling, cycles, test durations)
+    // have no stable per-violation IDs and always gate — fail-closed.
+    let has_violation = violation_findings(report)
+        .iter()
+        .any(|finding| !baselined.contains(&violation_finding_id(finding)));
     let has_coupling_violation = report
         .modules
         .iter()
@@ -1067,12 +1301,16 @@ fn decide_exit_code(report: &CheckReport, mode: Mode) -> ExitCode {
 
 struct InitOptions {
     mode: ModeArg,
+    preset: ThresholdPreset,
     languages: Vec<String>,
     install_hook: bool,
     generate_github_actions: bool,
 }
 
-fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
+fn prompt_init_options(
+    mode_override: Option<ModeArg>,
+    preset_override: Option<ThresholdPreset>,
+) -> Result<InitOptions> {
     let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
 
@@ -1091,6 +1329,24 @@ fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
             "guidance" => ModeArg::Guidance,
             "gate" => ModeArg::Gate,
             other => return Err(anyhow!("invalid mode: {other}")),
+        },
+    };
+
+    // An explicit --preset suppresses the prompt (mirrors --mode).
+    let preset = match preset_override {
+        Some(preset) => preset,
+        None => match prompt(
+            &mut stdin,
+            &mut stdout,
+            "Threshold preset (default/strict) [default]: ",
+        )?
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+        {
+            "" | "default" => ThresholdPreset::Default,
+            "strict" => ThresholdPreset::Strict,
+            other => return Err(anyhow!("invalid preset: {other}")),
         },
     };
 
@@ -1114,6 +1370,7 @@ fn prompt_init_options(mode_override: Option<ModeArg>) -> Result<InitOptions> {
 
     Ok(InitOptions {
         mode,
+        preset,
         languages,
         install_hook,
         generate_github_actions,
@@ -1186,82 +1443,112 @@ fn render_init_config(options: &InitOptions) -> String {
             "[roles.generated]\n",
             "paths = [\"**/*.pb.go\", \"**/*_generated.*\"]\n\n",
             "[roles.vendor]\n",
-            "paths = [\"vendor/**\", \"node_modules/**\"]\n"
+            "paths = [\"vendor/**\", \"node_modules/**\"]\n\n",
+            "{thresholds}"
         ),
         mode = mode,
         languages = languages,
+        thresholds = preset_tables(options.preset),
+    )
+}
+
+/// Single source for the threshold tables `init` emits (update-app-threshold-
+/// defaults): emitting them explicitly makes the generated config self-
+/// documenting and pins today's values against future default changes.
+/// Strict deviations are pinned by the spec ("Strict Preset Values"); every
+/// other value matches the built-in defaults.
+fn preset_tables(preset: ThresholdPreset) -> String {
+    let strict = preset == ThresholdPreset::Strict;
+    let v = |strict_val, default_val| {
+        if strict {
+            strict_val
+        } else {
+            default_val
+        }
+    };
+
+    format!(
+        concat!(
+            "[thresholds]\n",
+            "cyclomatic_max = {app_cyclomatic}\n",
+            "cognitive_max = {app_cognitive}\n",
+            "function_lines_max = {app_function_lines}\n",
+            "file_lines_max = {app_file_lines}\n",
+            "nesting_max = {app_nesting}\n",
+            "params_max = {app_params}\n",
+            "abc_max = {app_abc}\n",
+            "duplication_pct_max = {app_duplication}\n",
+            "void_mutators_max = 3\n",
+            "mut_ratio_max = 0.3\n",
+            "unwrap_max = 5\n",
+            "bool_cluster_max = 3\n",
+            "primitive_param_check = false\n",
+            "inheritance_depth_max = 2\n\n",
+            "[thresholds.test]\n",
+            "cyclomatic_max = {test_cyclomatic}\n",
+            "cognitive_max = {test_cognitive}\n",
+            "function_lines_max = {test_function_lines}\n",
+            "nesting_max = 2\n",
+            "params_max = 2\n",
+            "duplication_pct_max = 30\n",
+            "min_assertions = 1\n",
+            "mock_count_max = 5\n",
+            "unwrap_max = 5\n",
+            "lazy_cluster_min = 3\n"
+        ),
+        app_cyclomatic = v(8, 10),
+        app_cognitive = v(12, 15),
+        app_function_lines = v(25, 30),
+        app_file_lines = v(300, 400),
+        app_nesting = v(2, 3),
+        app_params = v(3, 4),
+        app_abc = v(25, 30),
+        app_duplication = v(4, 5),
+        test_cyclomatic = v(2, 3),
+        test_cognitive = v(3, 5),
+        test_function_lines = v(60, 80),
     )
 }
 
 const PRE_COMMIT_HOOK_MARKER: &str = "# Installed by Pretender.";
 
-fn repo_root() -> Result<PathBuf> {
-    let cwd = std::env::current_dir().context("failed to get current directory")?;
-    let mut current = Some(cwd.as_path());
-    while let Some(dir) = current {
-        if dir.join(".git").exists() {
-            return Ok(dir.to_path_buf());
-        }
-        current = dir.parent();
-    }
-    Err(anyhow!(
-        "not inside a git repository — no .git directory found in any parent"
-    ))
+fn hook_script() -> String {
+    "#!/usr/bin/env sh\nexec pretender check . --staged\n".to_string()
 }
 
-fn install_pre_commit_hook() -> Result<()> {
-    let root = repo_root()?;
-    let path = root.join(".git/hooks/pre-commit");
-    if path.exists() {
-        let existing = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read hook: {}", path.display()))?;
-        if !existing.contains(PRE_COMMIT_HOOK_MARKER) {
-            return Err(anyhow!(
+fn install_hook(hook: HookName) -> Result<PathBuf> {
+    let root = git_hook_repo_root()?;
+    let path = genesis_git_hooks::install(&root, hook, PRE_COMMIT_HOOK_MARKER, &hook_script())
+        .map_err(|e| anyhow!("{}", hook_error_message(e)))?;
+    Ok(path)
+}
+
+fn uninstall_hook(hook: HookName) -> Result<PathBuf> {
+    let root = git_hook_repo_root()?;
+    let path = genesis_git_hooks::uninstall(&root, hook, PRE_COMMIT_HOOK_MARKER)
+        .map_err(|e| anyhow!("{}", hook_error_message(e)))?;
+    Ok(path)
+}
+
+fn hook_error_message(err: genesis_git_hooks::GitHooksError) -> String {
+    use genesis_git_hooks::GitHooksError as E;
+    match err {
+        E::ForeignHook { path, action } => match action {
+            "remove" => format!(
+                "refusing to remove hook not installed by Pretender: {}",
+                path.display()
+            ),
+            _ => format!(
                 "refusing to overwrite hook not installed by Pretender: {}",
                 path.display()
-            ));
-        }
+            ),
+        },
+        other => format!("hook operation failed: {other}"),
     }
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("invalid hook path: {}", path.display()))?;
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create hook dir: {}", parent.display()))?;
-    fs::write(&path, pre_commit_hook_contents())
-        .with_context(|| format!("failed to write hook: {}", path.display()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&path, perms)?;
-    }
-
-    Ok(())
 }
 
-fn uninstall_pre_commit_hook() -> Result<()> {
-    let root = repo_root()?;
-    let path = root.join(".git/hooks/pre-commit");
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let source = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read hook: {}", path.display()))?;
-    if !source.contains(PRE_COMMIT_HOOK_MARKER) {
-        return Err(anyhow!(
-            "refusing to remove hook not installed by Pretender: {}",
-            path.display()
-        ));
-    }
-
-    fs::remove_file(&path).with_context(|| format!("failed to remove hook: {}", path.display()))
-}
-
-fn pre_commit_hook_contents() -> String {
-    format!("#!/usr/bin/env sh\n{PRE_COMMIT_HOOK_MARKER}\nexec pretender check . --staged\n")
+fn git_hook_repo_root() -> Result<PathBuf> {
+    genesis_git_hooks::repo_root().map_err(|e| anyhow!("{}", e))
 }
 
 fn github_ci_workflow_path() -> PathBuf {
@@ -1399,6 +1686,7 @@ fn analyze_path(
                 metric: "mock_count".to_string(),
                 actual: analysis.total_usage as f64,
                 limit: config.thresholds.test.mock_count_max as f64,
+                line: None,
             });
         }
         analysis
@@ -1419,6 +1707,7 @@ fn analyze_path(
                 metric: "void_mutator".to_string(),
                 actual: mutators.len() as f64,
                 limit: thresholds.void_mutators_max as f64,
+                line: None,
             });
         }
     }
@@ -1433,6 +1722,7 @@ fn analyze_path(
                 metric: "mut_ratio".to_string(),
                 actual: ratio,
                 limit: config.thresholds.app.mut_ratio_max,
+                line: None,
             });
         }
     }
@@ -1445,6 +1735,7 @@ fn analyze_path(
                 metric: "unwraps".to_string(),
                 actual: sites.len() as f64,
                 limit: thresholds.unwrap_max as f64,
+                line: None,
             });
         }
     }
@@ -1467,6 +1758,7 @@ fn analyze_path(
                     metric: "bool_cluster".to_string(),
                     actual: result.bool_param_count as f64,
                     limit: config.thresholds.app.bool_cluster_max as f64,
+                    line: None,
                 });
             }
             for v in &result.violations {
@@ -1475,9 +1767,31 @@ fn analyze_path(
                         metric: "primitive_param".to_string(),
                         actual: 1.0,
                         limit: 1.0,
+                        line: None,
                     });
                 }
             }
+        }
+    }
+
+    // Data-model checks (type definitions from the universal model).
+    // excessive_fields is role-overridable (effective thresholds);
+    // primitive_field/domain_patterns are app-level only (spec: not
+    // role-mergeable).
+    if thresholds.excessive_fields_max > 0 || config.thresholds.app.primitive_field_check {
+        let findings = data_model::analyze(
+            &module.type_definitions,
+            thresholds.excessive_fields_max,
+            config.thresholds.app.primitive_field_check,
+            &config.thresholds.app.domain_patterns,
+        );
+        for finding in findings {
+            file_violations.push(ViolationReport {
+                metric: finding.metric.to_string(),
+                actual: finding.actual as f64,
+                limit: finding.limit as f64,
+                line: Some(finding.span.start_line),
+            });
         }
     }
 
@@ -1490,6 +1804,7 @@ fn analyze_path(
                     metric: "inheritance_depth".to_string(),
                     actual: class.depth as f64,
                     limit: config.thresholds.app.inheritance_depth_max as f64,
+                    line: None,
                 });
             }
         }
@@ -1504,6 +1819,7 @@ fn analyze_path(
                 metric: "lazy_cluster".to_string(),
                 actual: cluster.count as f64,
                 limit: config.thresholds.test.lazy_cluster_min as f64,
+                line: None,
             });
         }
     }
@@ -1593,17 +1909,73 @@ fn apply_file_filter(
 }
 
 fn collect_input_files(paths: &[PathBuf], config: &Config) -> Result<Vec<PathBuf>> {
+    collect_input_files_with_override(paths, config, false)
+}
+
+/// Compile the configured exclude patterns into a glob set.
+///
+/// Patterns are normalized to walker-relative form (`./tests/**` becomes
+/// `tests/**`) so a single set matches both spellings users write.
+fn build_exclude_set(patterns: &[String]) -> Result<globset::GlobSet> {
     let mut builder = globset::GlobSetBuilder::new();
-    for pattern in &config.pretender.exclude {
-        let glob = globset::Glob::new(pattern)
+    for pattern in patterns {
+        let glob = globset::Glob::new(normalize_exclude_pattern(pattern))
             .with_context(|| format!("invalid exclude pattern: {}", pattern))?;
         builder.add(glob);
     }
-    let exclude_set = builder.build().context("failed to build exclude GlobSet")?;
+    builder.build().context("failed to build exclude GlobSet")
+}
+
+/// Strip any leading `./` components so `./tests/**` and `tests/**` compile
+/// to the same glob.
+fn normalize_exclude_pattern(pattern: &str) -> &str {
+    let mut rest = pattern;
+    while let Some(stripped) = rest.strip_prefix("./") {
+        rest = stripped;
+    }
+    rest
+}
+
+/// `path` without its leading `.` component, when it has one.
+///
+/// Walking `.` (the CLI default) yields entries like `./tests/x.rs`, and
+/// explicit `./dir` arguments carry the same prefix; neither matches
+/// walker-relative globs such as `tests/**` until stripped.
+fn strip_leading_cur_dir(path: &Path) -> Option<&Path> {
+    let mut current = path;
+    let mut stripped = false;
+    while let Ok(rest) = current.strip_prefix(".") {
+        if rest.as_os_str().is_empty() {
+            break;
+        }
+        current = rest;
+        stripped = true;
+    }
+    stripped.then_some(current)
+}
+
+/// True when an exclude glob matches `path`, testing both the raw path and
+/// its walker-relative form.
+fn is_excluded(exclude_set: &globset::GlobSet, path: &Path) -> bool {
+    exclude_set.is_match(path)
+        || strip_leading_cur_dir(path).is_some_and(|rest| exclude_set.is_match(rest))
+}
+
+fn collect_input_files_with_override(
+    paths: &[PathBuf],
+    config: &Config,
+    scan_ignored: bool,
+) -> Result<Vec<PathBuf>> {
+    let exclude_set = build_exclude_set(&config.pretender.exclude)?;
+
+    // pretender-094: honor .gitignore by default so generated/vendored/
+    // scratch dirs stop being scanned without per-repo exclude lists.
+    // `--scan-ignored` (CLI) restores the exhaustive walk regardless of config.
+    let respect_gitignore = config.pretender.respect_gitignore && !scan_ignored;
 
     let mut files = Vec::new();
     for path in paths {
-        collect_path(path, &exclude_set, false, &mut files)?;
+        collect_path(path, &exclude_set, respect_gitignore, false, &mut files)?;
     }
     files.sort();
     files.dedup();
@@ -1651,10 +2023,11 @@ fn is_supported_source(path: &Path) -> bool {
 fn collect_path(
     path: &Path,
     exclude_set: &globset::GlobSet,
+    respect_gitignore: bool,
     walked: bool,
     out: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    if exclude_set.is_match(path) {
+    if is_excluded(exclude_set, path) {
         return Ok(());
     }
 
@@ -1671,6 +2044,32 @@ fn collect_path(
     }
 
     if path.is_dir() {
+        if respect_gitignore {
+            // pretender-094: delegate to the `ignore` walker so nested
+            // .gitignore files, the global/core.excludesFile, and
+            // .git/info/exclude are all honored. Outside a git repo
+            // (require_git, the default) the walk is unfiltered — same as
+            // the manual fallback below.
+            let mut builder = ignore::WalkBuilder::new(path);
+            builder.git_ignore(true).git_global(true).git_exclude(true);
+            // Preserve the pre-existing behavior of walking hidden entries;
+            // `.git` itself is pruned explicitly.
+            builder.hidden(false);
+            builder.filter_entry(|e| e.file_name() != ".git");
+            for entry in builder.build() {
+                let entry = entry
+                    .with_context(|| format!("failed to walk directory: {}", path.display()))?;
+                let entry_path = entry.path();
+                if entry_path == path || is_excluded(exclude_set, entry_path) {
+                    continue;
+                }
+                if entry_path.is_file() && is_supported_source(entry_path) {
+                    out.push(entry_path.to_path_buf());
+                }
+            }
+            return Ok(());
+        }
+
         for entry in fs::read_dir(path)
             .with_context(|| format!("failed to read directory: {}", path.display()))?
         {
@@ -1680,7 +2079,7 @@ fn collect_path(
             // rather than erroring, since these can appear in .git/ and other
             // infrastructure directories.
             if entry_path.is_file() || entry_path.is_dir() {
-                collect_path(&entry_path, exclude_set, true, out)?;
+                collect_path(&entry_path, exclude_set, respect_gitignore, true, out)?;
             }
         }
         return Ok(());
@@ -1784,6 +2183,7 @@ fn push_limit_violation(
             metric: metric.to_string(),
             actual: actual as f64,
             limit: max as f64,
+            line: None,
         });
     }
 }
@@ -1799,6 +2199,7 @@ fn push_limit_violation_f64(
             metric: metric.to_string(),
             actual,
             limit: max as f64,
+            line: None,
         });
     }
 }
@@ -1809,6 +2210,7 @@ fn push_min_violation(out: &mut Vec<ViolationReport>, metric: &'static str, actu
             metric: metric.to_string(),
             actual: actual as f64,
             limit: min as f64,
+            line: None,
         });
     }
 }
@@ -2225,8 +2627,29 @@ fn html_escape(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn write_json_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> {
-    let env = Envelope::success(EnvelopeKind::Check, report, vec![], vec![]);
+fn write_json_report(
+    sink: &mut dyn Write,
+    report: &CheckReport,
+    lease_warning: Option<String>,
+) -> Result<()> {
+    let mut env = Envelope::success(
+        env!("CARGO_PKG_VERSION"),
+        EnvelopeKind::Check,
+        report,
+        vec![],
+        vec![],
+    );
+    // GH #35: a lease fail-closed exits 1, so the envelope must not claim
+    // ok:true — surface the reason as a structured warning instead.
+    if let Some(message) = lease_warning {
+        env.ok = false;
+        env.warnings.push(Warning {
+            rule_name: "advisory-lease".to_string(),
+            entity_id: None,
+            message,
+            suggested_remediation: Some("set advisory_until or switch to mode=gate".to_string()),
+        });
+    }
     serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;
     Ok(())
@@ -2267,7 +2690,11 @@ fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> Result<()> 
             .physical_location(
                 sarif::PhysicalLocation::builder()
                     .artifact_location(sarif::ArtifactLocation::builder().uri(file_path).build())
-                    .region(sarif::Region::builder().start_line(start_line).build())
+                    .region(
+                        sarif::Region::builder()
+                            .start_line(violation.line.map(i64::from).unwrap_or(start_line))
+                            .build(),
+                    )
                     .build(),
             )
             .build();
@@ -2402,7 +2829,7 @@ fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CheckReport {
     files: Vec<FileReport>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2415,7 +2842,7 @@ struct CheckReport {
     history: Option<history::HistorySummary>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct FileReport {
     path: String,
     role: String,
@@ -2428,7 +2855,7 @@ struct FileReport {
     mock_findings: Vec<MockFindingReport>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiagnosticReport {
     severity: String,
     message: String,
@@ -2447,7 +2874,7 @@ impl From<model::Diagnostic> for DiagnosticReport {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UnitReport {
     name: String,
     kind: String,
@@ -2456,7 +2883,7 @@ struct UnitReport {
     violations: Vec<ViolationReport>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct MetricValues {
     cyclomatic: u32,
     cognitive: u32,
@@ -2467,28 +2894,30 @@ struct MetricValues {
     abc: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ModuleReport {
     path: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     coupling_violations: Vec<CouplingViolationReport>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CouplingViolationReport {
     metric: String,
     actual: f64,
     limit: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct MockFindingReport {
     name: String,
     line: u32,
@@ -2506,10 +2935,60 @@ fn emit_history_events(
     let run_id = history::make_run_id();
     let mode_str = format!("{:?}", config.pretender.mode).to_ascii_lowercase();
     let new_events = all_violation_events(report, &run_id, &timestamp, &mode_str);
+    // Snapshot runs on EVERY check (including clean runs) so that "fixed" is
+    // distinguishable from "not rescanned" — the core of ticket u8a.
+    let current_ids: Vec<String> = new_events.iter().map(|e| e.fingerprint.clone()).collect();
+    let store = history::EventStore::new(Path::new(".pretender"));
+    let previous = match store.load_last_snapshot() {
+        Ok(prev) => prev,
+        Err(err) => {
+            eprintln!("pretender: history read failed: {err}");
+            return;
+        }
+    };
+    let delta = history::compute_delta(
+        previous.as_ref().map(|s| s.finding_ids.as_slice()),
+        &current_ids,
+    );
+
+    // Carry first_seen timestamps forward so persistence duration is tracked
+    // (consumed later by dj5's gate-findings export).
+    let mut first_seen = previous
+        .as_ref()
+        .map(|s| s.first_seen.clone())
+        .unwrap_or_default();
+    for id in &current_ids {
+        first_seen
+            .entry(id.clone())
+            .or_insert_with(|| timestamp.clone());
+    }
+    let snapshot = history::FindingsSnapshot {
+        schema_version: 1,
+        run_id: run_id.clone(),
+        timestamp: timestamp.clone(),
+        finding_ids: current_ids.clone(),
+        first_seen: first_seen.clone(),
+    };
+    if let Err(err) = store.persist_last_snapshot(&snapshot) {
+        eprintln!("pretender: history write failed: {err}");
+    }
+
     if new_events.is_empty() {
+        if !delta.fixed.is_empty() && matches!(format, ReportFormat::Human) {
+            let color = writing_to_stdout && color_enabled();
+            let (green, reset) = if color {
+                ("\u{1b}[32m", "\u{1b}[0m")
+            } else {
+                ("", "")
+            };
+            let _ = writeln!(
+                sink,
+                "{green}✓{reset} resolution: {} fixed since last check",
+                delta.fixed.len()
+            );
+        }
         return;
     }
-    let store = history::EventStore::new(Path::new(".pretender"));
     let all_events = match store.append_and_prune(&new_events) {
         Ok(events) => events,
         Err(err) => {
@@ -2517,17 +2996,56 @@ fn emit_history_events(
             return;
         }
     };
-    let summary = history::compute_summary(&all_events);
+    let mut summary = history::compute_summary(&all_events);
+    summary.resolution = Some(history::ResolutionStats {
+        fixed: delta.fixed.len(),
+        still_open: delta.still_open.len(),
+        new: delta.new.len(),
+        rate: delta.resolution_rate,
+    });
     let _ = store.persist_summary(&summary);
 
+    if matches!(format, ReportFormat::Human) {
+        let color = writing_to_stdout && color_enabled();
+        let _ = write_resolution_delta(sink, &delta, color);
+    }
+
     // Attach history to the report so it appears in JSON output
-    if !summary.top_hotspots.is_empty() || !summary.top_patterns.is_empty() {
+    if !summary.top_hotspots.is_empty()
+        || !summary.top_patterns.is_empty()
+        || summary.resolution.is_some()
+    {
         report.history = Some(summary.clone());
         if matches!(format, ReportFormat::Human) {
             let color = writing_to_stdout && color_enabled();
             let _ = write_recurrence_hints(sink, &summary, color);
         }
     }
+}
+
+/// Human-readable delta line: "resolution: 3 fixed, 5 still open, 2 new (43%)"
+fn write_resolution_delta(
+    sink: &mut dyn Write,
+    delta: &history::FindingDelta,
+    color: bool,
+) -> Result<()> {
+    let (cyan, reset) = if color {
+        ("\u{1b}[36m", "\u{1b}[0m")
+    } else {
+        ("", "")
+    };
+    let rate = delta
+        .resolution_rate
+        .map(|r| format!(" ({:.0}%)", r * 100.0))
+        .unwrap_or_default();
+    writeln!(
+        sink,
+        "{cyan}→{reset} resolution: {} fixed, {} still open, {} new{rate}",
+        delta.fixed.len(),
+        delta.still_open.len(),
+        delta.new.len()
+    )?;
+    Ok(())
 }
 
 fn metric_to_rule_key(metric: &str) -> &str {
@@ -2554,13 +3072,25 @@ fn metric_to_family(metric: &str) -> &str {
     }
 }
 
-fn all_violation_events(
-    report: &CheckReport,
-    run_id: &str,
-    timestamp: &str,
-    mode: &str,
-) -> Vec<history::ViolationEvent> {
-    let mut events = Vec::new();
+/// A metric violation as a stable finding: everything needed to derive the
+/// u8a finding ID (`history::finding_id`) plus the event fields. File-scope
+/// violations (file_lines, mock_count, ...) have `unit_name: None` and derive
+/// their ID with an empty unit name: `path::::rule_key`.
+struct ViolationFinding {
+    path: String,
+    unit_name: Option<String>,
+    role: String,
+    metric: String,
+    rule_key: String,
+    actual: f64,
+    limit: f64,
+}
+
+/// Every metric violation in the report as a stable finding — unit-scope and
+/// file-scope alike. The single source both history events and the gate
+/// baseline derive their IDs from, so the two can never drift.
+fn violation_findings(report: &CheckReport) -> Vec<ViolationFinding> {
+    let mut findings = Vec::new();
     for file in &report.files {
         // Normalize away leading "./" so fingerprints are stable regardless of
         // how the CLI path was spelled (e.g. "src/foo.rs" vs "./src/foo.rs").
@@ -2569,31 +3099,87 @@ fn all_violation_events(
             .strip_prefix("./")
             .unwrap_or(&file.path)
             .to_string();
+        for violation in &file.file_violations {
+            findings.push(ViolationFinding {
+                path: path.clone(),
+                unit_name: None,
+                role: file.role.clone(),
+                metric: violation.metric.clone(),
+                rule_key: metric_to_rule_key(&violation.metric).to_string(),
+                actual: violation.actual,
+                limit: violation.limit,
+            });
+        }
         for unit in &file.units {
             for violation in &unit.violations {
-                let rule_key = metric_to_rule_key(&violation.metric);
-                let metric_family = metric_to_family(&violation.metric);
-                events.push(history::ViolationEvent {
-                    schema_version: 1,
-                    timestamp: timestamp.to_string(),
-                    run_id: run_id.to_string(),
-                    mode: mode.to_string(),
+                findings.push(ViolationFinding {
                     path: path.clone(),
                     unit_name: Some(unit.name.clone()),
                     role: file.role.clone(),
-                    rule_key: rule_key.to_string(),
-                    metric_family: metric_family.to_string(),
-                    scope: "unit".to_string(),
-                    severity: "red".to_string(),
+                    metric: violation.metric.clone(),
+                    rule_key: metric_to_rule_key(&violation.metric).to_string(),
                     actual: violation.actual,
                     limit: violation.limit,
-                    delta: violation.actual - violation.limit,
-                    fingerprint: format!("{}::{}::{}", path, unit.name, rule_key),
                 });
             }
         }
     }
-    events
+    findings
+}
+
+fn violation_finding_id(finding: &ViolationFinding) -> String {
+    history::finding_id(
+        &finding.path,
+        finding.unit_name.as_deref().unwrap_or(""),
+        &finding.rule_key,
+    )
+}
+
+/// The current scan's stable finding IDs — what the gate baseline is adopted
+/// from and compared against.
+fn violation_finding_ids(report: &CheckReport) -> Vec<String> {
+    violation_findings(report)
+        .iter()
+        .map(violation_finding_id)
+        .collect()
+}
+
+fn all_violation_events(
+    report: &CheckReport,
+    run_id: &str,
+    timestamp: &str,
+    mode: &str,
+) -> Vec<history::ViolationEvent> {
+    violation_findings(report)
+        .into_iter()
+        .map(|finding| {
+            let metric_family = metric_to_family(&finding.metric).to_string();
+            let scope = if finding.unit_name.is_some() {
+                "unit"
+            } else {
+                "file"
+            }
+            .to_string();
+            let fingerprint = violation_finding_id(&finding);
+            history::ViolationEvent {
+                schema_version: 1,
+                timestamp: timestamp.to_string(),
+                run_id: run_id.to_string(),
+                mode: mode.to_string(),
+                path: finding.path,
+                unit_name: finding.unit_name,
+                role: finding.role,
+                rule_key: finding.rule_key,
+                metric_family,
+                scope,
+                severity: "red".to_string(),
+                actual: finding.actual,
+                limit: finding.limit,
+                delta: finding.actual - finding.limit,
+                fingerprint,
+            }
+        })
+        .collect()
 }
 
 fn write_recurrence_hints(
@@ -2760,5 +3346,632 @@ impl StatusContributor for PretenderStatus {
         };
 
         Ok(StatusSection::with_items("pretender", summary, items))
+    }
+}
+
+// ── .gitignore-aware walk (pretender-094) ─────────────────────────────
+#[cfg(test)]
+mod gitignore_walk_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Temp repo fixture: git-initialized, with `target/` and `vendor/`
+    /// gitignored, one source file at the root, one in each ignored dir.
+    fn fixture_repo() -> (TempDir, std::path::PathBuf) {
+        let dir = TempDir::new().expect("tempdir");
+        let root = dir.path().to_path_buf();
+        git2::Repository::init(&root).expect("git init");
+        std::fs::write(root.join(".gitignore"), "target/\nvendor/\n").expect("write .gitignore");
+        std::fs::create_dir_all(root.join("target")).expect("mkdir target");
+        std::fs::create_dir_all(root.join("vendor")).expect("mkdir vendor");
+        std::fs::write(root.join("root.py"), "def f():\n    return 1\n").expect("write root.py");
+        std::fs::write(
+            root.join("target").join("gen.py"),
+            "def g():\n    return 2\n",
+        )
+        .expect("write target/gen.py");
+        std::fs::write(
+            root.join("vendor").join("lib.py"),
+            "def h():\n    return 3\n",
+        )
+        .expect("write vendor/lib.py");
+        (dir, root)
+    }
+
+    /// Relative, sorted names for readable assertions.
+    fn rel_names(root: &std::path::Path, files: &[std::path::PathBuf]) -> Vec<String> {
+        let mut v: Vec<String> = files
+            .iter()
+            .map(|p| p.strip_prefix(root).unwrap().display().to_string())
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn walk_skips_gitignored_dirs_by_default() {
+        let (_dir, root) = fixture_repo();
+        let config = Config::default();
+        assert!(
+            config.pretender.respect_gitignore,
+            "default must honor .gitignore"
+        );
+
+        let files = collect_input_files(std::slice::from_ref(&root), &config).expect("collect");
+        assert_eq!(
+            rel_names(&root, &files),
+            vec!["root.py".to_string()],
+            "gitignored target/ and vendor/ must not be scanned"
+        );
+    }
+
+    #[test]
+    fn opt_out_restores_exhaustive_walk() {
+        let (_dir, root) = fixture_repo();
+        let mut config = Config::default();
+        config.pretender.respect_gitignore = false;
+
+        let files = collect_input_files(std::slice::from_ref(&root), &config).expect("collect");
+        assert_eq!(
+            rel_names(&root, &files),
+            vec![
+                "root.py".to_string(),
+                "target/gen.py".to_string(),
+                "vendor/lib.py".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_ignored_file_still_scanned() {
+        let (_dir, root) = fixture_repo();
+        let config = Config::default();
+        let ignored = root.join("vendor").join("lib.py");
+
+        let files = collect_input_files(std::slice::from_ref(&ignored), &config).expect("collect");
+        assert_eq!(
+            files.len(),
+            1,
+            "explicitly passed paths bypass the gitignore filter"
+        );
+    }
+
+    #[test]
+    fn no_gitignore_falls_back_to_full_walk() {
+        let dir = TempDir::new().expect("tempdir");
+        let root = dir.path().to_path_buf();
+        std::fs::write(root.join("a.py"), "def f():\n    return 1\n").expect("write a.py");
+        std::fs::write(root.join("b.py"), "def g():\n    return 2\n").expect("write b.py");
+
+        let config = Config::default();
+        let files = collect_input_files(std::slice::from_ref(&root), &config).expect("collect");
+        assert_eq!(
+            rel_names(&root, &files).len(),
+            2,
+            "no .gitignore: nothing filtered"
+        );
+    }
+}
+
+// ── exclude glob normalization (espectacular-dwc) ────────────────────
+#[cfg(test)]
+mod exclude_glob_tests {
+    use super::*;
+
+    fn exclusions(patterns: &[&str]) -> globset::GlobSet {
+        let owned: Vec<String> = patterns.iter().map(|p| p.to_string()).collect();
+        build_exclude_set(&owned).expect("build exclude set")
+    }
+
+    #[test]
+    fn relative_patterns_match_dot_prefixed_walked_paths() {
+        let set = exclusions(&["tests/**", "vendor/**"]);
+        assert!(is_excluded(&set, Path::new("./tests/test_a.py")));
+        assert!(is_excluded(&set, Path::new("./vendor/lib.py")));
+        assert!(!is_excluded(&set, Path::new("./src/app.py")));
+    }
+
+    #[test]
+    fn dot_prefixed_pattern_matches_plain_walked_path() {
+        let set = exclusions(&["./tests/**"]);
+        assert!(is_excluded(&set, Path::new("./tests/test_a.py")));
+        assert!(is_excluded(&set, Path::new("tests/test_a.py")));
+        assert!(!is_excluded(&set, Path::new("./vendor/lib.py")));
+    }
+
+    #[test]
+    fn absolute_paths_keep_prior_behavior() {
+        let set = exclusions(&["tests/**"]);
+        assert!(!is_excluded(&set, Path::new("/repo/tests/test_a.py")));
+    }
+}
+
+#[cfg(test)]
+mod violation_report_tests {
+    use super::*;
+
+    fn violation(line: Option<u32>) -> ViolationReport {
+        ViolationReport {
+            metric: "cyclomatic".to_string(),
+            actual: 12.0,
+            limit: 10.0,
+            line,
+        }
+    }
+
+    fn metric_values() -> MetricValues {
+        MetricValues {
+            cyclomatic: 1,
+            cognitive: 0,
+            assertions: 1,
+            function_lines: 0,
+            params: 0,
+            nesting_max: 0,
+            abc: 1.0,
+        }
+    }
+
+    fn unit_report(name: &str, violations: Vec<ViolationReport>) -> UnitReport {
+        UnitReport {
+            name: name.to_string(),
+            kind: "function".to_string(),
+            start_line: 10,
+            metrics: metric_values(),
+            violations,
+        }
+    }
+
+    fn file_report(path: &str, units: Vec<UnitReport>) -> FileReport {
+        FileReport {
+            path: path.to_string(),
+            role: "app".to_string(),
+            diagnostics: vec![],
+            file_violations: vec![],
+            units,
+            external_findings: vec![],
+            mock_findings: vec![],
+        }
+    }
+
+    fn report(files: Vec<FileReport>) -> CheckReport {
+        CheckReport {
+            files,
+            modules: vec![],
+            cycles: vec![],
+            test_findings: vec![],
+            history: None,
+        }
+    }
+
+    /// Byte-compat with existing JSON output: no `line` key when None.
+    #[test]
+    fn line_none_is_omitted_from_json() {
+        let json = serde_json::to_string(&violation(None)).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"metric":"cyclomatic","actual":12.0,"limit":10.0}"#
+        );
+    }
+
+    #[test]
+    fn line_some_is_emitted_in_json() {
+        let json = serde_json::to_string(&violation(Some(42))).expect("serialize");
+        assert_eq!(
+            json,
+            r#"{"metric":"cyclomatic","actual":12.0,"limit":10.0,"line":42}"#
+        );
+    }
+
+    #[test]
+    fn sarif_region_uses_line_when_present() {
+        let mut file = file_report(
+            "src/a.rs",
+            vec![unit_report("fn_a", vec![violation(Some(50))])],
+        );
+        file.units[0].start_line = 10;
+        let report = report(vec![file]);
+        let mut buf = Vec::new();
+        write_sarif_report(&mut buf, &report).expect("sarif");
+        let v: serde_json::Value = serde_json::from_slice(&buf).expect("parse sarif");
+        let region = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(region["startLine"], 50);
+    }
+
+    #[test]
+    fn sarif_region_falls_back_to_default_start_line_when_line_none() {
+        let mut file = file_report("src/a.rs", vec![unit_report("fn_a", vec![violation(None)])]);
+        file.units[0].start_line = 10;
+        let report = report(vec![file]);
+        let mut buf = Vec::new();
+        write_sarif_report(&mut buf, &report).expect("sarif");
+        let v: serde_json::Value = serde_json::from_slice(&buf).expect("parse sarif");
+        let region = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(region["startLine"], 10);
+    }
+}
+
+#[cfg(test)]
+mod baseline_gate_tests {
+    use super::*;
+
+    fn metric_values() -> MetricValues {
+        MetricValues {
+            cyclomatic: 1,
+            cognitive: 0,
+            assertions: 1,
+            function_lines: 0,
+            params: 0,
+            nesting_max: 0,
+            abc: 1.0,
+        }
+    }
+
+    fn unit_report(name: &str, violations: Vec<ViolationReport>) -> UnitReport {
+        UnitReport {
+            name: name.to_string(),
+            kind: "function".to_string(),
+            start_line: 10,
+            metrics: metric_values(),
+            violations,
+        }
+    }
+
+    fn unit_violation(metric: &str, actual: f64, limit: f64) -> ViolationReport {
+        ViolationReport {
+            metric: metric.to_string(),
+            actual,
+            limit,
+            line: None,
+        }
+    }
+
+    fn file_report(
+        path: &str,
+        file_violations: Vec<ViolationReport>,
+        units: Vec<UnitReport>,
+    ) -> FileReport {
+        FileReport {
+            path: path.to_string(),
+            role: "app".to_string(),
+            diagnostics: vec![],
+            file_violations,
+            units,
+            external_findings: vec![],
+            mock_findings: vec![],
+        }
+    }
+
+    fn report(files: Vec<FileReport>) -> CheckReport {
+        CheckReport {
+            files,
+            modules: vec![],
+            cycles: vec![],
+            test_findings: vec![],
+            history: None,
+        }
+    }
+
+    fn baselined_ids(r: &CheckReport) -> HashSet<String> {
+        violation_finding_ids(r).into_iter().collect()
+    }
+
+    /// A mechanical reformat shifted lines: same file, same function name,
+    /// same rule — only start_line differs (50 -> 77).
+    fn shifted_violation_report() -> CheckReport {
+        let mut r = report(vec![file_report(
+            "src/a.rs",
+            vec![unit_violation("file_lines", 420.0, 400.0)],
+            vec![unit_report(
+                "parse",
+                vec![unit_violation("function_lines", 120.0, 100.0)],
+            )],
+        )]);
+        r.files[0].units[0].start_line = 77;
+        r
+    }
+
+    #[test]
+    fn gate_fails_on_any_violation_without_baseline() {
+        // No baseline file: fail-closed, gate fails on any violation.
+        let r = shifted_violation_report();
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &HashSet::new()),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn gate_passes_when_only_baselined_violations_remain() {
+        // gently-if4 acceptance: "0 fixed, 11 still open, 0 new" must exit 0.
+        let r = shifted_violation_report();
+        let baselined = baselined_ids(&r);
+        assert_eq!(baselined.len(), 2, "file + unit finding");
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn gate_fails_on_genuinely_new_violation_with_baseline() {
+        let adopted = shifted_violation_report();
+        let baselined = baselined_ids(&adopted);
+        // A different function now violates too — genuinely new.
+        let mut r = adopted;
+        r.files[0].units.push(unit_report(
+            "serialize",
+            vec![unit_violation("cognitive", 30.0, 15.0)],
+        ));
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn gate_fails_on_coupling_even_when_metric_violations_baselined() {
+        // Fail-closed preserved: baseline covers metric violations only —
+        // coupling violations, cycles and test-duration findings always gate.
+        let mut r = shifted_violation_report();
+        r.modules.push(ModuleReport {
+            path: "src/a.rs".to_string(),
+            coupling_violations: vec![CouplingViolationReport {
+                metric: "affero".to_string(),
+                actual: 9.0,
+                limit: 5.0,
+            }],
+        });
+        let baselined = baselined_ids(&r);
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn finding_ids_reuse_history_scheme_file_and_unit_scope() {
+        // One ID scheme (u8a finding_id), not a second one: file scope uses
+        // an empty unit name; no line numbers anywhere.
+        let r = shifted_violation_report();
+        let mut ids = violation_finding_ids(&r);
+        ids.sort();
+        let mut expected = vec![
+            "src/a.rs::parse::function_lines_max".to_string(),
+            "src/a.rs::::file_lines".to_string(),
+        ];
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+
+    #[test]
+    fn finding_ids_stable_across_line_shifts() {
+        let before = shifted_violation_report();
+        let mut after = before.clone();
+        after.files[0].units[0].start_line = 4096;
+        assert_eq!(
+            violation_finding_ids(&before),
+            violation_finding_ids(&after),
+            "a mechanical reformat must not change finding IDs"
+        );
+    }
+
+    #[test]
+    fn adopt_writes_baseline_that_gate_accepts() {
+        // The --adopt flow: persist the current scan's IDs, reload, and gate
+        // mode passes on exactly those violations.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pretender-baseline.json");
+        let r = shifted_violation_report();
+        let ids = violation_finding_ids(&r);
+        history::persist_baseline(&path, &ids).expect("persist");
+        let loaded = history::load_baseline(&path)
+            .expect("load")
+            .expect("exists");
+        let baselined: HashSet<String> = loaded.finding_ids.into_iter().collect();
+        assert_eq!(
+            decide_exit_code(&r, Mode::Gate, None, &baselined),
+            ExitCode::SUCCESS
+        );
+    }
+}
+
+#[cfg(test)]
+mod init_preset_tests {
+    use super::*;
+
+    /// Spawn the CLI in `dir` with a neutral GIT_CONFIG_GLOBAL so hooksPath
+    /// resolution never sees the developer machine's real global config
+    /// (same hermeticity pattern as tests/cli_test.rs pretender_cmd()).
+    fn init_cmd(dir: &std::path::Path) -> std::process::Command {
+        let bin =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/pretender");
+        let neutral = std::env::temp_dir().join(format!(
+            "pretender-init-preset-test-gitconfig-{}",
+            std::process::id()
+        ));
+        std::fs::write(&neutral, "").expect("write neutral gitconfig");
+        let mut cmd = std::process::Command::new(bin);
+        cmd.current_dir(dir).env("GIT_CONFIG_GLOBAL", neutral);
+        cmd.arg("init");
+        cmd
+    }
+
+    fn read_config(dir: &std::path::Path) -> String {
+        std::fs::read_to_string(dir.join("pretender.toml")).expect("config written")
+    }
+
+    /// Contract test
+    /// (.espectacular/cli-and-config/interactive-init-asks-for-preset.toml):
+    /// the preset choice — prompt answer or --preset flag — selects the
+    /// threshold tables init emits; an explicit --preset suppresses the
+    /// interactive preset prompt (mirroring --mode).
+    #[test]
+    fn init_preset_prompt_writes_threshold_tables() {
+        // --preset strict --non-interactive: strict tables, app cyclomatic 8
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--preset", "strict"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let strict_config = read_config(dir.path());
+        assert!(
+            strict_config.contains("cyclomatic_max = 8"),
+            "strict app table missing: {strict_config}"
+        );
+
+        // Task 3.3: emitted strict TOML parses back to the pinned strict
+        // effective values (spec: Strict Preset Values) via Config::parse_str.
+        let parsed = Config::parse_str(&strict_config).expect("strict config parses");
+        assert_eq!(parsed.thresholds.app.cyclomatic_max, 8);
+        assert_eq!(parsed.thresholds.app.cognitive_max, 12);
+        assert_eq!(parsed.thresholds.app.function_lines_max, 25);
+        assert_eq!(parsed.thresholds.app.nesting_max, 2);
+        assert_eq!(parsed.thresholds.app.params_max, 3);
+        assert_eq!(parsed.thresholds.app.abc_max, 25);
+        assert_eq!(parsed.thresholds.app.duplication_pct_max, 4);
+        assert_eq!(parsed.thresholds.app.file_lines_max, 300);
+        assert_eq!(parsed.thresholds.test.cyclomatic_max, 2);
+        assert_eq!(parsed.thresholds.test.cognitive_max, 3);
+        assert_eq!(parsed.thresholds.test.function_lines_max, 60);
+        assert_eq!(parsed.thresholds.test.nesting_max, 2);
+        // enabled-check values identical to the default preset
+        assert_eq!(parsed.thresholds.app.unwrap_max, 5);
+        assert_eq!(parsed.thresholds.test.mock_count_max, 5);
+
+        // --preset default writes the default tables
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--preset", "default"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let default_config = read_config(dir.path());
+        assert!(
+            default_config.contains("cyclomatic_max = 10"),
+            "default app table missing: {default_config}"
+        );
+        let parsed = Config::parse_str(&default_config).expect("default config parses");
+        assert_eq!(
+            parsed.thresholds.app,
+            Config::default().thresholds.app,
+            "default preset tables must round-trip to the built-in app defaults"
+        );
+        assert_eq!(
+            parsed.thresholds.test,
+            Config::default().thresholds.test,
+            "default preset tables must round-trip to the built-in test defaults"
+        );
+
+        // Absent flag: same as --preset default
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .arg("--non-interactive")
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            read_config(dir.path()).contains("cyclomatic_max = 10"),
+            "absent --preset must emit the default tables"
+        );
+
+        // Explicit --preset on an interactive run suppresses the preset
+        // prompt: stdin answers mode/languages/hook/workflow only; had the
+        // prompt not been suppressed, the answers would shift and the run
+        // would fail (or fall back to default tables).
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let mut child = init_cmd(dir.path())
+            .arg("--preset")
+            .arg("strict")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn interactive init");
+        {
+            use std::io::Write;
+            let stdin = child.stdin.as_mut().expect("piped stdin");
+            stdin
+                .write_all(b"\nauto\nn\nn\n")
+                .expect("write prompt answers");
+        }
+        let out = child.wait_with_output().expect("interactive init finishes");
+        assert!(
+            out.status.success(),
+            "interactive init with explicit --preset failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            read_config(dir.path()).contains("cyclomatic_max = 8"),
+            "explicit --preset must suppress the preset prompt and emit strict tables"
+        );
+    }
+
+    #[test]
+    fn init_rejects_unknown_preset() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--preset", "loose"])
+            .output()
+            .expect("run init");
+        assert!(!out.status.success(), "unknown preset must exit non-zero");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains("loose"),
+            "error should name the bad value: {err}"
+        );
+    }
+
+    #[test]
+    fn init_strict_gate_prints_migration_hint() {
+        // Spec: Strict Preset Gate Hint — gate + strict must print the
+        // --adopt / tiered-lease migration hint after writing the config.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--mode", "gate", "--preset", "strict"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("check --adopt"),
+            "gate+strict must print the adoption hint; stdout: {stdout}"
+        );
+    }
+
+    #[test]
+    fn init_default_gate_no_migration_hint() {
+        // The hint is scoped to gate+strict; default preset stays quiet.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let out = init_cmd(dir.path())
+            .args(["--non-interactive", "--mode", "gate"])
+            .output()
+            .expect("run init");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !stdout.contains("check --adopt"),
+            "gate+default must not print the adoption hint; stdout: {stdout}"
+        );
     }
 }

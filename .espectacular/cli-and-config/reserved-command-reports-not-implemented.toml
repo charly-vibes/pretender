@@ -1,6 +1,9 @@
 id = "reserved-command-reports-not-implemented"
-description = ""
+description = "Reserved command (plugins) exits 2 with a not-implemented message (test_stub_subcommands_exit_two); duplication, mutation and explain ship."
 archetype = "PF"
 status = "active"
 superseded_by = ""
-authored_with = "0.1.0"
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_stub_subcommands_exit_two"}]

@@ -53,3 +53,30 @@
 (macrocall_expression
   (macro_identifier) @assertion.macro_name
   (#match? @assertion.macro_name "^@(test|test_throws|test_broken|test_logs|assert)")) @assert.macrocall
+
+; Type definitions (universal code model)
+; `struct` and `mutable struct` share the struct_definition node, so both
+; map to Struct. The type name lives inside type_head; parametric heads
+; (`struct Pair{T}`) nest the identifier one node deeper.
+(struct_definition
+  (type_head
+    (identifier) @type.name)) @type.definition
+
+(struct_definition
+  (type_head
+    (parametrized_type_expression
+      (identifier) @type.name))) @type.definition
+
+; Fields — typed declarations `name::Type` (simple and parametric types)
+(typed_expression
+  (identifier) @type.field.name
+  (identifier) @type.field.type) @type.field
+
+(typed_expression
+  (identifier) @type.field.name
+  (parametrized_type_expression) @type.field.type) @type.field
+
+; Fields — plain assignments `name = default` (untyped fields are common
+; in Julia; type_name stays None).
+(assignment
+  (identifier) @type.field.name) @type.field
