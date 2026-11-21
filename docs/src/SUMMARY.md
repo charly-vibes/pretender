@@ -1,5 +1,6 @@
 # Summary
 - [Getting Started](getting-started.md)
+- [FAQ](faq.md)
 - [Release Status](./release.md)
 - [Configuration Reference](configuration.md)
 - [Mutation Testing](mutation.md)
