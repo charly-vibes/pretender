@@ -25,11 +25,32 @@
 > CI-pretender-flagged issues vs. post-merge quality incidents, compared to
 > baseline (no pretender).**
 
-Pretender is a Rust CLI for structural code-quality checks across multiple languages.
+Pretender is a Rust CLI for teams that gate structural code quality in CI —
+cyclomatic/cognitive/abc complexity, clones, and test-assertion floors over
+exactly the code that changed, across nine languages, from one `pretender.toml`.
 
-## Installation
+## When to use
 
-### Binary (curl)
+- Use pretender when complexity metrics should **fail a PR** instead of living in
+  a dashboard nobody checks.
+- Use pretender when you want one config driving both the local pre-commit hook
+  and CI, over the staged diff (`--staged`) or the PR diff (`--diff-only`).
+- Use pretender when you want structural clone detection and per-test
+  assertion floors enforced next to the same gate.
+
+**Don't use it when** the question is behavior, not structure: use `ah`
+(espectacular) for spec↔test correspondence and `testaruda` for test selection.
+Pretender assumes your tests — not its gate — establish correctness, and it
+complements type checkers and linters (clippy, eslint) rather than replacing
+them.
+
+## Install
+
+```sh
+cargo install pretender
+```
+
+### Binary (no Rust toolchain)
 
 ```bash
 V=$(basename "$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
@@ -38,14 +59,6 @@ TGT="$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/^x86_64$/amd64
 curl -fsSL "https://github.com/charly-vibes/pretender/releases/download/v${V}/pretender_${V}_${TGT}.tar.gz" | tar xz
 chmod +x pretender && sudo mv pretender /usr/local/bin/
 ```
-
-### Cargo (crates.io)
-
-```bash
-cargo install pretender
-```
-
-Installs the `pretender` binary.
 
 ### Homebrew (macOS & Linux)
 
@@ -69,13 +82,34 @@ cd pretender
 cargo build --release
 ```
 
-## Documentation
+## Quick start
 
-- [Getting started](docs/src/getting-started.md)
-- [Configuration reference](docs/src/configuration.md)
-- [Mutation testing](docs/src/mutation.md)
-- [Writing plugins](docs/src/plugins.md)
-- [Language support](pretender/languages/)
+```sh
+pretender init      # wizard: mode, threshold preset, languages → pretender.toml
+                    # (plus optional pre-commit hook and CI workflow file)
+pretender check .
+# → exit 0 and no findings on a clean tree
+```
+
+Over threshold, each finding names the function and metric:
+
+```
+⚠ src/parser.py — parse_token(): cyclomatic 14 > 10
+    ADVISORY cyclomatic 14 > 10
+```
+
+`⚠` advisories still exit 0 in the default `tiered` mode; `✗` violations in
+`gate` mode exit 1. Run `pretender explain <metric>` for any threshold's
+definition and citation.
+
+## Common workflows
+
+1. **Gate staged work before committing** — `pretender check . --staged` →
+   exit 0 green-lights the commit; findings name function and metric.
+2. **Enforce in CI** — `pretender ci generate github` → writes
+   `.github/workflows/pretender.yml`; commit it and every PR is gated.
+3. **Review the PR diff only** — `pretender check . --diff-only` → findings
+   restricted to files changed vs `origin/main`.
 
 ## Commands
 
@@ -92,7 +126,36 @@ cargo build --release
 | `pretender ci generate github` | Emit `.github/workflows/pretender.yml` |
 | `pretender explain <metric>` | Print definition, threshold, and citation for a metric |
 | `pretender feedback [--dry-run] [--from-last-error]` | File a structured issue against upstream repo |
+| `pretender plugins` | Manage language and metric plugins [not yet implemented] |
 | `pretender completions <shell>` | Generate shell completion scripts (bash, zsh, fish, etc.) |
+
+## FAQ
+
+More in [docs/src/faq.md](docs/src/faq.md).
+
+### Do I need this if I already use clippy/eslint?
+
+Linters catch lint-level issues; pretender gates *structural* quality —
+cyclomatic/cognitive/abc complexity, clones, assertion floors — per function,
+per role, over the diff.
+
+### What does pretender write or modify?
+
+`pretender.toml`, optionally `.git/hooks/pre-commit` (native shim),
+`.github/workflows/pretender.yml`, and a cache under `XDG_CACHE_HOME`. It never
+edits your source files.
+
+## Documentation
+
+- [Getting started](docs/src/getting-started.md)
+- [Configuration reference](docs/src/configuration.md)
+- [FAQ](docs/src/faq.md)
+- [Status](docs/src/status.md)
+- [Mutation testing](docs/src/mutation.md)
+- [Writing plugins](docs/src/plugins.md)
+- [Language support](pretender/languages/)
+
+License: [Apache-2.0](LICENSE)
 
 ## Global flags
 
