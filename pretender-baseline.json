@@ -46,7 +46,6 @@
     "pretender/src/inheritance_depth.rs::extract_ruby_classes::nesting_max",
     "pretender/src/inheritance_depth.rs::extract_rust_traits::function_lines_max",
     "pretender/src/inheritance_depth.rs::extract_ts_classes::nesting_max",
-    "pretender/src/julia.rs::julia_types_fixture_round_trip::function_lines_max",
     "pretender/src/main.rs::::excessive_fields",
     "pretender/src/main.rs::::file_lines",
     "pretender/src/main.rs::::unwraps",
