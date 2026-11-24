@@ -1,42 +1,10 @@
-mod c;
-mod clojure;
-mod cluster_detector;
-mod config;
-mod coupling;
-mod cpp;
-mod csharp;
-mod data_model;
-mod doctor;
-mod duplication;
-mod engine;
-mod error_metrics;
-mod explain;
-mod external_plugin;
-mod git;
-mod go;
-mod history;
-mod inheritance_depth;
-mod java;
-mod javascript;
-mod julia;
-mod metrics;
-mod mock_detector;
-mod model;
-mod mutability_metrics;
-mod mutation;
-mod plugin;
-mod primitive_obsession;
-mod python;
-mod r;
-mod roles;
-mod ruby;
-mod rust;
-mod test_report;
-mod typescript;
+use pretender::{
+    c, clojure, cluster_detector, config, coupling, cpp, csharp, data_model, doctor, duplication,
+    error_metrics, explain, external_plugin, git, go, history, inheritance_depth, java, javascript,
+    julia, metrics, mock_detector, model, mutability_metrics, mutation, primitive_obsession,
+    python, r, ruby, rust, test_report, typescript,
+};
 
-use crate::config::{is_lease_expired, Band, Bands, Config, Mode};
-use crate::model::{Metric, Module};
-use crate::roles::{EffectiveThresholds, Role, RoleDetector};
 use anyhow::{anyhow, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use genesis::config::{ConfigFile, ConfigStore, ValidationSeverity};
@@ -47,6 +15,9 @@ use genesis::git_hooks::{self as genesis_git_hooks, HookName};
 use genesis::guide::Guide;
 use genesis::status::{StatusContributor, StatusItem, StatusSection};
 use genesis::suggestions::SuggestionEngine;
+use pretender::config::{is_lease_expired, Band, Bands, Config, Mode};
+use pretender::model::{Metric, Module};
+use pretender::roles::{EffectiveThresholds, Role, RoleDetector};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -3861,8 +3832,8 @@ mod init_preset_tests {
         );
 
         // Task 3.3: emitted strict TOML parses back to the pinned strict
-        // effective values (spec: Strict Preset Values) via Config::parse_str.
-        let parsed = Config::parse_str(&strict_config).expect("strict config parses");
+        // effective values (spec: Strict Preset Values) via toml::from_str.
+        let parsed: Config = toml::from_str(&strict_config).expect("strict config parses");
         assert_eq!(parsed.thresholds.app.cyclomatic_max, 8);
         assert_eq!(parsed.thresholds.app.cognitive_max, 12);
         assert_eq!(parsed.thresholds.app.function_lines_max, 25);
@@ -3895,7 +3866,7 @@ mod init_preset_tests {
             default_config.contains("cyclomatic_max = 10"),
             "default app table missing: {default_config}"
         );
-        let parsed = Config::parse_str(&default_config).expect("default config parses");
+        let parsed: Config = toml::from_str(&default_config).expect("default config parses");
         assert_eq!(
             parsed.thresholds.app,
             Config::default().thresholds.app,
