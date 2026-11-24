@@ -13,7 +13,6 @@
     "pretender/src/csharp.rs::csharp_types_fixture_round_trip::function_lines_max",
     "pretender/src/data_model.rs::analyze::function_lines_max",
     "pretender/src/data_model.rs::analyze::nesting_max",
-    "pretender/src/doctor.rs::run::function_lines_max",
     "pretender/src/engine.rs::::excessive_fields",
     "pretender/src/engine.rs::::file_lines",
     "pretender/src/engine.rs::::unwraps",
