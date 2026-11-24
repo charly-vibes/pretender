@@ -1,7 +1,10 @@
 [pretender]
-mode = "tiered"
+# Gate mode: known findings are green via pretender-baseline.json, new ones fail.
+mode = "gate"
 languages = ["auto"]
-exclude = ["vendor/**", "node_modules/**", "**/*_generated.*"]
+# Test fixtures are deliberate counterexamples (they must violate thresholds to
+# exercise the tool) — they are not production code and stay out of the gate.
+exclude = ["vendor/**", "node_modules/**", "**/*_generated.*", "**/fixtures/**"]
 
 [roles.test]
 paths = ["tests/**", "**/*_test.*", "spec/**"]

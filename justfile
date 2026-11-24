@@ -60,8 +60,14 @@ book-serve:
 clean:
     cargo clean
 
-# Full CI gate: fmt + type-check + lint + test
-ci: fmt-check type-check lint test
+# Dogfood: run pretender's structural gate against this repo's own source.
+# Gate mode + the committed pretender-baseline.json means known findings stay
+# green and only genuinely new ones fail.
+dogfood:
+    cargo run --quiet -p pretender -- check .
+
+# Full CI gate: fmt + type-check + lint + test + structural gate
+ci: fmt-check type-check lint test dogfood
 
 # Project-local preflight gate.
 # Prefer this over `bd preflight` for now; the current beads preflight is
