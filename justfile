@@ -60,6 +60,48 @@ book-serve:
 clean:
     cargo clean
 
+# Golden behavior corpus (5zo.20): lock the analyzer's findings output over
+# pretender/tests/fixtures so pure refactors cannot change behavior silently.
+# The corpus is copied to a temp dir outside the repo under a neutral name —
+# **/fixtures/** is exclude-filtered even for explicit paths, and a temp dir
+# discovers no config, so default excludes apply. Paths are made relative by
+# scanning from inside the temp dir; the jq filter (governance/golden.jq)
+# canonicalizes to a deterministic document (sorted files/units/violations,
+# metrics only, no line numbers or envelope metadata) so byte-identity means
+# behavior-identity.
+golden file="governance/golden.json":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo="$PWD"
+    cargo build --quiet -p pretender
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    cp -r pretender/tests/fixtures/. "$tmp/corpus"
+    cd "$tmp"
+    # `check` exits non-zero when the corpus has findings — that is expected
+    # here; raw.json is still written and jq below validates it.
+    "$repo/target/debug/pretender" check corpus --format json > raw.json || true
+    jq -S -f "$repo/governance/golden.jq" raw.json > "$repo/{{file}}"
+    echo "golden: wrote {{file}}"
+
+# Verify the committed golden still matches the analyzer's output (exit
+# non-zero on any behavior change; regenerate deliberately with `just golden`
+# and review the diff).
+golden-check file="governance/golden.json":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo="$PWD"
+    cargo build --quiet -p pretender
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    cp -r pretender/tests/fixtures/. "$tmp/corpus"
+    cd "$tmp"
+    # See `golden`: findings exit non-zero by design; jq validates the JSON.
+    "$repo/target/debug/pretender" check corpus --format json > raw.json || true
+    jq -S -f "$repo/governance/golden.jq" raw.json > fresh.json
+    diff -u "$repo/{{file}}" fresh.json
+    echo "golden-check: behavior unchanged"
+
 # Dogfood: run pretender's structural gate against this repo's own source.
 # Gate mode + the committed pretender-baseline.json means known findings stay
 # green and only genuinely new ones fail.
@@ -100,8 +142,8 @@ dogfood-red path rule baseline="pretender-baseline.json":
         cargo run --quiet -p pretender -- check .
     fi
 
-# Full CI gate: fmt + type-check + lint + test + structural gate
-ci: fmt-check type-check lint test dogfood
+# Full CI gate: fmt + type-check + lint + test + structural gate + golden behavior lock
+ci: fmt-check type-check lint test dogfood golden-check
 
 # Project-local preflight gate.
 # Prefer this over `bd preflight` for now; the current beads preflight is

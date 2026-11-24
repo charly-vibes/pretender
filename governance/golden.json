@@ -1,0 +1,1227 @@
+{
+  "files": [
+    {
+      "path": "corpus/c_sample.c",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.656854249492381,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/c_types_sample.c",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "person_age",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/clojure_sample.clj",
+      "units": [
+        {
+          "metrics": {
+            "abc": 8.06225774829855,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 9,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "complex-func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 2.23606797749979,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 4,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "with-branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/cpp_sample.cpp",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.656854249492381,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/cpp_types_sample.cpp",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 1,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "area",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/csharp_sample.cs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.656854249492381,
+            "assertions": 0,
+            "cognitive": 6,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 2,
+            "params": 3
+          },
+          "name": "ComplexFunc",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "Simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "WithBranch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/csharp_types_sample.cs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 4,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "Get",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 4,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "Greet",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/go_nested.go",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.7320508075688772,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 14,
+            "nesting_max": 1,
+            "params": 0
+          },
+          "name": "outer",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/go_sample.go",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 6,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 2,
+            "params": 0
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 1,
+            "params": 0
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/go_types_sample.go",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "Greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "Standalone",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/java_sample.java",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 6,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 2,
+            "params": 0
+          },
+          "name": "complexFunc",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 1,
+            "params": 0
+          },
+          "name": "withBranch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/java_types_sample.java",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "get",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "greet",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/js_nested.js",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 7,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "inner",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.4142135623730951,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "outer",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/js_simple.js",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 3
+          },
+          "name": "complexFunc",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "withBranch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/js_types_sample.js",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "standalone",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "swap",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/julia_sample.jl",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0990195135927845,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 3
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.4142135623730951,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 7,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/julia_types_sample.jl",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "standalone",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_cognitive.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 6.082762530298219,
+            "assertions": 0,
+            "cognitive": 20,
+            "cyclomatic": 7,
+            "function_lines": 10,
+            "nesting_max": 5,
+            "params": 1
+          },
+          "name": "deeply_nested",
+          "violations": [
+            {
+              "actual": 20.0,
+              "limit": 15.0,
+              "metric": "cognitive"
+            },
+            {
+              "actual": 5.0,
+              "limit": 3.0,
+              "metric": "nesting_max"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_duplicates.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 4,
+            "nesting_max": 1,
+            "params": 3
+          },
+          "name": "another_unique",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 3.0,
+            "assertions": 0,
+            "cognitive": 3,
+            "cyclomatic": 3,
+            "function_lines": 8,
+            "nesting_max": 2,
+            "params": 1
+          },
+          "name": "process_orders",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 3.0,
+            "assertions": 0,
+            "cognitive": 3,
+            "cyclomatic": 3,
+            "function_lines": 8,
+            "nesting_max": 2,
+            "params": 1
+          },
+          "name": "process_users",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "unique_logic",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_simple.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "__init__",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 5.385164807134504,
+            "assertions": 0,
+            "cognitive": 8,
+            "cyclomatic": 6,
+            "function_lines": 10,
+            "nesting_max": 2,
+            "params": 3
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "method_simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 2.449489742783178,
+            "assertions": 0,
+            "cognitive": 3,
+            "cyclomatic": 3,
+            "function_lines": 6,
+            "nesting_max": 2,
+            "params": 2
+          },
+          "name": "method_with_loop",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 4,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_smell_calls.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 3.1622776601683795,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "smell_compile",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 5.0990195135927845,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "smell_eval",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "smell_exec",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_types_sample.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 2.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "__init__",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "greet",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_violator.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 6
+          },
+          "name": "too_many_params",
+          "violations": [
+            {
+              "actual": 6.0,
+              "limit": 4.0,
+              "metric": "params"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "corpus/r_no_types_sample.R",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "add_counts",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "greet",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/r_sample.R",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 3
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 7,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/ruby_sample.rb",
+      "units": [
+        {
+          "metrics": {
+            "abc": 6.48074069840786,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 16,
+            "nesting_max": 0,
+            "params": 3
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 7,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/rust_data_model_sample.rs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "greeting",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/rust_nested.rs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 7,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "inner",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.4142135623730951,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 14,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "outer",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/rust_simple.rs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 6,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 2,
+            "params": 3
+          },
+          "name": "complex_func",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "simple",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 7,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "with_branch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/rust_test_role_data_model_sample.rs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "greeting",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/rust_types_sample.rs",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "standalone",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/ts_sample.ts",
+      "units": [
+        {
+          "metrics": {
+            "abc": 5.0,
+            "assertions": 0,
+            "cognitive": 4,
+            "cyclomatic": 5,
+            "function_lines": 14,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "complexFunc",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 6,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "withBranch",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/ts_types_sample.ts",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "standalone",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 3,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "swap",
+          "violations": []
+        }
+      ]
+    }
+  ],
+  "schema": "golden.v1"
+}
