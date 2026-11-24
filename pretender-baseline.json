@@ -107,8 +107,6 @@
     "pretender/src/main.rs::write_markdown_report::function_lines_max",
     "pretender/src/main.rs::write_sarif_report::abc_max",
     "pretender/src/main.rs::write_sarif_report::function_lines_max",
-    "pretender/src/mock_detector.rs::detect_mocks::cognitive_max",
-    "pretender/src/mock_detector.rs::detect_mocks::function_lines_max",
     "pretender/src/model.rs::::file_lines",
     "pretender/src/model.rs::members_are_not_duplicated::function_lines_max",
     "pretender/src/model.rs::module_serializes_to_json_with_imports::function_lines_max",
