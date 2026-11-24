@@ -103,7 +103,6 @@
     "pretender/src/mutation.rs::parse_cargo_mutants_outcomes::function_lines_max",
     "pretender/src/mutation.rs::parse_mutmut_surviving_tests::function_lines_max",
     "pretender/src/mutation.rs::parse_stryker_report::function_lines_max",
-    "pretender/src/python.rs::python_types_fixture_round_trip::function_lines_max",
     "pretender/src/roles.rs::::excessive_fields",
     "pretender/src/roles.rs::::file_lines",
     "pretender/src/roles.rs::::unwraps",
