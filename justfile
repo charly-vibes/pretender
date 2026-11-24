@@ -66,6 +66,40 @@ clean:
 dogfood:
     cargo run --quiet -p pretender -- check .
 
+# Un-grandfather baseline findings for one path+rule pair to produce a real RED.
+# Ledger model — removal only, additions forbidden (monotonicity gate).
+# With the default baseline this filters the ledger in place, then runs the gate
+# so the now-failing findings print. With an explicit baseline argument it only
+# filters and reports the removal count, so it is testable on temp copies.
+dogfood-red path rule baseline="pretender-baseline.json":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    path='{{path}}'
+    rule='{{rule}}'
+    baseline='{{baseline}}'
+    if [[ ! -f "$baseline" ]]; then
+        echo "dogfood-red: baseline file not found: $baseline" >&2
+        exit 1
+    fi
+    before="$(jq '.finding_ids | length' "$baseline")"
+    after="$(jq --arg path "$path" --arg rule "$rule" \
+        '[.finding_ids[] | select((split("::")[0] != $path) or ((split("::") | last) != $rule))] | length' \
+        "$baseline")"
+    if (( after > before )); then
+        echo "dogfood-red: guard violated: filtered set ($after) larger than input ($before); removal only, additions forbidden" >&2
+        exit 1
+    fi
+    tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' EXIT
+    jq --arg path "$path" --arg rule "$rule" \
+        '.finding_ids |= map(select((split("::")[0] != $path) or ((split("::") | last) != $rule)))' \
+        "$baseline" > "$tmp"
+    cat "$tmp" > "$baseline"
+    echo "dogfood-red: removed $((before - after)) finding id(s) for ${path}::${rule} from ${baseline} (${before} -> ${after})"
+    if [[ "$baseline" == "pretender-baseline.json" ]]; then
+        cargo run --quiet -p pretender -- check .
+    fi
+
 # Full CI gate: fmt + type-check + lint + test + structural gate
 ci: fmt-check type-check lint test dogfood
 

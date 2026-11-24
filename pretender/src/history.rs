@@ -492,7 +492,6 @@ mod tests {
         fingerprint: &str,
         path: &str,
         rule_key: &str,
-        role: &str,
         timestamp: &str,
     ) -> ViolationEvent {
         ViolationEvent {
@@ -502,7 +501,7 @@ mod tests {
             mode: "tiered".to_string(),
             path: path.to_string(),
             unit_name: Some("func".to_string()),
-            role: role.to_string(),
+            role: "app".to_string(),
             rule_key: rule_key.to_string(),
             metric_family: "complexity".to_string(),
             scope: "unit".to_string(),
@@ -601,21 +600,18 @@ mod tests {
                 "a::func::cog",
                 "a.rs",
                 "cognitive_max",
-                "app",
                 "2026-01-01T00:00:00Z",
             ),
             make_event(
                 "a::func::cog",
                 "a.rs",
                 "cognitive_max",
-                "app",
                 "2026-01-02T00:00:00Z",
             ),
             make_event(
                 "a::func::cog",
                 "a.rs",
                 "cognitive_max",
-                "app",
                 "2026-01-03T00:00:00Z",
             ),
         ];
@@ -629,9 +625,9 @@ mod tests {
     fn test_hotspot_single_day_not_flagged() {
         let ts = "2026-01-01T00:00:00Z";
         let events = vec![
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", ts),
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", ts),
-            make_event("a::func::cog", "a.rs", "cognitive_max", "app", ts),
+            make_event("a::func::cog", "a.rs", "cognitive_max", ts),
+            make_event("a::func::cog", "a.rs", "cognitive_max", ts),
+            make_event("a::func::cog", "a.rs", "cognitive_max", ts),
         ];
         let summary = compute_summary(&events);
         assert_eq!(summary.top_hotspots.len(), 0);
@@ -644,14 +640,12 @@ mod tests {
                 "a::func::cog",
                 "a.rs",
                 "cognitive_max",
-                "app",
                 "2026-01-01T00:00:00Z",
             ),
             make_event(
                 "a::func::cog",
                 "a.rs",
                 "cognitive_max",
-                "app",
                 "2026-01-02T00:00:00Z",
             ),
         ];
@@ -663,11 +657,11 @@ mod tests {
     fn test_pattern_meets_threshold() {
         let ts = "2026-01-01T00:00:00Z";
         let events = vec![
-            make_event("fp1", "src/a.rs", "cognitive_max", "app", ts),
-            make_event("fp2", "src/b.rs", "cognitive_max", "app", ts),
-            make_event("fp3", "src/c.rs", "cognitive_max", "app", ts),
-            make_event("fp4", "src/d.rs", "cognitive_max", "app", ts),
-            make_event("fp5", "src/e.rs", "cognitive_max", "app", ts),
+            make_event("fp1", "src/a.rs", "cognitive_max", ts),
+            make_event("fp2", "src/b.rs", "cognitive_max", ts),
+            make_event("fp3", "src/c.rs", "cognitive_max", ts),
+            make_event("fp4", "src/d.rs", "cognitive_max", ts),
+            make_event("fp5", "src/e.rs", "cognitive_max", ts),
         ];
         let summary = compute_summary(&events);
         assert_eq!(summary.top_patterns.len(), 1);
@@ -679,11 +673,11 @@ mod tests {
     fn test_pattern_below_files_not_flagged() {
         let ts = "2026-01-01T00:00:00Z";
         let events = vec![
-            make_event("fp1", "src/a.rs", "cognitive_max", "app", ts),
-            make_event("fp2", "src/b.rs", "cognitive_max", "app", ts),
-            make_event("fp3", "src/a.rs", "cognitive_max", "app", ts),
-            make_event("fp4", "src/b.rs", "cognitive_max", "app", ts),
-            make_event("fp5", "src/a.rs", "cognitive_max", "app", ts),
+            make_event("fp1", "src/a.rs", "cognitive_max", ts),
+            make_event("fp2", "src/b.rs", "cognitive_max", ts),
+            make_event("fp3", "src/a.rs", "cognitive_max", ts),
+            make_event("fp4", "src/b.rs", "cognitive_max", ts),
+            make_event("fp5", "src/a.rs", "cognitive_max", ts),
         ];
         let summary = compute_summary(&events);
         assert_eq!(summary.top_patterns.len(), 0);
@@ -695,15 +689,9 @@ mod tests {
         fs::create_dir_all(&tmp).unwrap();
         let store = EventStore::new(&tmp);
 
-        let old = make_event(
-            "fp1",
-            "a.rs",
-            "cognitive_max",
-            "app",
-            "1970-01-01T00:00:01Z",
-        );
+        let old = make_event("fp1", "a.rs", "cognitive_max", "1970-01-01T00:00:01Z");
         let recent_ts = unix_to_iso8601(now_unix_secs() - 3600);
-        let recent = make_event("fp2", "b.rs", "cognitive_max", "app", &recent_ts);
+        let recent = make_event("fp2", "b.rs", "cognitive_max", &recent_ts);
 
         let kept = store.append_and_prune(&[old, recent]).unwrap();
         fs::remove_dir_all(&tmp).ok();
@@ -718,9 +706,9 @@ mod tests {
         fs::create_dir_all(&tmp).unwrap();
         let store = EventStore::new(&tmp);
 
-        let bad_ts = make_event("fp1", "a.rs", "cognitive_max", "app", "not-a-timestamp");
+        let bad_ts = make_event("fp1", "a.rs", "cognitive_max", "not-a-timestamp");
         let recent_ts = unix_to_iso8601(now_unix_secs() - 3600);
-        let recent = make_event("fp2", "b.rs", "cognitive_max", "app", &recent_ts);
+        let recent = make_event("fp2", "b.rs", "cognitive_max", &recent_ts);
 
         let kept = store.append_and_prune(&[bad_ts, recent]).unwrap();
         fs::remove_dir_all(&tmp).ok();

@@ -194,7 +194,8 @@ fn hooks_in(dir: &Path, action: &str) -> Command {
     cmd
 }
 
-fn hooks_in_named(dir: &Path, action: &str, hook: &str) -> Command {
+fn hooks_in_named(dir: &Path, action_and_hook: (&str, &str)) -> Command {
+    let (action, hook) = action_and_hook;
     let mut cmd = pretender_cmd();
     cmd.arg("hooks")
         .arg(action)
@@ -2162,7 +2163,7 @@ fn test_hooks_install_pre_push_installs_pre_push_hook() {
     let dir = tempdir();
     std::fs::create_dir_all(dir.join(".git/hooks")).expect("git hooks dir");
 
-    let install = hooks_in_named(&dir, "install", "pre-push")
+    let install = hooks_in_named(&dir, ("install", "pre-push"))
         .output()
         .expect("run hooks install pre-push");
     assert!(
@@ -2183,7 +2184,7 @@ fn test_hooks_install_pre_push_installs_pre_push_hook() {
         "pre-commit untouched"
     );
 
-    let uninstall = hooks_in_named(&dir, "uninstall", "pre-push")
+    let uninstall = hooks_in_named(&dir, ("uninstall", "pre-push"))
         .output()
         .expect("run hooks uninstall pre-push");
     assert!(

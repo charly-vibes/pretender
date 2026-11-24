@@ -3,7 +3,7 @@
 //! Detects functions with excessive bare boolean parameters and
 //! primitive types used in place of domain types.
 
-use crate::model::{CodeUnit, Language, UnitKind};
+use crate::model::{CodeUnit, UnitKind};
 
 /// Result of primitive-obsession analysis for one code unit.
 #[derive(Debug, Clone, Default)]
@@ -37,7 +37,6 @@ pub enum PrimitiveViolationKind {
 /// * `extra_domain_patterns` — additional domain name patterns from config
 pub fn analyze(
     units: &[CodeUnit],
-    _language: &Language,
     bool_cluster_max: u32,
     primitive_param_check: bool,
     extra_domain_patterns: &[String],
@@ -220,7 +219,7 @@ mod tests {
                 make_param("d", Some("bool")),
             ],
         );
-        let results = analyze(&[unit], &Language::Rust, 3, false, &[]);
+        let results = analyze(&[unit], 3, false, &[]);
         assert!(!results[0].violations.is_empty());
         assert!(results[0]
             .violations
@@ -236,7 +235,7 @@ mod tests {
             UnitKind::Function,
             vec![make_param("a", Some("bool")), make_param("b", Some("bool"))],
         );
-        let results = analyze(&[unit], &Language::Rust, 3, false, &[]);
+        let results = analyze(&[unit], 3, false, &[]);
         assert!(results[0].violations.is_empty());
     }
 
@@ -252,7 +251,7 @@ mod tests {
                 make_param("dry_run", Some("bool")),
             ],
         );
-        let results = analyze(&[unit], &Language::Rust, 3, false, &[]);
+        let results = analyze(&[unit], 3, false, &[]);
         assert!(results[0].violations.is_empty());
     }
 
@@ -263,7 +262,7 @@ mod tests {
             UnitKind::Function,
             vec![make_param("email", Some("String"))],
         );
-        let results = analyze(&[unit], &Language::Rust, 0, true, &[]);
+        let results = analyze(&[unit], 0, true, &[]);
         assert!(!results[0].violations.is_empty());
         assert!(matches!(
             results[0].violations[0].kind,
@@ -282,7 +281,7 @@ mod tests {
                 make_param("path", Some("String")),
             ],
         );
-        let results = analyze(&[unit], &Language::Rust, 0, true, &[]);
+        let results = analyze(&[unit], 0, true, &[]);
         assert!(results[0].violations.is_empty());
     }
 
@@ -294,7 +293,7 @@ mod tests {
             UnitKind::Function,
             vec![make_param("x", None)],
         );
-        let results = analyze(&[unit], &Language::Rust, 3, true, &[]);
+        let results = analyze(&[unit], 3, true, &[]);
         assert!(results[0].violations.is_empty());
         assert_eq!(results[0].bool_param_count, 0);
     }
@@ -306,7 +305,7 @@ mod tests {
             UnitKind::Function,
             vec![make_param("api_key", Some("String"))],
         );
-        let results = analyze(&[unit], &Language::Rust, 0, true, &["api_key".to_string()]);
+        let results = analyze(&[unit], 0, true, &["api_key".to_string()]);
         assert!(!results[0].violations.is_empty());
     }
 }

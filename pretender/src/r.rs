@@ -28,8 +28,10 @@ impl RParser {
             tree_sitter_r::LANGUAGE.into(),
             Language::R,
             R_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

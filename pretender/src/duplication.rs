@@ -89,11 +89,16 @@ fn normalize(node: tree_sitter::Node, source: &[u8]) -> String {
     format!("{}({})", kind, parts.join(","))
 }
 
-fn collect_subtrees(
-    node: tree_sitter::Node,
-    source: &[u8],
+/// Per-file scan configuration for `collect_subtrees`.
+struct CloneScan<'a> {
+    source: &'a [u8],
     min_nodes: usize,
-    file: &Path,
+    file: &'a Path,
+}
+
+fn collect_subtrees(
+    scan: &CloneScan<'_>,
+    node: tree_sitter::Node,
     buckets: &mut HashMap<String, Vec<(CloneLocation, usize)>>,
 ) {
     if node.kind().contains("comment") {
@@ -101,11 +106,11 @@ fn collect_subtrees(
     }
 
     let count = named_node_count(node);
-    if count >= min_nodes {
-        let norm = normalize(node, source);
+    if count >= scan.min_nodes {
+        let norm = normalize(node, scan.source);
         if !norm.is_empty() {
             let loc = CloneLocation {
-                file: file.to_path_buf(),
+                file: scan.file.to_path_buf(),
                 start_line: node.start_position().row as u32 + 1,
                 end_line: node.end_position().row as u32 + 1,
             };
@@ -115,7 +120,7 @@ fn collect_subtrees(
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        collect_subtrees(child, source, min_nodes, file, buckets);
+        collect_subtrees(scan, child, buckets);
     }
 }
 
@@ -138,10 +143,12 @@ pub fn detect_clones(
             continue;
         };
         collect_subtrees(
+            &CloneScan {
+                source: source.as_bytes(),
+                min_nodes,
+                file: path,
+            },
             tree.root_node(),
-            source.as_bytes(),
-            min_nodes,
-            path,
             &mut buckets,
         );
     }

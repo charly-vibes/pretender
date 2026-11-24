@@ -146,50 +146,53 @@ fn detect_cycles(graph: &HashMap<String, HashSet<String>>) -> Vec<CycleReport> {
     let mut in_stack: HashSet<String> = HashSet::new();
     let mut path: Vec<String> = Vec::new();
 
+    let mut state = DfsState {
+        graph,
+        visited: &mut visited,
+        in_stack: &mut in_stack,
+        path: &mut path,
+        cycles: &mut cycles,
+    };
+
     let mut nodes: Vec<String> = graph.keys().cloned().collect();
     nodes.sort();
 
     for node in nodes {
-        if !visited.contains(&node) {
-            dfs_cycle(
-                &node,
-                graph,
-                &mut visited,
-                &mut in_stack,
-                &mut path,
-                &mut cycles,
-            );
+        if !state.visited.contains(&node) {
+            dfs_cycle(&mut state, &node);
         }
     }
 
     cycles
 }
 
-fn dfs_cycle(
-    node: &str,
-    graph: &HashMap<String, HashSet<String>>,
-    visited: &mut HashSet<String>,
-    in_stack: &mut HashSet<String>,
-    path: &mut Vec<String>,
-    cycles: &mut Vec<CycleReport>,
-) {
-    visited.insert(node.to_string());
-    in_stack.insert(node.to_string());
-    path.push(node.to_string());
+/// Mutable traversal state shared by the recursive `dfs_cycle` walk.
+struct DfsState<'a> {
+    graph: &'a HashMap<String, HashSet<String>>,
+    visited: &'a mut HashSet<String>,
+    in_stack: &'a mut HashSet<String>,
+    path: &'a mut Vec<String>,
+    cycles: &'a mut Vec<CycleReport>,
+}
 
-    if let Some(deps) = graph.get(node) {
+fn dfs_cycle(state: &mut DfsState<'_>, node: &str) {
+    state.visited.insert(node.to_string());
+    state.in_stack.insert(node.to_string());
+    state.path.push(node.to_string());
+
+    if let Some(deps) = state.graph.get(node) {
         let mut deps_sorted: Vec<&String> = deps.iter().collect();
         deps_sorted.sort();
         for dep in deps_sorted {
-            if !visited.contains(dep.as_str()) {
-                dfs_cycle(dep, graph, visited, in_stack, path, cycles);
-            } else if in_stack.contains(dep.as_str()) {
+            if !state.visited.contains(dep.as_str()) {
+                dfs_cycle(state, dep);
+            } else if state.in_stack.contains(dep.as_str()) {
                 // Found a cycle: extract from dep to current node
-                if let Some(pos) = path.iter().position(|p| p == dep) {
-                    let cycle: Vec<String> = path[pos..].to_vec();
+                if let Some(pos) = state.path.iter().position(|p| p == dep) {
+                    let cycle: Vec<String> = state.path[pos..].to_vec();
                     // Only report unique cycles (normalize by starting at smallest node)
                     if is_canonical_cycle(&cycle) {
-                        cycles.push(CycleReport {
+                        state.cycles.push(CycleReport {
                             participants: cycle.clone(),
                         });
                     }
@@ -198,8 +201,8 @@ fn dfs_cycle(
         }
     }
 
-    path.pop();
-    in_stack.remove(node);
+    state.path.pop();
+    state.in_stack.remove(node);
 }
 
 /// Ensure we only report each cycle once by normalizing to the lexicographically
@@ -276,7 +279,8 @@ mod tests {
         (path, module)
     }
 
-    fn make_thresholds(ce: u32, ca: u32, cbo: u32, lcom: u32, cycles: bool) -> CouplingThresholds {
+    fn make_thresholds(counts: (u32, u32, u32, u32), cycles: bool) -> CouplingThresholds {
+        let (ce, ca, cbo, lcom) = counts;
         CouplingThresholds {
             ce_max: ce,
             ca_max: ca,
@@ -290,7 +294,7 @@ mod tests {
     fn no_thresholds_no_analysis() {
         let (p, m) = make_module("src/main.rs", vec!["std::collections::HashMap"]);
         let modules = vec![(p, &m)];
-        let result = analyze(&modules, &make_thresholds(0, 0, 0, 0, false));
+        let result = analyze(&modules, &make_thresholds((0, 0, 0, 0), false));
         assert!(result.modules.is_empty());
         assert!(result.cycles.is_empty());
     }
@@ -302,7 +306,7 @@ mod tests {
         let (bp, b) = make_module("src/b.rs", vec![]);
         let (cp, c) = make_module("src/c.rs", vec![]);
         let modules = vec![(ap, &a), (bp, &b), (cp, &c)];
-        let result = analyze(&modules, &make_thresholds(1, 0, 0, 0, false));
+        let result = analyze(&modules, &make_thresholds((1, 0, 0, 0), false));
 
         let a_report = result
             .modules
@@ -320,7 +324,7 @@ mod tests {
         let (bp, b) = make_module("src/b.rs", vec!["src/c.rs"]);
         let (cp, c) = make_module("src/c.rs", vec![]);
         let modules = vec![(ap, &a), (bp, &b), (cp, &c)];
-        let result = analyze(&modules, &make_thresholds(0, 0, 0, 0, true));
+        let result = analyze(&modules, &make_thresholds((0, 0, 0, 0), true));
         assert!(result.cycles.is_empty());
     }
 
@@ -330,7 +334,7 @@ mod tests {
         let (bp, b) = make_module("src/b.rs", vec!["src/c.rs"]);
         let (cp, c) = make_module("src/c.rs", vec!["src/a.rs"]);
         let modules = vec![(ap, &a), (bp, &b), (cp, &c)];
-        let result = analyze(&modules, &make_thresholds(0, 0, 0, 0, true));
+        let result = analyze(&modules, &make_thresholds((0, 0, 0, 0), true));
         assert_eq!(result.cycles.len(), 1);
         assert_eq!(result.cycles[0].participants.len(), 3);
     }
@@ -339,7 +343,7 @@ mod tests {
     fn std_imports_excluded() {
         let (p, a) = make_module("src/a.rs", vec!["std::collections::HashMap", "core::fmt"]);
         let modules = vec![(p, &a)];
-        let result = analyze(&modules, &make_thresholds(1, 0, 0, 0, false));
+        let result = analyze(&modules, &make_thresholds((1, 0, 0, 0), false));
         assert!(
             result.modules.is_empty() || result.modules.iter().all(|r| r.violations.is_empty())
         );
@@ -352,7 +356,7 @@ mod tests {
         let (bp, b) = make_module("src/b.rs", vec![]);
         let (cp, c) = make_module("src/c.rs", vec!["src/b.rs"]);
         let modules = vec![(ap, &a), (bp, &b), (cp, &c)];
-        let result = analyze(&modules, &make_thresholds(0, 1, 0, 0, false));
+        let result = analyze(&modules, &make_thresholds((0, 1, 0, 0), false));
 
         let b_report = result
             .modules

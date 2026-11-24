@@ -28,8 +28,10 @@ impl RubyParser {
             tree_sitter_ruby::LANGUAGE.into(),
             Language::Ruby,
             RUBY_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

@@ -28,8 +28,10 @@ impl JuliaParser {
             tree_sitter_julia::LANGUAGE.into(),
             Language::Julia,
             JULIA_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

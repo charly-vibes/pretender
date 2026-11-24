@@ -28,8 +28,10 @@ impl TypeScriptParser {
             tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Language::TypeScript,
             TS_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }
@@ -49,8 +51,10 @@ impl TypeScriptXParser {
             tree_sitter_typescript::LANGUAGE_TSX.into(),
             Language::TypeScript,
             TS_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

@@ -28,8 +28,10 @@ impl JavaScriptParser {
             tree_sitter_javascript::LANGUAGE.into(),
             Language::JavaScript,
             JS_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

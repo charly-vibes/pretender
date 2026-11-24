@@ -28,8 +28,10 @@ impl CParser {
             tree_sitter_c::LANGUAGE.into(),
             Language::C,
             C_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }
