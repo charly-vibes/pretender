@@ -44,6 +44,29 @@ fn named_node_count(node: tree_sitter::Node) -> usize {
     count
 }
 
+/// Classify a leaf node kind into its normalized structural token.
+/// Leaves carry no child structure, so kinds collapse into $VAR / $LIT_* tokens
+/// (or fall back to their own kind when no mapping applies).
+fn leaf_token(kind: &str) -> String {
+    if kind.contains("identifier") {
+        return "$VAR".to_string();
+    }
+    if kind.contains("string") || kind == "raw_string" || kind == "interpolated_string" {
+        return "$LIT_str".to_string();
+    }
+    if kind.contains("integer")
+        || kind.contains("float")
+        || kind.contains("number")
+        || kind == "decimal"
+    {
+        return "$LIT_num".to_string();
+    }
+    if matches!(kind, "true" | "false" | "None" | "nil" | "null") {
+        return "$LIT_bool".to_string();
+    }
+    kind.to_string()
+}
+
 /// Build a normalized structural string for a subtree.
 /// Identifiers → $VAR, literals → $LIT_str / $LIT_num / $LIT_bool.
 /// Comments are skipped. Node kinds provide structural skeleton.
@@ -61,23 +84,7 @@ fn normalize(node: tree_sitter::Node, source: &[u8]) -> String {
         .collect();
 
     if children.is_empty() {
-        if kind.contains("identifier") {
-            return "$VAR".to_string();
-        }
-        if kind.contains("string") || kind == "raw_string" || kind == "interpolated_string" {
-            return "$LIT_str".to_string();
-        }
-        if kind.contains("integer")
-            || kind.contains("float")
-            || kind.contains("number")
-            || kind == "decimal"
-        {
-            return "$LIT_num".to_string();
-        }
-        if matches!(kind, "true" | "false" | "None" | "nil" | "null") {
-            return "$LIT_bool".to_string();
-        }
-        return kind.to_string();
+        return leaf_token(kind);
     }
 
     let parts: Vec<String> = children
@@ -124,11 +131,12 @@ fn collect_subtrees(
     }
 }
 
-pub fn detect_clones(
+/// Stage 1 — candidate hashing: parse every supported file and bucket its
+/// normalized subtrees by structural signature.
+fn hash_candidates(
     files: &[(PathBuf, String)],
     min_nodes: usize,
-    cross_file: bool,
-) -> Result<Vec<CloneGroup>> {
+) -> Result<HashMap<String, Vec<(CloneLocation, usize)>>> {
     let mut buckets: HashMap<String, Vec<(CloneLocation, usize)>> = HashMap::new();
 
     for (path, source) in files {
@@ -153,7 +161,16 @@ pub fn detect_clones(
         );
     }
 
-    let mut groups: Vec<CloneGroup> = buckets
+    Ok(buckets)
+}
+
+/// Stage 2 — verification: keep signatures with ≥2 occurrences; in within-file
+/// mode, drop groups whose occurrences span multiple files.
+fn verified_groups(
+    buckets: HashMap<String, Vec<(CloneLocation, usize)>>,
+    cross_file: bool,
+) -> Vec<CloneGroup> {
+    buckets
         .into_values()
         .filter_map(|locs| {
             if locs.len() < 2 {
@@ -173,8 +190,17 @@ pub fn detect_clones(
                 locations,
             })
         })
-        .collect();
+        .collect()
+}
 
+/// Stage 3 — reporting: verified clone groups, largest node count first.
+pub fn detect_clones(
+    files: &[(PathBuf, String)],
+    min_nodes: usize,
+    cross_file: bool,
+) -> Result<Vec<CloneGroup>> {
+    let buckets = hash_candidates(files, min_nodes)?;
+    let mut groups = verified_groups(buckets, cross_file);
     groups.sort_by_key(|b| std::cmp::Reverse(b.node_count));
     Ok(groups)
 }
@@ -182,27 +208,28 @@ pub fn detect_clones(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Context;
     use std::path::PathBuf;
 
-    fn fixture_path(name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    fn fixture_path(name: &str) -> Result<PathBuf> {
+        Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .unwrap()
+            .context("cargo manifest dir has no parent")?
             .join("tests/fixtures")
-            .join(name)
+            .join(name))
     }
 
-    fn load_fixture(name: &str) -> (PathBuf, String) {
-        let path = fixture_path(name);
+    fn load_fixture(name: &str) -> Result<(PathBuf, String)> {
+        let path = fixture_path(name)?;
         let source =
-            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("fixture not found: {name}"));
-        (path, source)
+            std::fs::read_to_string(&path).with_context(|| format!("fixture not found: {name}"))?;
+        Ok((path, source))
     }
 
     #[test]
-    fn detects_structural_clones_within_file() {
-        let file = load_fixture("python_duplicates.py");
-        let groups = detect_clones(&[file], 5, false).unwrap();
+    fn detects_structural_clones_within_file() -> Result<()> {
+        let file = load_fixture("python_duplicates.py")?;
+        let groups = detect_clones(&[file], 5, false)?;
         assert!(
             !groups.is_empty(),
             "expected at least one clone group in python_duplicates.py"
@@ -210,46 +237,64 @@ mod tests {
         let top = &groups[0];
         assert_eq!(top.similarity, 100);
         assert!(top.locations.len() >= 2, "expected ≥2 clone locations");
+        Ok(())
     }
 
     #[test]
-    fn no_clones_in_unique_file() {
-        let file = load_fixture("python_simple.py");
+    fn no_clones_in_unique_file() -> Result<()> {
+        let file = load_fixture("python_simple.py")?;
         // Use a high threshold so only large identical blocks would match
-        let groups = detect_clones(&[file], 20, false).unwrap();
+        let groups = detect_clones(&[file], 20, false)?;
         // python_simple.py has no intentional duplicates at 20+ nodes
         for g in &groups {
             // All locations must be in the same file (within-file mode)
             let first = &g.locations[0].file;
             assert!(g.locations.iter().all(|l| &l.file == first));
         }
+        Ok(())
     }
 
     #[test]
-    fn unsupported_extension_is_skipped() {
+    fn unsupported_extension_is_skipped() -> Result<()> {
         let path = PathBuf::from("foo.txt");
-        let groups = detect_clones(&[(path, "hello world".to_string())], 5, false).unwrap();
+        let groups = detect_clones(&[(path, "hello world".to_string())], 5, false)?;
         assert!(groups.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn cross_file_flag_widens_scope() {
-        let f1 = load_fixture("python_duplicates.py");
-        let f2 = load_fixture("python_simple.py");
+    fn cross_file_flag_widens_scope() -> Result<()> {
+        let f1 = load_fixture("python_duplicates.py")?;
+        let f2 = load_fixture("python_simple.py")?;
 
-        let within = detect_clones(&[f1.clone(), f2.clone()], 5, false).unwrap();
-        let cross = detect_clones(&[f1, f2], 5, true).unwrap();
+        let within = detect_clones(&[f1.clone(), f2.clone()], 5, false)?;
+        let cross = detect_clones(&[f1, f2], 5, true)?;
 
         // Cross-file mode should find at least as many groups as within-file
         assert!(cross.len() >= within.len());
+        Ok(())
     }
 
     #[test]
-    fn min_nodes_threshold_filters_small_subtrees() {
-        let file = load_fixture("python_duplicates.py");
-        let small = detect_clones(std::slice::from_ref(&file), 1, false).unwrap();
-        let large = detect_clones(&[file], 30, false).unwrap();
+    fn min_nodes_threshold_filters_small_subtrees() -> Result<()> {
+        let file = load_fixture("python_duplicates.py")?;
+        let small = detect_clones(std::slice::from_ref(&file), 1, false)?;
+        let large = detect_clones(&[file], 30, false)?;
         // Lowering the threshold finds more (or equal) clone groups
         assert!(small.len() >= large.len());
+        Ok(())
+    }
+
+    #[test]
+    fn leaf_classification_pins_normalization_tokens() {
+        assert_eq!(leaf_token("identifier"), "$VAR");
+        assert_eq!(leaf_token("string"), "$LIT_str");
+        assert_eq!(leaf_token("raw_string"), "$LIT_str");
+        assert_eq!(leaf_token("interpolated_string"), "$LIT_str");
+        assert_eq!(leaf_token("integer"), "$LIT_num");
+        assert_eq!(leaf_token("decimal"), "$LIT_num");
+        assert_eq!(leaf_token("true"), "$LIT_bool");
+        assert_eq!(leaf_token("nil"), "$LIT_bool");
+        assert_eq!(leaf_token("binary_operator"), "binary_operator");
     }
 }
