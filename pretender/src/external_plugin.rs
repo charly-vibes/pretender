@@ -1,3 +1,10 @@
+//! Purpose: external metric-plugin integration — load plugin TOML configs,
+//! run the configured commands over applicable files, and parse their JSON
+//! output into findings.
+//! Responsibilities: config discovery/loading, command invocation, and
+//! mapping stdout to per-path findings via the configured field mapping.
+//! Rationale: plugins are optional best-effort integrations; failures are
+//! reported to stderr and skipped rather than aborting the run.
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -87,22 +94,8 @@ pub fn run_plugins(
     let mut by_path: BTreeMap<String, Vec<ExternalFinding>> = BTreeMap::new();
 
     for plugin in plugins {
-        let matching: Vec<&PathBuf> = files.iter().filter(|f| applies_to(plugin, f)).collect();
-        if matching.is_empty() {
+        let Some(findings) = findings_for_plugin(plugin, files) else {
             continue;
-        }
-
-        let stdout = match invoke_plugin(plugin, &matching) {
-            Ok(s) => s,
-            Err(err) => {
-                eprintln!("pretender: plugin '{}' failed: {err}", plugin.name);
-                continue;
-            }
-        };
-
-        let findings = match plugin.parser {
-            ParserKind::Json => parse_json_array(&stdout, &plugin.name, &plugin.mapping),
-            ParserKind::JsonLines => parse_json_lines(&stdout, &plugin.name, &plugin.mapping),
         };
 
         for (path, mut file_findings) in findings {
@@ -111,6 +104,33 @@ pub fn run_plugins(
     }
 
     by_path
+}
+
+/// Run a single plugin against the files it applies to and parse its output.
+///
+/// Returns `None` when no file matches or the plugin command failed (the
+/// failure is already reported to stderr).
+fn findings_for_plugin(
+    plugin: &ExternalPluginConfig,
+    files: &[PathBuf],
+) -> Option<BTreeMap<String, Vec<ExternalFinding>>> {
+    let matching: Vec<&PathBuf> = files.iter().filter(|f| applies_to(plugin, f)).collect();
+    if matching.is_empty() {
+        return None;
+    }
+
+    let stdout = match invoke_plugin(plugin, &matching) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("pretender: plugin '{}' failed: {err}", plugin.name);
+            return None;
+        }
+    };
+
+    Some(match plugin.parser {
+        ParserKind::Json => parse_json_array(&stdout, &plugin.name, &plugin.mapping),
+        ParserKind::JsonLines => parse_json_lines(&stdout, &plugin.name, &plugin.mapping),
+    })
 }
 
 fn applies_to(plugin: &ExternalPluginConfig, file: &Path) -> bool {
@@ -226,7 +246,8 @@ code = "code"
 
     #[test]
     fn parses_plugin_config() {
-        let cfg: ExternalPluginConfig = toml::from_str(RUFF_PLUGIN).expect("parses");
+        let cfg: ExternalPluginConfig =
+            toml::from_str(RUFF_PLUGIN).unwrap_or_else(|e| panic!("parses: {e:?}"));
         assert_eq!(cfg.name, "ruff");
         assert_eq!(cfg.extensions, vec![".py"]);
         assert_eq!(cfg.parser, ParserKind::Json);
@@ -237,7 +258,8 @@ code = "code"
 
     #[test]
     fn applies_to_matches_extension() {
-        let cfg: ExternalPluginConfig = toml::from_str(RUFF_PLUGIN).expect("parses");
+        let cfg: ExternalPluginConfig =
+            toml::from_str(RUFF_PLUGIN).unwrap_or_else(|e| panic!("parses: {e:?}"));
         assert!(applies_to(&cfg, Path::new("foo.py")));
         assert!(!applies_to(&cfg, Path::new("foo.rs")));
         assert!(!applies_to(&cfg, Path::new("foo")));
@@ -324,8 +346,10 @@ code = "code"
     #[test]
     fn load_plugins_skips_non_toml_files() {
         let dir = tempfile_dir();
-        std::fs::write(dir.join("readme.md"), "not toml").unwrap();
-        std::fs::write(dir.join("plugin.toml"), RUFF_PLUGIN).unwrap();
+        std::fs::write(dir.join("readme.md"), "not toml")
+            .unwrap_or_else(|e| panic!("write readme.md: {e:?}"));
+        std::fs::write(dir.join("plugin.toml"), RUFF_PLUGIN)
+            .unwrap_or_else(|e| panic!("write plugin.toml: {e:?}"));
         let plugins = load_plugins(&dir);
         assert_eq!(plugins.len(), 1);
         assert_eq!(plugins[0].name, "ruff");

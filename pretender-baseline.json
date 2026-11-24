@@ -35,8 +35,6 @@
     "pretender/src/engine.rs::rust_types_fixture_round_trip::function_lines_max",
     "pretender/src/engine.rs::type_captures_populate_type_definition::function_lines_max",
     "pretender/src/engine.rs::visit_child::function_lines_max",
-    "pretender/src/external_plugin.rs::::unwraps",
-    "pretender/src/external_plugin.rs::run_plugins::function_lines_max",
     "pretender/src/history.rs::::excessive_fields",
     "pretender/src/history.rs::::file_lines",
     "pretender/src/history.rs::::unwraps",
