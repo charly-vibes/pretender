@@ -2,7 +2,6 @@
   "schema_version": 1,
   "adopted_at": "2026-11-24T21:03:55Z",
   "finding_ids": [
-    "pretender/src/cluster_detector.rs::detect::function_lines_max",
     "pretender/src/config.rs::::excessive_fields",
     "pretender/src/config.rs::::file_lines",
     "pretender/src/config.rs::::unwraps",

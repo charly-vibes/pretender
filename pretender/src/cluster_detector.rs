@@ -2,6 +2,16 @@
 //!
 //! Groups test code units with identical assertion structure and SUT call
 //! differing only in literal values. Single-file analysis only.
+//!
+//! # Responsibilities
+//! Fingerprint each unit's structure (SUT calls, assertion count, branch
+//! kinds), group units with identical fingerprints, and emit clusters of at
+//! least `min_size` members, sorted by member count descending (stable sort).
+//!
+//! # Rationale
+//! `detect` is split into stage helpers so every function stays within the
+//! gate's function-size limit; bodies were moved verbatim to preserve
+//! detection semantics and output ordering exactly.
 
 use crate::model::{CodeUnit, Node};
 
@@ -28,53 +38,69 @@ pub fn detect(units: &[CodeUnit], min_size: u32) -> Vec<LazyCluster> {
         return Vec::new();
     }
 
-    // Build a fingerprint for each unit: (call_sites, assertions, branch_structure)
-    struct Fingerprint {
-        call_count: u32,
-        callee_names: Vec<String>,
-        assertion_count: u32,
-        branch_counts: Vec<(String, u32)>,
-    }
+    let fingerprints = build_fingerprints(units);
+    let groups = group_by_fingerprint(&fingerprints);
+    let mut clusters = clusters_from_groups(groups, units, min_size);
 
-    let fingerprints: Vec<(usize, Fingerprint)> = units
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.count));
+    clusters
+}
+
+/// Structural fingerprint of one code unit: SUT call count and names,
+/// assertion count, and branch-kind counts. Units with identical
+/// fingerprints differ only in literal values.
+struct Fingerprint {
+    call_count: u32,
+    callee_names: Vec<String>,
+    assertion_count: u32,
+    branch_counts: Vec<(String, u32)>,
+}
+
+/// Build the structural fingerprint of a single unit.
+fn fingerprint_unit(unit: &CodeUnit) -> Fingerprint {
+    let mut call_count = 0u32;
+    let mut callee_names = Vec::new();
+    let assertion_count = unit.assertions;
+    let mut branch_counts: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::new();
+
+    collect_stats(
+        &unit.body,
+        &mut call_count,
+        &mut callee_names,
+        &mut branch_counts,
+    );
+
+    let mut branch_counts_vec: Vec<(String, u32)> = branch_counts.into_iter().collect();
+    branch_counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
+
+    callee_names.sort();
+
+    Fingerprint {
+        call_count,
+        callee_names,
+        assertion_count,
+        branch_counts: branch_counts_vec,
+    }
+}
+
+/// Fingerprint every unit in order, pairing each fingerprint with its index.
+fn build_fingerprints(units: &[CodeUnit]) -> Vec<(usize, Fingerprint)> {
+    units
         .iter()
         .enumerate()
-        .map(|(idx, unit)| {
-            let mut call_count = 0u32;
-            let mut callee_names = Vec::new();
-            let assertion_count = unit.assertions;
-            let mut branch_counts: std::collections::HashMap<String, u32> =
-                std::collections::HashMap::new();
+        .map(|(idx, unit)| (idx, fingerprint_unit(unit)))
+        .collect()
+}
 
-            collect_stats(
-                &unit.body,
-                &mut call_count,
-                &mut callee_names,
-                &mut branch_counts,
-            );
-
-            let mut branch_counts_vec: Vec<(String, u32)> = branch_counts.into_iter().collect();
-            branch_counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
-
-            callee_names.sort();
-
-            (
-                idx,
-                Fingerprint {
-                    call_count,
-                    callee_names,
-                    assertion_count,
-                    branch_counts: branch_counts_vec,
-                },
-            )
-        })
-        .collect();
-
-    // Group by fingerprint
+/// Group unit indices by fingerprint key; indices keep unit order.
+fn group_by_fingerprint(
+    fingerprints: &[(usize, Fingerprint)],
+) -> std::collections::HashMap<String, Vec<usize>> {
     let mut groups: std::collections::HashMap<String, Vec<usize>> =
         std::collections::HashMap::new();
 
-    for (idx, fp) in &fingerprints {
+    for (idx, fp) in fingerprints {
         let key = format!(
             "{}-{}-{:?}-{:?}",
             fp.call_count, fp.assertion_count, fp.callee_names, fp.branch_counts
@@ -82,30 +108,41 @@ pub fn detect(units: &[CodeUnit], min_size: u32) -> Vec<LazyCluster> {
         groups.entry(key).or_default().push(*idx);
     }
 
-    // Convert groups to clusters
+    groups
+}
+
+/// Convert each group with at least `min_size` members into a cluster.
+fn clusters_from_groups(
+    groups: std::collections::HashMap<String, Vec<usize>>,
+    units: &[CodeUnit],
+    min_size: u32,
+) -> Vec<LazyCluster> {
     let mut clusters = Vec::new();
     for (_key, indices) in groups {
         if indices.len() >= min_size as usize {
-            let first_idx = indices[0];
-            let unit = &units[first_idx];
-            let sut_name = if unit.assertions > 0 {
-                format!("{} (test)", unit.name)
-            } else {
-                unit.name.clone()
-            };
-
-            let lines: Vec<u32> = indices.iter().map(|i| units[*i].span.start_line).collect();
-
-            clusters.push(LazyCluster {
-                sut_name,
-                count: indices.len() as u32,
-                lines,
-            });
+            clusters.push(cluster_from_indices(&indices, units));
         }
     }
-
-    clusters.sort_by_key(|c| std::cmp::Reverse(c.count));
     clusters
+}
+
+/// Build one cluster from a group of unit indices (first member names the SUT).
+fn cluster_from_indices(indices: &[usize], units: &[CodeUnit]) -> LazyCluster {
+    let first_idx = indices[0];
+    let unit = &units[first_idx];
+    let sut_name = if unit.assertions > 0 {
+        format!("{} (test)", unit.name)
+    } else {
+        unit.name.clone()
+    };
+
+    let lines: Vec<u32> = indices.iter().map(|i| units[*i].span.start_line).collect();
+
+    LazyCluster {
+        sut_name,
+        count: indices.len() as u32,
+        lines,
+    }
 }
 
 fn collect_stats(
@@ -269,5 +306,24 @@ mod tests {
         let clusters = detect(&units, 2);
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0].count, 2);
+    }
+
+    #[test]
+    fn cluster_ordering_pinned() {
+        // Pins detector output ordering: clusters are sorted by member count
+        // descending, and member lines follow unit order within a cluster.
+        let units = vec![
+            make_unit("test_add_1", vec![make_call("add")], 1, 1),
+            make_unit("test_add_2", vec![make_call("add")], 1, 5),
+            make_unit("test_add_3", vec![make_call("add")], 1, 9),
+            make_unit("test_sub_1", vec![make_call("sub")], 1, 13),
+            make_unit("test_sub_2", vec![make_call("sub")], 1, 17),
+        ];
+        let clusters = detect(&units, 2);
+        assert_eq!(clusters.len(), 2);
+        assert_eq!(clusters[0].count, 3);
+        assert_eq!(clusters[0].lines, vec![1, 5, 9]);
+        assert_eq!(clusters[1].count, 2);
+        assert_eq!(clusters[1].lines, vec![13, 17]);
     }
 }
