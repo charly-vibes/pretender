@@ -1,7 +1,9 @@
 //! Module-level coupling metrics: Ce, Ca, CBO, LCOM-HS, and cycle detection.
-//!
-//! A "module" is a single source file. Coupling is computed from the
-//! import graph built across all parsed files in a check run.
+//! Purpose: surface structural coupling between modules so it can be gated on.
+//! Responsibilities: build the dependency graph from parsed files, compute
+//! Ce/Ca/CBO, emit per-module threshold violations, detect import cycles.
+//! Rationale: a "module" is a single source file; coupling comes from the
+//! import graph across all parsed files in a check run.
 
 use crate::config::CouplingThresholds;
 use crate::model::{Import, Module};
@@ -37,9 +39,7 @@ pub struct CouplingAnalysis {
     pub cycles: Vec<CycleReport>,
 }
 
-/// Build a dependency graph from parsed modules and compute coupling metrics.
-///
-/// Modules with role `generated` or `vendor` are excluded from the graph.
+/// Build the dependency graph and compute coupling metrics for all modules.
 pub fn analyze(
     modules: &[(PathBuf, &Module)],
     thresholds: &CouplingThresholds,
@@ -48,87 +48,14 @@ pub fn analyze(
         return CouplingAnalysis::default();
     }
 
-    // Build adjacency: module_path -> set of imported module paths
-    let mut outgoing: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut all_modules: HashSet<String> = HashSet::new();
-
-    for (file_path, module) in modules {
-        let module_path = normalize_module_path(file_path, module);
-        all_modules.insert(module_path.clone());
-
-        let deps: HashSet<String> = module
-            .imports
-            .iter()
-            .filter_map(|imp| resolve_import_path(&module_path, imp))
-            .collect();
-
-        outgoing.insert(module_path, deps);
-    }
-
-    // Compute Ce (efferent) per module: number of distinct external deps
-    // Compute Ca (afferent) per module: number of modules that import it
-    let mut ce: HashMap<String, u32> = HashMap::new();
-    let mut ca: HashMap<String, u32> = HashMap::new();
-
-    for (mod_path, deps) in &outgoing {
-        let internal_deps: Vec<&String> =
-            deps.iter().filter(|d| all_modules.contains(*d)).collect();
-        ce.insert(mod_path.clone(), internal_deps.len() as u32);
-        for dep in internal_deps {
-            *ca.entry(dep.clone()).or_insert(0) += 1;
-        }
-    }
-
-    // Compute CBO = Ce + Ca
-    let mut cbo: HashMap<String, u32> = HashMap::new();
-    for mod_path in all_modules.iter() {
-        let c = ce.get(mod_path).copied().unwrap_or(0);
-        let a = ca.get(mod_path).copied().unwrap_or(0);
-        cbo.insert(mod_path.clone(), c + a);
-    }
-
-    // Build module reports
-    let mut modules_sorted: Vec<String> = all_modules.into_iter().collect();
+    let graph = build_graph(modules);
+    let counts = compute_coupling(&graph);
+    let mut modules_sorted: Vec<String> = graph.all_modules.iter().cloned().collect();
     modules_sorted.sort();
+    let reports = counts.build_reports(&modules_sorted, thresholds);
 
-    let mut reports: Vec<ModuleReport> = Vec::new();
-    for mod_path in modules_sorted {
-        let c = ce.get(&mod_path).copied().unwrap_or(0);
-        let a = ca.get(&mod_path).copied().unwrap_or(0);
-        let b = cbo.get(&mod_path).copied().unwrap_or(0);
-
-        let mut violations = Vec::new();
-        if thresholds.ce_max > 0 && c > thresholds.ce_max {
-            violations.push(CouplingViolation {
-                metric: "ce".to_string(),
-                actual: c as f64,
-                limit: thresholds.ce_max as f64,
-            });
-        }
-        if thresholds.ca_max > 0 && a > thresholds.ca_max {
-            violations.push(CouplingViolation {
-                metric: "ca".to_string(),
-                actual: a as f64,
-                limit: thresholds.ca_max as f64,
-            });
-        }
-        if thresholds.cbo_max > 0 && b > thresholds.cbo_max {
-            violations.push(CouplingViolation {
-                metric: "cbo".to_string(),
-                actual: b as f64,
-                limit: thresholds.cbo_max as f64,
-            });
-        }
-
-        reports.push(ModuleReport {
-            path: mod_path,
-            violations,
-        });
-    }
-
-    // Cycle detection
     let cycles = if thresholds.cycle_detection {
-        detect_cycles(&outgoing)
+        detect_cycles(&graph.outgoing)
     } else {
         Vec::new()
     };
@@ -139,13 +66,111 @@ pub fn analyze(
     }
 }
 
+/// Dependency graph plus the set of known module paths.
+struct DependencyGraph {
+    outgoing: HashMap<String, HashSet<String>>,
+    all_modules: HashSet<String>,
+}
+
+fn build_graph(modules: &[(PathBuf, &Module)]) -> DependencyGraph {
+    let mut graph = DependencyGraph {
+        outgoing: HashMap::new(),
+        all_modules: HashSet::new(),
+    };
+
+    for (file_path, module) in modules {
+        let module_path = normalize_module_path(file_path, module);
+        graph.all_modules.insert(module_path.clone());
+
+        let deps: HashSet<String> = module
+            .imports
+            .iter()
+            .filter_map(|imp| resolve_import_path(&module_path, imp))
+            .collect();
+
+        graph.outgoing.insert(module_path, deps);
+    }
+
+    graph
+}
+
+/// Per-module coupling counts: efferent (Ce), afferent (Ca), and CBO.
+struct CouplingCounts {
+    ce: HashMap<String, u32>,
+    ca: HashMap<String, u32>,
+    cbo: HashMap<String, u32>,
+}
+
+impl CouplingCounts {
+    /// One report per module in sorted order, with its threshold violations.
+    fn build_reports(&self, mods: &[String], thresholds: &CouplingThresholds) -> Vec<ModuleReport> {
+        let mut reports: Vec<ModuleReport> = Vec::new();
+        for mod_path in mods {
+            let ce = self.ce.get(mod_path).copied().unwrap_or(0);
+            let ca = self.ca.get(mod_path).copied().unwrap_or(0);
+            let cbo = self.cbo.get(mod_path).copied().unwrap_or(0);
+            reports.push(ModuleReport {
+                path: mod_path.clone(),
+                violations: threshold_violations(ce, ca, cbo, thresholds),
+            });
+        }
+        reports
+    }
+}
+
+/// Compute Ce/Ca/CBO per module from the graph's in-project edges.
+fn compute_coupling(graph: &DependencyGraph) -> CouplingCounts {
+    let mut ce = HashMap::new();
+    let mut ca = HashMap::new();
+    let mut cbo = HashMap::new();
+
+    for (mod_path, deps) in &graph.outgoing {
+        let internal_deps: Vec<String> = deps.intersection(&graph.all_modules).cloned().collect();
+        ce.insert(mod_path.clone(), internal_deps.len() as u32);
+        for dep in &internal_deps {
+            *ca.entry(dep.clone()).or_insert(0) += 1;
+        }
+    }
+
+    for mod_path in graph.all_modules.iter() {
+        let c = ce.get(mod_path).copied().unwrap_or(0);
+        let a = ca.get(mod_path).copied().unwrap_or(0);
+        cbo.insert(mod_path.clone(), c + a);
+    }
+
+    CouplingCounts { ce, ca, cbo }
+}
+
+/// Violations of the enabled ce/ca/cbo thresholds, in that order.
+fn threshold_violations(
+    ce: u32,
+    ca: u32,
+    cbo: u32,
+    thresholds: &CouplingThresholds,
+) -> Vec<CouplingViolation> {
+    let mut violations = Vec::new();
+    for (metric, actual, limit) in [
+        ("ce", ce, thresholds.ce_max),
+        ("ca", ca, thresholds.ca_max),
+        ("cbo", cbo, thresholds.cbo_max),
+    ] {
+        if limit > 0 && actual > limit {
+            violations.push(CouplingViolation {
+                metric: metric.to_string(),
+                actual: actual as f64,
+                limit: limit as f64,
+            });
+        }
+    }
+    violations
+}
+
 /// Detect cycles in the directed import graph using DFS with back-edge detection.
 fn detect_cycles(graph: &HashMap<String, HashSet<String>>) -> Vec<CycleReport> {
     let mut cycles = Vec::new();
     let mut visited: HashSet<String> = HashSet::new();
     let mut in_stack: HashSet<String> = HashSet::new();
     let mut path: Vec<String> = Vec::new();
-
     let mut state = DfsState {
         graph,
         visited: &mut visited,
@@ -184,20 +209,7 @@ fn dfs_cycle(state: &mut DfsState<'_>, node: &str) {
         let mut deps_sorted: Vec<&String> = deps.iter().collect();
         deps_sorted.sort();
         for dep in deps_sorted {
-            if !state.visited.contains(dep.as_str()) {
-                dfs_cycle(state, dep);
-            } else if state.in_stack.contains(dep.as_str()) {
-                // Found a cycle: extract from dep to current node
-                if let Some(pos) = state.path.iter().position(|p| p == dep) {
-                    let cycle: Vec<String> = state.path[pos..].to_vec();
-                    // Only report unique cycles (normalize by starting at smallest node)
-                    if is_canonical_cycle(&cycle) {
-                        state.cycles.push(CycleReport {
-                            participants: cycle.clone(),
-                        });
-                    }
-                }
-            }
+            visit_dependency(state, dep);
         }
     }
 
@@ -205,20 +217,35 @@ fn dfs_cycle(state: &mut DfsState<'_>, node: &str) {
     state.in_stack.remove(node);
 }
 
-/// Ensure we only report each cycle once by normalizing to the lexicographically
-/// smallest start node.
-fn is_canonical_cycle(cycle: &[String]) -> bool {
-    if cycle.is_empty() {
-        return false;
+/// Walk one edge: recurse into unvisited deps, report back-edges as cycles.
+fn visit_dependency(state: &mut DfsState<'_>, dep: &str) {
+    if !state.visited.contains(dep) {
+        dfs_cycle(state, dep);
+    } else if state.in_stack.contains(dep) {
+        report_back_edge(state, dep);
     }
-    let first = &cycle[0];
-    cycle.iter().min().is_none_or(|min| min == first)
+}
+
+/// `dep` closes a path back into the DFS stack: extract that path as a cycle.
+fn report_back_edge(state: &mut DfsState<'_>, dep: &str) {
+    if let Some(pos) = state.path.iter().position(|p| p == dep) {
+        let cycle: Vec<String> = state.path[pos..].to_vec();
+        if is_canonical_cycle(&cycle) {
+            state.cycles.push(CycleReport {
+                participants: cycle,
+            });
+        }
+    }
+}
+
+/// Report each cycle once: canonical iff it starts at its smallest member.
+/// (Empty cycles can't occur — always extracted from a non-empty path.)
+fn is_canonical_cycle(cycle: &[String]) -> bool {
+    !cycle.is_empty() && cycle.first() == cycle.iter().min()
 }
 
 /// Normalize a file path to a module path for dependency graph keying.
 fn normalize_module_path(file_path: &std::path::Path, _module: &Module) -> String {
-    // Use the file path relative to the project root as the module identifier.
-    // Strip any leading "./" for consistency.
     let s = file_path.display().to_string();
     s.strip_prefix("./").unwrap_or(&s).to_string()
 }
