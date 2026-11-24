@@ -35,17 +35,15 @@ phase: research
 ### git_status
 
 ```
- M .wai/pipeline-runs/tdd-ro5u-2026-11-24-dogfood-pretender-gate-in-ci.yml
 ?? .beads.gate.lock
-?? .wai/projects/csharp-plugin/handoffs/
-?? .wai/projects/csharp-plugin/research/
 ```
 
 ### open_issues
 
 ```
 ○ pretender-5zo P1 [epic] Make pretender's own code easy to understand: tighten structural thresholds via tidy-first refactors
-├── ○ pretender-5zo.1 P2 Baseline hygiene: just dogfood-adopt + the refactor-PR baseline agreement
+├── ○ pretender-5zo.18 P1 Publish the ticket contract and a reusable ticket template
+├── ○ pretender-5zo.19 P1 Governance gates suite: baseline monotonicity, purity, threshold floor, exclude allowlist, assertion non-regression
 ├── ○ pretender-5zo.2 P2 Decompose main.rs (3977 lines) into focused modules
 ├── ○ pretender-5zo.3 P2 Decompose engine.rs (1749 lines) into focused modules
 ├── ○ pretender-5zo.4 P2 Split cli_test.rs (3900 lines) into per-command test files
@@ -62,8 +60,18 @@ phase: research
 ├── ○ pretender-5zo.15 P2 Ratchet: tighten pretender.toml thresholds and shrink the baseline to empty
 ├── ○ pretender-5zo.16 P2 Document our own structural standard in CONTRIBUTING
 ├── ○ pretender-5zo.17 P2 Pre-commit gate uses the globally installed pretender, not the checkout's build
+├── ○ pretender-5zo.20 P2 Golden behavior corpus: lock the analyzer's output so pure refactors cannot change behavior
+├── ○ pretender-5zo.21 P2 just dogfood-red: un-grandfather a finding to produce a real RED
+├── ○ pretender-5zo.22 P2 Wire per-ticket independence: reviewer assignment + bead gate
 ├── ○ pretender-6tt P2 [bug] Rust extractor does not populate params metric — params_max unenforced for Rust
 └── ○ pretender-gv5 P2 void_mutator detection is nondeterministic across scans — gate 'known' count flaps 55↔49 on an unchanged tree
+○ pretender-b5us P1 [epic] Language registry: replace dispatch branches with declarative per-language records (OCP + cohesion)
+├── ○ pretender-b5us.1 P2 Research the language-dispatch surface and the plugin contract
+├── ○ pretender-b5us.2 P2 Design the registry: shape, ownership, migration path
+├── ○ pretender-b5us.3 P2 File the openspec proposal for the language registry
+├── ○ pretender-b5us.4 P2 Implement the registry core and migrate the first language behind it
+├── ○ pretender-b5us.5 P2 Migrate the remaining languages one by one
+└── ○ pretender-b5us.6 P2 Delete the old dispatch path and measure the complexity drop
 ○ pretender-4cs P2 Terminate hanging or noisy external scanners within configured budgets
 ○ pretender-fqk P2 Distinguish external scanner failures from clean quality results
 ○ pretender-1eua P3 CI uploads a release binary it never builds
@@ -72,7 +80,7 @@ phase: research
 ○ pretender-dj5 P3 Convert gate-blocked findings into bd issues so fixes enter the work queue
 
 --------------------------------------------------------------------------------
-Total: 26 issues (26 open, 0 in progress)
+Total: 37 issues (37 open, 0 in progress)
 
 Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
 Priority: P0–P4 (label only; not a status icon)
