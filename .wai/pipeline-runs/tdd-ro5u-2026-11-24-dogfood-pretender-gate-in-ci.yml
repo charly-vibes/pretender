@@ -1,0 +1,11 @@
+run_id: tdd-ro5u-2026-11-24-dogfood-pretender-gate-in-ci
+pipeline: tdd-ro5u
+topic: dogfood pretender gate in CI
+created_at: '2026-11-24T21:03:07.522214199+00:00'
+current_step: 5
+approvals: {}
+epic: null
+child_issues: []
+child_runs: []
+handoff_artifact: null
+bypasses: []
