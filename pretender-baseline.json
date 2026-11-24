@@ -150,8 +150,6 @@
     "pretender/tests/cli_test.rs::::file_lines",
     "pretender/tests/cli_test.rs::::lazy_cluster",
     "pretender/tests/cli_test.rs::::mock_count",
-    "pretender/tests/cli_test.rs::::unwraps",
-    "pretender/tests/genesis_compile_test.rs::::mock_count",
-    "pretender/tests/genesis_compile_test.rs::::unwraps"
+    "pretender/tests/cli_test.rs::::unwraps"
   ]
 }
