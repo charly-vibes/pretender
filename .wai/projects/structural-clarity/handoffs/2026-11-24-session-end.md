@@ -1,88 +1,103 @@
 ---
 date: 2026-11-24
 project: structural-clarity
-phase: research
+phase: implementation
 ---
-
 # Session Handoff
 
 ## What Was Done
 
-<!-- Summary of completed work -->
+Foundation (commit e7b2252, one atomic commit — the pre-commit gate scans
+the staged tree, so only the fully-fixed tree passes):
+- 5zo.18 ticket contract (`docs/our-standard.md`, `.beads/templates/ticket.md`)
+- 5zo.21 `just dogfood-red` (un-grandfather exactly path+rule ledger IDs;
+  removal-only guard measures the actual mutated output after review)
+- 5zo.19 governance gates suite: monotonicity ⊆ origin/main, purity via
+  freeze window (`governance/baseline-freeze.json`), threshold floor,
+  exclude allowlist, assertion floor (1222)
+- 5zo.17 pre-commit gate now runs the checkout build (was the stale global
+  0.7.0 scanning gitignored book//target and polluting `.pretender` history)
+- 6tt Rust params extraction (tree-sitter `pattern` field + self params;
+  openspec proposal `fix-rust-params-capture`) + remediation of the 17
+  params_max violations it surfaced (parameter structs, dead params removed)
+- gv5 void_mutator canonicalization ((line, name) sort; 3 identical scans)
+- ledger prune 164 → 161
+
+Review outcomes:
+- FoundationReview: correct, mergeable; 2 hygiene findings fixed (dogfood-red
+  guard measures the actual mutation; openspec tracker synced).
+- Wave1Review: correct; 2 commit-message arithmetic errors reworded (rebase,
+  unpushed branch); coupling analyze doc note restored. (3 function_lines IDs driven below threshold)
+
+Behavior lock (commit d4358d5):
+- 5zo.20 golden corpus: `just golden` / `just golden-check` (in ci);
+  `governance/golden.json` = canonical analyzer output over the fixture
+  corpus; byte-identity = behavior identity (jq filter drops line numbers +
+  envelope, sorts everything)
+
+Wave 1 (commits 294cc1f, a6b6744, 4af8086, 2041233; messages corrected by reword after Wave1Review):
+- 5zo.23 coupling.rs clean (98-line analyze decomposed: DependencyGraph,
+  compute_coupling, threshold_violations, visit_dependency/report_back_edge)
+- 5zo.27 duplication.rs clean (detect_clones 3-stage split; leaf_token;
+  test unwraps → Result tests with anyhow)
+- 5zo.33 mock_detector.rs clean (patterns_for/scan_line/record; order-pinning
+  test added pre-extraction)
+- 5zo.34 genesis_compile_test.rs clean (6 .expect → unwrap_or_else panic,
+  exact std format)
+- Each slice: dogfood-red un-grandfather (RED: gate fails with exactly the
+  module's findings) → commit (GREEN: hooks all green). Ledger 161 → 149.
 
 ## Key Decisions
-
-<!-- Decisions made and rationale -->
+- Foundation landed atomically: no commit prefix except the fully-fixed tree
+  is gate-green (HEAD mutability_metrics.rs carried un-baselined params_max
+  findings).
+- Purity gate = approved freeze-window design (baseline IDs ⊆ freeze;
+  non-production IDs never baselineable).
+- Golden canonicalization excludes line numbers so pure refactors keep
+  byte-identity; metrics ARE behavior and legitimately require deliberate
+  golden regen with reviewed diffs.
+- Wave slices are file-disjoint; ledger edits are orchestrator-owned
+  (agents never touch pretender-baseline.json).
 
 ## Gotchas & Surprises
-
-<!-- What behaved unexpectedly? Non-obvious requirements? Hidden dependencies? -->
+- lefthook pre-commit scans a snapshot of the tree (effectively staged
+  state): committing while subagents hold unstaged work fails the gate on
+  their mid-flight files. Sequence commits only when the tree is quiet.
+- The globally installed pretender was 0.7.0; both it and the checkout build
+  write `.pretender/history` — interleaved event formats corrupted its
+  resolution delta ("112 new"). Fixed by routing the hook through the
+  checkout build.
+- `just dogfood-red` on the default baseline mutates the ledger in place —
+  run it only from the orchestrator, one slice at a time.
+- File-level (unit-less) violations live in `file_violations` of the JSON
+  report, NOT in `units[]` — easy to miss when diffing finding IDs.
 
 ## What Took Longer Than Expected
-
-<!-- Steps that needed multiple attempts. Commands that failed before the right one. -->
+- Hunting the gate's "2 new" vs jq-diff "0 new" discrepancy → file_violations.
+- jq precedence: `[(stream) | sort_by(x)]` pipes each element into sort_by
+  instead of collecting first — needs `([stream] | sort_by(x))`.
+- Genesis header doc-comment: clippy doc-lazy-continuation wants a blank
+  `///` line before the Rationale paragraph, not indentation.
 
 ## Open Questions
-
-<!-- Unresolved questions -->
+- None blocking. Wave 2 (.24/.25/.26/.28-.32/.35-.40) queued; .2/.3/.4
+  (module decompositions) and .16 (CONTRIBUTING standard) follow the waves.
 
 ## Next Steps
-
-<!-- Prioritized list of what to do next -->
+1. Address Wave1Review findings (agent output), then wave-2 slices
+   (model.rs, primitive_obsession.rs, doctor.rs, then the round-trip moves
+   .28/.30/.36-.40 — those share a destination pattern, dispatch at most
+   one per wave or verify their target files are disjoint).
+2. Push authorization: branch `chore/pre-refactor-anchor` carries
+   anchor + foundation + golden + wave 1 (PR to main per repo rules).
+3. After all waves: 5zo.15 ratchet (tighten thresholds, shrink ledger to
+   empty), then the module decompositions (.2/.3/.4).
 
 ## Context
-
 ### git_status
-
 ```
-?? .beads.gate.lock
+(branch chore/pre-refactor-anchor; tree clean after wave-1 commits)
 ```
-
 ### open_issues
-
-```
-○ pretender-5zo P1 [epic] Make pretender's own code easy to understand: tighten structural thresholds via tidy-first refactors
-├── ○ pretender-5zo.18 P1 Publish the ticket contract and a reusable ticket template
-├── ○ pretender-5zo.19 P1 Governance gates suite: baseline monotonicity, purity, threshold floor, exclude allowlist, assertion non-regression
-├── ○ pretender-5zo.2 P2 Decompose main.rs (3977 lines) into focused modules
-├── ○ pretender-5zo.3 P2 Decompose engine.rs (1749 lines) into focused modules
-├── ○ pretender-5zo.4 P2 Split cli_test.rs (3900 lines) into per-command test files
-├── ○ pretender-5zo.5 P2 Split the remaining >400-line files (mutation, config, test_report, history, roles, inheritance_depth)
-├── ○ pretender-5zo.6 P2 Reduce function length in main.rs and engine.rs to the target
-├── ○ pretender-5zo.7 P2 Reduce function length across the mid-size and small modules
-├── ○ pretender-5zo.8 P2 Reduce function length in the test files
-├── ○ pretender-5zo.9 P2 Flatten cyclomatic/cognitive complexity across src
-├── ○ pretender-5zo.10 P2 Reduce nesting depth to 2 across src
-├── ○ pretender-5zo.11 P2 Reduce ABC score to 20 across src
-├── ○ pretender-5zo.12 P2 Remove unwrap()/expect() from app code in pretender/src
-├── ○ pretender-5zo.13 P2 Resolve excessive_fields sites in src
-├── ○ pretender-5zo.14 P2 Resolve mock_count and lazy_cluster in the test files
-├── ○ pretender-5zo.15 P2 Ratchet: tighten pretender.toml thresholds and shrink the baseline to empty
-├── ○ pretender-5zo.16 P2 Document our own structural standard in CONTRIBUTING
-├── ○ pretender-5zo.17 P2 Pre-commit gate uses the globally installed pretender, not the checkout's build
-├── ○ pretender-5zo.20 P2 Golden behavior corpus: lock the analyzer's output so pure refactors cannot change behavior
-├── ○ pretender-5zo.21 P2 just dogfood-red: un-grandfather a finding to produce a real RED
-├── ○ pretender-5zo.22 P2 Wire per-ticket independence: reviewer assignment + bead gate
-├── ○ pretender-6tt P2 [bug] Rust extractor does not populate params metric — params_max unenforced for Rust
-└── ○ pretender-gv5 P2 void_mutator detection is nondeterministic across scans — gate 'known' count flaps 55↔49 on an unchanged tree
-○ pretender-b5us P1 [epic] Language registry: replace dispatch branches with declarative per-language records (OCP + cohesion)
-├── ○ pretender-b5us.1 P2 Research the language-dispatch surface and the plugin contract
-├── ○ pretender-b5us.2 P2 Design the registry: shape, ownership, migration path
-├── ○ pretender-b5us.3 P2 File the openspec proposal for the language registry
-├── ○ pretender-b5us.4 P2 Implement the registry core and migrate the first language behind it
-├── ○ pretender-b5us.5 P2 Migrate the remaining languages one by one
-└── ○ pretender-b5us.6 P2 Delete the old dispatch path and measure the complexity drop
-○ pretender-4cs P2 Terminate hanging or noisy external scanners within configured budgets
-○ pretender-fqk P2 Distinguish external scanner failures from clean quality results
-○ pretender-1eua P3 CI uploads a release binary it never builds
-○ pretender-2uv P3 openspec 1.x upgrade blocked: 10 validation failures under @fission-ai/openspec@1.14.2
-○ pretender-c60 P3 Configure cargo runner in .espectacular + reconcile contract test entries
-○ pretender-dj5 P3 Convert gate-blocked findings into bd issues so fixes enter the work queue
-
---------------------------------------------------------------------------------
-Total: 37 issues (37 open, 0 in progress)
-
-Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred
-Priority: P0–P4 (label only; not a status icon)
-```
-
+Run `bd ready` — slices .24/.25/.26/.28-.32/.35-.40 are the next queue;
+.2/.3/.4/.16 gated on wave completion.

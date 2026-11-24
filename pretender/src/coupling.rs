@@ -40,6 +40,8 @@ pub struct CouplingAnalysis {
 }
 
 /// Build the dependency graph and compute coupling metrics for all modules.
+/// Modules with role `generated` or `vendor` are excluded upstream before
+/// reaching this graph (contract enforced by the caller).
 pub fn analyze(
     modules: &[(PathBuf, &Module)],
     thresholds: &CouplingThresholds,
