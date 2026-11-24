@@ -1,9 +1,12 @@
-//! Mock-reference detection for test files.
+//! Purpose: mock-reference detection for test files.
 //!
-//! Detects mock, stub, fake, and spy references in source code using
-//! per-language pattern matching. Distinguishes mock *infrastructure*
-//! (imports, trait annotations) from mock *usage* (construction, expectations).
-//! Only usage references count toward the configurable threshold.
+//! Responsibilities: detect mock, stub, fake, and spy references via
+//! per-language pattern matching; separate mock *infrastructure* (imports,
+//! trait annotations) from mock *usage* (construction, expectations); only
+//! usage references count toward the configurable threshold.
+//!
+//! Rationale: imports and setup alone don't indicate mock overuse, so
+//! counting only usage keeps the overuse threshold meaningful.
 
 use crate::model::Language;
 use std::path::Path;
@@ -17,7 +20,7 @@ pub struct MockReference {
 }
 
 /// Whether a mock reference is infrastructure setup or actual usage.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MockKind {
     /// Import, use statement, or annotation that sets up mock infrastructure.
     Infrastructure,
@@ -39,61 +42,68 @@ pub fn detect_mocks(
     extra_patterns: &[String],
     _path: &Path,
 ) -> MockAnalysis {
-    let patterns = match language {
-        Language::Rust => rust_patterns(),
-        Language::Python => python_patterns(),
-        Language::JavaScript | Language::TypeScript => typescript_patterns(),
-        Language::Java => java_patterns(),
-        Language::Go => go_patterns(),
-        Language::Ruby => ruby_patterns(),
-        Language::C | Language::Cpp => c_cpp_patterns(),
-        _ => return MockAnalysis::default(),
+    let Some(patterns) = patterns_for(language) else {
+        return MockAnalysis::default();
     };
 
+    // Group order is observable: infrastructure first, then usage, then the
+    // user-defined extras (treated as usage).
+    let groups: [(&[String], MockKind); 3] = [
+        (&patterns.infrastructure, MockKind::Infrastructure),
+        (&patterns.usage, MockKind::Usage),
+        (extra_patterns, MockKind::Usage),
+    ];
+
     let mut analysis = MockAnalysis::default();
-    let lines: Vec<&str> = source.lines().collect();
+    for (line_idx, line) in source.lines().enumerate() {
+        scan_line(&mut analysis, line, (line_idx + 1) as u32, &groups);
+    }
+    analysis
+}
 
-    for (line_idx, line) in lines.iter().enumerate() {
-        let line_num = (line_idx + 1) as u32;
-        let trimmed = line.trim();
+/// Select the per-language pattern set; `None` for languages without patterns.
+fn patterns_for(language: &Language) -> Option<LangMockPatterns> {
+    match language {
+        Language::Rust => Some(rust_patterns()),
+        Language::Python => Some(python_patterns()),
+        Language::JavaScript | Language::TypeScript => Some(typescript_patterns()),
+        Language::Java => Some(java_patterns()),
+        Language::Go => Some(go_patterns()),
+        Language::Ruby => Some(ruby_patterns()),
+        Language::C | Language::Cpp => Some(c_cpp_patterns()),
+        _ => None,
+    }
+}
 
-        // Check infrastructure patterns
-        for pattern in &patterns.infrastructure {
-            if trimmed.contains(pattern) {
-                analysis.references.push(MockReference {
-                    name: pattern.to_string(),
-                    line: line_num,
-                    kind: MockKind::Infrastructure,
-                });
-            }
-        }
-
-        // Check usage patterns
-        for pattern in &patterns.usage {
-            if trimmed.contains(pattern) {
-                analysis.references.push(MockReference {
-                    name: pattern.to_string(),
-                    line: line_num,
-                    kind: MockKind::Usage,
-                });
-                analysis.total_usage += 1;
-            }
-        }
-
-        // Check extra patterns (user-defined) — treat as usage
-        for pattern in extra_patterns {
-            if trimmed.contains(pattern) {
-                analysis.references.push(MockReference {
-                    name: pattern.to_string(),
-                    line: line_num,
-                    kind: MockKind::Usage,
-                });
-                analysis.total_usage += 1;
+/// Scan one source line against every pattern group in group order.
+fn scan_line(
+    analysis: &mut MockAnalysis,
+    line: &str,
+    line_num: u32,
+    groups: &[(&[String], MockKind)],
+) {
+    let trimmed = line.trim();
+    for &(patterns, kind) in groups {
+        for pattern in patterns {
+            if trimmed.contains(pattern.as_str()) {
+                analysis.record(pattern, line_num, kind);
             }
         }
     }
+}
 
-    analysis
+impl MockAnalysis {
+    /// Record one reference; usage references also count toward the threshold.
+    fn record(&mut self, pattern: &str, line_num: u32, kind: MockKind) {
+        if kind == MockKind::Usage {
+            self.total_usage += 1;
+        }
+        self.references.push(MockReference {
+            name: pattern.to_string(),
+            line: line_num,
+            kind,
+        });
+    }
 }
 
 /// Per-language mock pattern definitions.
@@ -334,5 +344,31 @@ def test_something():
             Path::new("test.rs"),
         );
         assert_eq!(analysis.total_usage, 1);
+    }
+
+    #[test]
+    fn references_keep_kind_grouping_order_within_a_line() {
+        // One line hitting all three pattern groups: infrastructure, usage,
+        // user-defined extra. Group order and usage counting are observable
+        // behavior the scanning helpers must preserve.
+        let source = "let x = mockall::verifier; expect_x(); custom_mock();";
+        let analysis = detect_mocks(
+            source,
+            &Language::Rust,
+            &["custom_mock".to_string()],
+            Path::new("test.rs"),
+        );
+        let names: Vec<&str> = analysis
+            .references
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["mockall::", "expect_", "custom_mock"]);
+        let kinds: Vec<MockKind> = analysis.references.iter().map(|r| r.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![MockKind::Infrastructure, MockKind::Usage, MockKind::Usage]
+        );
+        assert_eq!(analysis.total_usage, 2);
     }
 }

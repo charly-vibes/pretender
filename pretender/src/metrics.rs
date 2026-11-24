@@ -142,23 +142,22 @@ mod tests {
     }
 
     fn branch(kind: BranchKind, nesting_at: u32, sequence_id: Option<u32>) -> Node {
-        weighted_branch(kind, nesting_at, sequence_id, 1, 1)
+        weighted_branch(kind, nesting_at, sequence_id, (1, 1))
     }
 
     fn weighted_branch(
         kind: BranchKind,
         nesting_at: u32,
         sequence_id: Option<u32>,
-        cyclomatic_weight: u32,
-        cognitive_weight: u32,
+        weights: (u32, u32),
     ) -> Node {
         Node::Branch(Branch {
             kind,
             span: span(1, 1),
             nesting_at,
             sequence_id,
-            cyclomatic_weight,
-            cognitive_weight,
+            cyclomatic_weight: weights.0,
+            cognitive_weight: weights.1,
         })
     }
 
@@ -235,11 +234,11 @@ mod tests {
             span: span(1, 3),
             nesting: 0,
             children: vec![
-                weighted_branch(BranchKind::If, 0, None, 1, 3),
+                weighted_branch(BranchKind::If, 0, None, (1, 3)),
                 Node::NestedBlock(Block {
                     span: span(2, 3),
                     nesting: 1,
-                    children: vec![weighted_branch(BranchKind::Loop, 1, None, 1, 2)],
+                    children: vec![weighted_branch(BranchKind::Loop, 1, None, (1, 2))],
                 }),
             ],
         });

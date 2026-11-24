@@ -1,6 +1,15 @@
-/// Compile-time test verifying genesis crate modules are accessible.
-/// This ensures the git dependency resolves and the required modules
-/// (envelope, suggestions, feedback) are stable.
+/// Purpose: Compile-time smoke test verifying every public genesis-vibes module
+/// (envelope, suggestions, feedback, managed_block, config, guide, cli,
+/// scaffold, discovery, fixture, aix) resolves and behaves as documented.
+/// Responsibilities:
+/// - Exercise each genesis module's key constructors/functions for real, not
+///   just reference symbols, and assert the documented outcomes.
+/// - Run filesystem-touching paths (fixture, scaffold, discovery) inside
+///   throwaway fixture roots.
+///
+/// Rationale: The genesis crate is a git/crates.io dependency consumed by this
+/// workspace; these tests fail fast on dependency upgrades that break its API
+/// surface or invariants.
 #[test]
 fn genesis_envelope_accessible() {
     use genesis::envelope::{set_author, Envelope, EnvelopeKind, ErrorResult, RemediationEntry};
@@ -29,7 +38,7 @@ fn genesis_envelope_accessible() {
             description: "run fix".into(),
         }],
     )
-    .expect("remediation must be non-empty");
+    .unwrap_or_else(|e| panic!("remediation must be non-empty: {e:?}"));
     let error_env = Envelope::error(env!("CARGO_PKG_VERSION"), err, vec![]);
     assert!(!error_env.ok);
     assert_eq!(error_env.envelope_kind, EnvelopeKind::Error);
@@ -215,12 +224,12 @@ fn genesis_scaffold_accessible() {
     let fixture = Fixture::new()
         .with_marker(".git")
         .build()
-        .expect("fixture should build");
+        .unwrap_or_else(|e| panic!("fixture should build: {e:?}"));
     let result = genesis::scaffold::Scaffold::new(fixture.root())
         .dir("tools")
         .default_config("tools.toml", "[probe]\n")
         .build()
-        .expect("scaffold should build");
+        .unwrap_or_else(|e| panic!("scaffold should build: {e:?}"));
     assert_eq!(result.created.len(), 2, "dir + config should be created");
     assert!(
         fixture.root().join("tools.toml").exists(),
@@ -237,7 +246,7 @@ fn genesis_discovery_accessible() {
     let fixture = Fixture::new()
         .with_marker(".git")
         .build()
-        .expect("fixture should build");
+        .unwrap_or_else(|e| panic!("fixture should build: {e:?}"));
     let result = genesis::discovery::register(fixture.root(), "probe", "probe", "file", "probe.sh");
     assert!(result.is_ok(), "register should succeed in fixture root");
     assert!(
@@ -254,11 +263,12 @@ fn genesis_fixture_accessible() {
         .with_file("hello.txt", "world")
         .with_marker(".git")
         .build()
-        .expect("fixture should build");
+        .unwrap_or_else(|e| panic!("fixture should build: {e:?}"));
 
     let path = fixture.path("hello.txt");
     assert!(path.exists(), "fixture file should exist on disk");
-    let content = std::fs::read_to_string(&path).expect("should read fixture file");
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("should read fixture file: {e:?}"));
     assert_eq!(content, "world", "fixture file content should match");
 
     let marker = fixture.path(".git");

@@ -606,6 +606,31 @@ pub struct RoleMatcher {
 mod tests {
     use super::*;
 
+    // ── Rust params capture (pretender-6tt: params metric must apply to
+    // Rust so params_max is enforced; grammar trap: avoid locals named
+    // `raw`, tree-sitter-rust 0.23.3 mis-parses them) ────────────────────
+
+    #[test]
+    fn rust_sample_function_yields_nonzero_params() {
+        use crate::model::Parser;
+        use crate::rust::RustParser;
+
+        let source = "fn sample(alpha: u32, beta: u32) -> u32 {\n    alpha + beta\n}\n";
+        let (module, _diagnostics) = RustParser
+            .parse(Path::new("sample.rs"), source)
+            .expect("parse rust sample");
+        assert_eq!(module.units.len(), 1, "sample has one function");
+        let unit = &module.units[0];
+        assert_eq!(unit.name, "sample");
+        assert!(
+            !unit.parameters.is_empty(),
+            "params metric must be populated for Rust functions"
+        );
+        assert_eq!(unit.parameters.len(), 2);
+        assert_eq!(unit.parameters[0].name, "alpha");
+        assert_eq!(unit.parameters[1].name, "beta");
+    }
+
     // ── advisory-lease TTL tests (pretender-1te: gate-by-default, dated
     // downgrades) ───────────────────────────────────────────────────────
 

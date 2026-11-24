@@ -28,8 +28,10 @@ impl CppParser {
             tree_sitter_cpp::LANGUAGE.into(),
             Language::Cpp,
             CPP_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

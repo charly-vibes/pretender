@@ -28,8 +28,10 @@ impl JavaParser {
             tree_sitter_java::LANGUAGE.into(),
             Language::Java,
             JAVA_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

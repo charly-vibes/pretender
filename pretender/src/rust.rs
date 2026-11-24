@@ -28,8 +28,10 @@ impl RustParser {
             tree_sitter_rust::LANGUAGE.into(),
             Language::Rust,
             RUST_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

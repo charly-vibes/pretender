@@ -28,8 +28,10 @@ impl CSharpParser {
             tree_sitter_c_sharp::LANGUAGE.into(),
             Language::CSharp,
             CSHARP_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

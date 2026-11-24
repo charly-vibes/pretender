@@ -828,8 +828,10 @@ impl Executable for CheckArgs {
         emit_history_events(
             &mut report,
             &config,
-            format,
-            writing_to_stdout,
+            &EmitOpts {
+                format,
+                stdout: writing_to_stdout,
+            },
             sink.as_mut(),
         );
 
@@ -883,10 +885,12 @@ impl Executable for CheckArgs {
                 write_human_report(
                     sink.as_mut(),
                     &report,
-                    color,
-                    &config.bands,
-                    config.pretender.mode,
-                    self.show_all,
+                    &HumanOpts {
+                        color,
+                        bands: &config.bands,
+                        mode: config.pretender.mode,
+                        verbose: self.show_all,
+                    },
                 )?;
             }
             ReportFormat::Json => write_json_report(sink.as_mut(), &report, lease_warning)?,
@@ -1070,10 +1074,12 @@ impl Executable for ReportArgs {
                 write_human_report(
                     sink.as_mut(),
                     &report,
-                    color,
-                    &config.bands,
-                    config.pretender.mode,
-                    true,
+                    &HumanOpts {
+                        color,
+                        bands: &config.bands,
+                        mode: config.pretender.mode,
+                        verbose: true,
+                    },
                 )?;
             }
             LongReportFormat::Markdown => {
@@ -1744,7 +1750,6 @@ fn analyze_path(
     if config.thresholds.app.bool_cluster_max > 0 || config.thresholds.app.primitive_param_check {
         let po_results = primitive_obsession::analyze(
             &module.units,
-            &module.language,
             config.thresholds.app.bool_cluster_max,
             config.thresholds.app.primitive_param_check,
             &[],
@@ -1974,8 +1979,12 @@ fn collect_input_files_with_override(
     let respect_gitignore = config.pretender.respect_gitignore && !scan_ignored;
 
     let mut files = Vec::new();
+    let opts = CollectOpts {
+        exclude: &exclude_set,
+        respect_gitignore,
+    };
     for path in paths {
-        collect_path(path, &exclude_set, respect_gitignore, false, &mut files)?;
+        collect_path(&opts, path, false, &mut files)?;
     }
     files.sort();
     files.dedup();
@@ -2020,14 +2029,19 @@ fn is_supported_source(path: &Path) -> bool {
         })
 }
 
-fn collect_path(
-    path: &Path,
-    exclude_set: &globset::GlobSet,
+/// Walk configuration shared by `collect_path` and its recursion.
+struct CollectOpts<'a> {
+    exclude: &'a globset::GlobSet,
     respect_gitignore: bool,
+}
+
+fn collect_path(
+    opts: &CollectOpts<'_>,
+    path: &Path,
     walked: bool,
     out: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    if is_excluded(exclude_set, path) {
+    if is_excluded(opts.exclude, path) {
         return Ok(());
     }
 
@@ -2044,7 +2058,7 @@ fn collect_path(
     }
 
     if path.is_dir() {
-        if respect_gitignore {
+        if opts.respect_gitignore {
             // pretender-094: delegate to the `ignore` walker so nested
             // .gitignore files, the global/core.excludesFile, and
             // .git/info/exclude are all honored. Outside a git repo
@@ -2060,7 +2074,7 @@ fn collect_path(
                 let entry = entry
                     .with_context(|| format!("failed to walk directory: {}", path.display()))?;
                 let entry_path = entry.path();
-                if entry_path == path || is_excluded(exclude_set, entry_path) {
+                if entry_path == path || is_excluded(opts.exclude, entry_path) {
                     continue;
                 }
                 if entry_path.is_file() && is_supported_source(entry_path) {
@@ -2079,7 +2093,7 @@ fn collect_path(
             // rather than erroring, since these can appear in .git/ and other
             // infrastructure directories.
             if entry_path.is_file() || entry_path.is_dir() {
-                collect_path(&entry_path, exclude_set, respect_gitignore, true, out)?;
+                collect_path(opts, &entry_path, true, out)?;
             }
         }
         return Ok(());
@@ -2237,20 +2251,26 @@ struct FileSummary {
     message: String,
 }
 
+/// Presentation options for the human-readable check report.
+struct HumanOpts<'a> {
+    color: bool,
+    bands: &'a Bands,
+    mode: Mode,
+    verbose: bool,
+}
+
 fn write_human_report(
     sink: &mut dyn Write,
     report: &CheckReport,
-    color: bool,
-    bands: &Bands,
-    mode: Mode,
-    verbose: bool,
+    opts: &HumanOpts<'_>,
 ) -> Result<()> {
+    let color = opts.color;
     let red = if color { "\u{1b}[31m" } else { "" };
     let yellow = if color { "\u{1b}[33m" } else { "" };
     let green = if color { "\u{1b}[32m" } else { "" };
     let reset = if color { "\u{1b}[0m" } else { "" };
 
-    let blocking = matches!(mode, Mode::Gate);
+    let blocking = matches!(opts.mode, Mode::Gate);
     let (violation_icon, violation_label, violation_color) = if blocking {
         ("✗", "VIOLATION", red)
     } else {
@@ -2258,7 +2278,7 @@ fn write_human_report(
     };
 
     for file in &report.files {
-        let summary = summarize_file(file, bands);
+        let summary = summarize_file(file, opts.bands);
         let (icon, accent) = match summary.severity {
             Severity::Green => ("✓", green),
             Severity::Yellow => ("⚠", yellow),
@@ -2283,7 +2303,7 @@ fn write_human_report(
         }
         for unit in &file.units {
             let has_violations = !unit.violations.is_empty();
-            if verbose || has_violations {
+            if opts.verbose || has_violations {
                 writeln!(
                     sink,
                     "  {}: cyclomatic={}, cognitive={}, assertions={}, function_lines={}, params={}, nesting_max={}, abc={:.2}",
@@ -2382,16 +2402,20 @@ fn summarize_file(file: &FileReport, bands: &Bands) -> FileSummary {
         consider_banded_metric(
             &mut summary,
             &unit.name,
-            "cyclomatic",
-            unit.metrics.cyclomatic,
-            bands.cyclomatic,
+            MetricHit {
+                metric: "cyclomatic",
+                actual: unit.metrics.cyclomatic,
+                band: bands.cyclomatic,
+            },
         );
         consider_banded_metric(
             &mut summary,
             &unit.name,
-            "cognitive",
-            unit.metrics.cognitive,
-            bands.cognitive,
+            MetricHit {
+                metric: "cognitive",
+                actual: unit.metrics.cognitive,
+                band: bands.cognitive,
+            },
         );
 
         for violation in &unit.violations {
@@ -2412,13 +2436,19 @@ fn summarize_file(file: &FileReport, bands: &Bands) -> FileSummary {
     summary
 }
 
-fn consider_banded_metric(
-    summary: &mut FileSummary,
-    unit_name: &str,
+/// One banded metric observation to consider for a file summary.
+struct MetricHit {
     metric: &'static str,
     actual: u32,
     band: Option<Band>,
-) {
+}
+
+fn consider_banded_metric(summary: &mut FileSummary, unit_name: &str, hit: MetricHit) {
+    let MetricHit {
+        metric,
+        actual,
+        band,
+    } = hit;
     let severity = band_severity(actual, band);
     if severity == Severity::Green {
         return;
@@ -2924,11 +2954,17 @@ struct MockFindingReport {
     kind: String,
 }
 
+/// Output options for history emission: report format and whether the
+/// sink is the process stdout (which enables color).
+struct EmitOpts {
+    format: ReportFormat,
+    stdout: bool,
+}
+
 fn emit_history_events(
     report: &mut CheckReport,
     config: &config::Config,
-    format: ReportFormat,
-    writing_to_stdout: bool,
+    opts: &EmitOpts,
     sink: &mut dyn Write,
 ) {
     let timestamp = history::now_iso8601();
@@ -2974,8 +3010,8 @@ fn emit_history_events(
     }
 
     if new_events.is_empty() {
-        if !delta.fixed.is_empty() && matches!(format, ReportFormat::Human) {
-            let color = writing_to_stdout && color_enabled();
+        if !delta.fixed.is_empty() && matches!(opts.format, ReportFormat::Human) {
+            let color = opts.stdout && color_enabled();
             let (green, reset) = if color {
                 ("\u{1b}[32m", "\u{1b}[0m")
             } else {
@@ -3005,8 +3041,8 @@ fn emit_history_events(
     });
     let _ = store.persist_summary(&summary);
 
-    if matches!(format, ReportFormat::Human) {
-        let color = writing_to_stdout && color_enabled();
+    if matches!(opts.format, ReportFormat::Human) {
+        let color = opts.stdout && color_enabled();
         let _ = write_resolution_delta(sink, &delta, color);
     }
 
@@ -3016,8 +3052,8 @@ fn emit_history_events(
         || summary.resolution.is_some()
     {
         report.history = Some(summary.clone());
-        if matches!(format, ReportFormat::Human) {
-            let color = writing_to_stdout && color_enabled();
+        if matches!(opts.format, ReportFormat::Human) {
+            let color = opts.stdout && color_enabled();
             let _ = write_recurrence_hints(sink, &summary, color);
         }
     }

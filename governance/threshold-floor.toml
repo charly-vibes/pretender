@@ -1,0 +1,88 @@
+# governance/threshold-floor.toml — pretender-5zo.19.3
+#
+# Committed governance floor for pretender's own threshold keys, seeded with
+# the current effective values: the `impl Default`s from
+# pretender/src/config.rs (pretender.toml carries no [thresholds.*] overrides
+# today). The repo_dogfood_test gate compares the *effective* values (config
+# defaults merged with pretender.toml overrides) against this file:
+#
+# - ceilings.<table>.<key>: the maximum permitted value. Raising a
+#   loosening-direction threshold (a `*_max`) above its ceiling weakens the
+#   gate and fails; so does lowering a ceiling below the current effective
+#   value.
+# - floors.<table>.<key>: the minimum permitted value, for two kinds of keys:
+#   tightening-direction keys (`*_min`, `min_assertions`, where raising is
+#   strict, not loose) and rules where the engine treats 0 as "rule off"
+#   (the `> 0` guards in pretender/src/main.rs) — x = 0 must not be able to
+#   switch a rule off.
+#
+# Any change to this file is itself a governance decision and must be
+# reviewed; the gate rejects values that drift from the reviewed minimums.
+
+[ceilings.app]
+cyclomatic_max = 10
+cognitive_max = 15
+function_lines_max = 30
+file_lines_max = 400
+nesting_max = 3
+params_max = 4
+abc_max = 30
+duplication_pct_max = 5
+void_mutators_max = 3
+unwrap_max = 5
+bool_cluster_max = 3
+excessive_fields_max = 10
+inheritance_depth_max = 2
+mut_ratio_max = 0.3
+
+[ceilings.test]
+cyclomatic_max = 3
+function_lines_max = 80
+nesting_max = 2
+params_max = 2
+cognitive_max = 5
+duplication_pct_max = 30
+mock_count_max = 5
+# Shipped default: the void-mutator rule is off for test-role code. The
+# ceiling freezes that posture; enabling it is a floor-file change.
+void_mutators_max = 0
+unwrap_max = 5
+excessive_fields_max = 10
+
+[ceilings.library]
+exported_params_max = 3
+exported_cyclomatic_max = 8
+exported_lines_max = 30
+
+[ceilings.script]
+function_lines_max = 100
+file_lines_max = 300
+
+[ceilings.coupling]
+ce_max = 0
+ca_max = 0
+cbo_max = 0
+lcom_hs_max = 0
+
+[ceilings.unit-test]
+duration_max_ms = 0
+
+[ceilings.integration-test]
+duration_max_ms = 0
+
+[floors.app]
+void_mutators_max = 1
+unwrap_max = 1
+bool_cluster_max = 1
+excessive_fields_max = 1
+inheritance_depth_max = 1
+
+[floors.test]
+min_assertions = 1
+lazy_cluster_min = 3
+mock_count_max = 1
+unwrap_max = 1
+excessive_fields_max = 1
+
+[floors.library]
+require_docstring = true

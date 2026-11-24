@@ -28,8 +28,10 @@ impl GoParser {
             tree_sitter_go::LANGUAGE.into(),
             Language::Go,
             GO_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

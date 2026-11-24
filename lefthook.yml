@@ -10,7 +10,7 @@ pre-commit:
     ddl-ah-check:
       run: ah check
     ddl-pretender-gate:
-      run: pretender check --mode gate
+      run: cargo run --quiet -p pretender -- check . --mode gate
     ddl-spk-lint:
       run: spk lint specodelic
     # ddl:managed:end (pre-commit)

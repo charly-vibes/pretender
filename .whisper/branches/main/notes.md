@@ -70,3 +70,80 @@
   Constraints: unchanged repo rules; tiered dogfood needs --advisory-until lease (no committed advisory_until; used 2026-11-28 session-scoped; lefthook lint can clash with concurrent cargo/rustup lock — rerun serially); never git add -A; bd export writes stdout — redirect into .beads/issues.jsonl; turu branch scope follows the CHECKED-OUT branch — append handoffs from main.
   Validation: cargo test 416 green (280+124+12), fmt/clippy clean, ah check 0 issues (missing-runner 56 = c60 scope), strict validate 5/5, dogfood --staged green per commit, #55/#56/#57 CI green, #24/#20 fresh CI green then merged.
   Unknowns: none blocking.
+- 2026-11-24T21:38:53Z [id:847eba353d4c7f40e7cbe0bfa95477f7dad6cf0ae6256b70d3c2d93e244c0e78] (#resume-pretender-5zo) Format: 1
+  Timestamp: 2026-11-24T22:40:00Z
+  Repo: charly-vibes/pretender
+  Branch: main
+  HEAD: 2d96325
+  Session: structural-clarity epic setup + dogfooding + issue remediation
+  Task: resume-pretender-5zo
+  
+  Objective: make pretender's own source provably simple — the structural gate
+  runs in CI, the baseline is a monotonically shrinking burn-down ledger, and the
+  codebase is refactored (tidy-first, per-module vertical slices) until the gate
+  reports zero violations at tight thresholds.
+  
+  Phase: review/commit — control surface built and merged; epic definition
+  remediated and merged. Implementation of the slices has NOT started.
+  
+  Current state (all merged to main):
+  - PR #59: structural gate in CI. just ci -> just dogfood
+  (cargo run --quiet -p pretender -- check .); pretender.toml mode=tiered ->
+  gate, exclude gains **/fixtures/**; governance test
+  pretender/tests/repo_dogfood_test.rs; baseline re-adopted (164 findings).
+  - PR #60: RO5U control surface. Baseline-as-ledger model (RED = un-grandfather
+  the finding IDs; baseline may only shrink; adopt forbidden; only .15
+  re-adopts), 8-step ticket contract, independence via bd gates (bead/gh:pr/
+  human), 8 mechanical gates, language-registry epic pretender-b5us filed.
+  - PR #61: issue-review remediation. Horizontal rule sweeps .6-.14 closed;
+  18 per-module vertical slices .23-.40 created; XL containers .2-.5 and .19
+  (no-gate, complexity:xl, one-PR children, dependency-chained because they
+  co-edit one file); metadata.files + base_commit + estimate + lane +
+  acceptance_criteria on all 65 open tickets; bd PASS-0 clean; no dep cycles.
+  - wai project structural-clarity holds plan + design + RO5U review + issue
+  review + handoff (2026-11-24-session-end.md).
+  
+  Exact next action (new session): /clear, then run
+  bd ready
+  wai pipeline start tdd-ro5u --topic="<ticket id>"
+  starting with .18 (contract + template) -> .21 (just dogfood-red) -> .19.1
+  (baseline monotonicity gate). Then the first vertical slice. Phase-0 trust
+  blocks every refactor slice: pretender-6tt (Rust params never captured ->
+  params_max unenforced on our own code; needs an openspec proposal first) and
+  pretender-gv5 (void_mutator flapping -> CI flake risk now the gate runs in CI).
+  
+  Constraints / authorization limits:
+  - Never raise a threshold, widen exclude, disable a rule, delete an assertion,
+  or move code out of the scanned scope — each is blocked by a gate.
+  - The baseline may only shrink inside the epic; only .15 re-adopts.
+  - Per-ticket pipeline (tdd-ro5u at TICKET level) + an independent reviewer
+  bead with a different assignee; reviewer verdict = wai review artifact.
+  - PRs under 400 changed lines; no direct pushes to main; never edit managed
+  blocks; rule defaults change only via an openspec proposal; SARIF compat.
+  - beads invariant: after any bd change, bd export -o .beads/issues.jsonl and
+  commit it with git add -f.
+  - Push/merge was authorized for PRs #59/#60/#61 in this session only; the next
+  session should ask before pushing or merging.
+  - Reviewer staffing assumption (unconfirmed by the user): a fresh pi session
+  with empty context runs /ro5 or the parallel-review wave; .15 additionally
+  gets a human gate.
+  
+  Validation (run this session): just ci green (gate: 164 known (baselined), 0
+  new; three consecutive scans identical); ah check clean; bd dep cycles none;
+  issue-review PASS 0 clean after remediation. No source-code change in #60/#61.
+  
+  Unresolved findings / known traps:
+  - Explicit paths are filtered by exclude too (check pretender/tests/fixtures ->
+  0 files) and there is no --config flag, so the golden corpus (.20) must
+  copy the corpus to a temp dir outside the repo and diff there.
+  - pretendor-5zo.17: the lefthook pre-commit gate resolves the globally
+  installed pretender, not the checkout's build (hook and CI judge the same
+  code with different thresholds). pretender-1eua: ci.yml uploads
+  target/release/pretender without building it in release mode.
+  - Containers (.2-.5, .19) are tagged no-gate/complexity:xl — decomposition
+  candidates, excluded from autonomous scheduling. The real queue is the 18
+  vertical slices + 5 gate children.
+  - pretender-uwz is in_progress with no branch label (pre-existing, not this
+  session's claim) — left alone.
+  
+  Previous entry: none (new topic).

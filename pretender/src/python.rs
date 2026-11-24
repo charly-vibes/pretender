@@ -28,8 +28,10 @@ impl PythonParser {
             tree_sitter_python::LANGUAGE.into(),
             Language::Python,
             PYTHON_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }

@@ -38,6 +38,15 @@ struct BranchCaptureSpec {
     cognitive_weight: u32,
 }
 
+/// Weight overrides supplied by a language adapter, passed to
+/// [`QueryEngine::new_with_branch_weights`] as one bundle.
+pub struct WeightMaps<'a> {
+    /// Per-branch-name cyclomatic/cognitive weight overrides.
+    pub branch: &'a BTreeMap<String, BranchWeights>,
+    /// Per-callee smell-weight overrides.
+    pub call: &'a BTreeMap<String, f64>,
+}
+
 impl QueryEngine {
     #[allow(dead_code)]
     pub fn new(
@@ -45,12 +54,16 @@ impl QueryEngine {
         lang_kind: Language,
         query_source: &str,
     ) -> Result<Self> {
+        let empty_branches = BTreeMap::new();
+        let empty_calls = BTreeMap::new();
         Self::new_with_branch_weights(
             language,
             lang_kind,
             query_source,
-            &BTreeMap::new(),
-            &BTreeMap::new(),
+            &WeightMaps {
+                branch: &empty_branches,
+                call: &empty_calls,
+            },
         )
     }
 
@@ -58,8 +71,7 @@ impl QueryEngine {
         language: tree_sitter::Language,
         lang_kind: Language,
         query_source: &str,
-        branch_weights: &BTreeMap<String, BranchWeights>,
-        call_weights: &BTreeMap<String, f64>,
+        weights: &WeightMaps<'_>,
     ) -> Result<Self> {
         let query = tree_sitter::Query::new(&language, query_source)
             .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))?;
@@ -93,20 +105,21 @@ impl QueryEngine {
             .filter_map(|(name, kind)| {
                 query.capture_index_for_name(name).map(|idx| {
                     let capture_name = format!("@{name}");
-                    let weights =
-                        branch_weights
-                            .get(&capture_name)
-                            .copied()
-                            .unwrap_or(BranchWeights {
-                                cyclomatic: 1,
-                                cognitive: 1,
-                            });
+                    let defaults = BranchWeights {
+                        cyclomatic: 1,
+                        cognitive: 1,
+                    };
+                    let w = weights
+                        .branch
+                        .get(&capture_name)
+                        .copied()
+                        .unwrap_or(defaults);
                     (
                         idx,
                         BranchCaptureSpec {
                             kind: *kind,
-                            cyclomatic_weight: weights.cyclomatic,
-                            cognitive_weight: weights.cognitive,
+                            cyclomatic_weight: w.cyclomatic,
+                            cognitive_weight: w.cognitive,
                         },
                     )
                 })
@@ -153,7 +166,7 @@ impl QueryEngine {
             type_field_idx,
             type_field_name_idx,
             type_field_type_idx,
-            call_weights: call_weights.clone(),
+            call_weights: weights.call.clone(),
         })
     }
 
@@ -324,8 +337,14 @@ impl QueryEngine {
             })
             .collect();
 
-        let type_definitions =
-            self.build_type_definitions(type_defs, type_names, type_fields, source_bytes);
+        let type_definitions = self.build_type_definitions(
+            TypeCaptures {
+                defs: type_defs,
+                names: type_names,
+                fields: type_fields,
+            },
+            source_bytes,
+        );
 
         Ok((
             Module {
@@ -376,7 +395,12 @@ impl QueryEngine {
             .map(|p| extract_params(p, source))
             .unwrap_or_default();
 
-        let body = build_block(body_node, source, captures, 0, &self.call_weights);
+        let walk_ctx = WalkCtx {
+            captures,
+            call_weights: &self.call_weights,
+            nesting: 0,
+        };
+        let body = build_block(&walk_ctx, body_node);
 
         Ok(CodeUnit {
             name,
@@ -397,11 +421,14 @@ impl QueryEngine {
     /// Fields keep source order.
     fn build_type_definitions<'a>(
         &self,
-        defs: Vec<TypeDefCapture<'a>>,
-        names: Vec<tree_sitter::Node<'a>>,
-        fields: Vec<TypeFieldCapture<'a>>,
+        captures: TypeCaptures<'a>,
         source: &[u8],
     ) -> Vec<TypeDefinition> {
+        let TypeCaptures {
+            defs,
+            names,
+            fields,
+        } = captures;
         // The same definition node can be captured by several patterns;
         // keep the first capture per node id.
         let mut seen = std::collections::HashSet::new();
@@ -509,6 +536,14 @@ struct TypeFieldCapture<'a> {
     type_node: Option<tree_sitter::Node<'a>>,
     /// Definition node id when the same match carried @type.definition.
     owner: Option<usize>,
+}
+
+/// Raw type captures gathered during a parse, passed as one bundle to
+/// `build_type_definitions`.
+struct TypeCaptures<'a> {
+    defs: Vec<TypeDefCapture<'a>>,
+    names: Vec<tree_sitter::Node<'a>>,
+    fields: Vec<TypeFieldCapture<'a>>,
 }
 
 /// Best-effort kind mapping (D3): struct declarations → Struct, record
@@ -624,10 +659,29 @@ fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Paramete
                 .child_by_field_name("name")
                 .and_then(|n| n.utf8_text(source).ok())
                 .map(str::to_string),
-            "parameter" => child
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(str::to_string),
+            "parameter" => {
+                // Python/Go-style parameters expose a `name` field; Rust
+                // (tree-sitter-rust) exposes a `pattern` field instead.
+                child
+                    .child_by_field_name("name")
+                    .or_else(|| child.child_by_field_name("pattern"))
+                    .and_then(|pattern| {
+                        if pattern.kind() == "self" {
+                            return Some("self".to_string());
+                        }
+                        let mut name = None;
+                        let mut c = pattern.walk();
+                        for n in pattern.children(&mut c) {
+                            if n.kind() == "identifier" {
+                                name = n.utf8_text(source).ok().map(str::to_string);
+                                break;
+                            }
+                        }
+                        name.or_else(|| pattern.utf8_text(source).ok().map(str::to_string))
+                    })
+            }
+            // Rust `self` parameters (`fn f(&self)` / `fn f(&mut self)`).
+            "self_parameter" | "self" => Some("self".to_string()),
             "list_splat_pattern" | "dictionary_splat_pattern" => {
                 let prefix = if child.kind() == "list_splat_pattern" {
                     "*"
@@ -660,53 +714,38 @@ fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Paramete
     params
 }
 
-fn build_block(
-    block_node: tree_sitter::Node,
-    source: &[u8],
-    captures: &CaptureMap,
+/// Shared immutable context threaded through the block walk below:
+/// everything the recursive visitors need except the mutable output list.
+#[derive(Clone, Copy)]
+struct WalkCtx<'a> {
+    captures: &'a CaptureMap,
+    call_weights: &'a BTreeMap<String, f64>,
     nesting: u32,
-    call_weights: &BTreeMap<String, f64>,
-) -> Block {
+}
+
+fn build_block(ctx: &WalkCtx, block_node: tree_sitter::Node) -> Block {
     let mut children = Vec::new();
     // Check the block_node itself against captures first.
     // This handles languages where the function body IS a branch node
     // (e.g. Clojure: (defn f [x] (if ...)) where the entire body is an if form).
-    let visited = visit_child(
-        block_node,
-        block_node,
-        source,
-        captures,
-        nesting,
-        &mut children,
-        call_weights,
-    );
+    let visited = visit_child(ctx, block_node, block_node, &mut children);
     if !visited {
-        walk_block(
-            block_node,
-            source,
-            captures,
-            nesting,
-            &mut children,
-            call_weights,
-        );
+        walk_block(ctx, block_node, &mut children);
     }
     Block {
         span: node_span(block_node),
-        nesting,
+        nesting: ctx.nesting,
         children,
     }
 }
 
 fn visit_child(
+    ctx: &WalkCtx,
     parent: tree_sitter::Node,
     child: tree_sitter::Node,
-    source: &[u8],
-    captures: &CaptureMap,
-    nesting: u32,
     out: &mut Vec<crate::model::Node>,
-    call_weights: &BTreeMap<String, f64>,
 ) -> bool {
-    if let Some(&spec) = captures.branches.get(&child.id()) {
+    if let Some(&spec) = ctx.captures.branches.get(&child.id()) {
         let sequence_id = match spec.kind {
             BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
             _ => None,
@@ -714,82 +753,66 @@ fn visit_child(
         out.push(crate::model::Node::Branch(Branch {
             kind: spec.kind,
             span: node_span(child),
-            nesting_at: nesting,
+            nesting_at: ctx.nesting,
             sequence_id,
             cyclomatic_weight: spec.cyclomatic_weight,
             cognitive_weight: spec.cognitive_weight,
         }));
-        collect_nested_blocks(child, source, captures, nesting, out, call_weights);
+        collect_nested_blocks(ctx, child, out);
         true
-    } else if captures.assignments.contains(&child.id()) {
+    } else if ctx.captures.assignments.contains(&child.id()) {
         out.push(crate::model::Node::Assignment(node_span(child)));
-        collect_nested_blocks(child, source, captures, nesting, out, call_weights);
+        collect_nested_blocks(ctx, child, out);
         true
-    } else if let Some(callee) = captures.calls.get(&child.id()) {
-        let smell_weight = call_weights.get(callee.as_str()).copied().unwrap_or(1.0);
+    } else if let Some(callee) = ctx.captures.calls.get(&child.id()) {
+        let smell_weight = ctx
+            .call_weights
+            .get(callee.as_str())
+            .copied()
+            .unwrap_or(1.0);
         out.push(crate::model::Node::Call(CallSite {
             callee: callee.clone(),
             span: node_span(child),
             smell_weight,
         }));
-        collect_nested_blocks(child, source, captures, nesting, out, call_weights);
+        collect_nested_blocks(ctx, child, out);
         true
     } else {
         false
     }
 }
 
-fn walk_block(
-    node: tree_sitter::Node,
-    source: &[u8],
-    captures: &CaptureMap,
-    nesting: u32,
-    out: &mut Vec<crate::model::Node>,
-    call_weights: &BTreeMap<String, f64>,
-) {
+fn walk_block(ctx: &WalkCtx, node: tree_sitter::Node, out: &mut Vec<crate::model::Node>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if is_nested_definition(child) {
             continue;
         }
-        if !visit_child(node, child, source, captures, nesting, out, call_weights) {
-            walk_block(child, source, captures, nesting, out, call_weights);
+        if !visit_child(ctx, node, child, out) {
+            walk_block(ctx, child, out);
         }
     }
 }
 
 fn collect_nested_blocks(
+    ctx: &WalkCtx,
     branch_node: tree_sitter::Node,
-    source: &[u8],
-    captures: &CaptureMap,
-    nesting: u32,
     out: &mut Vec<crate::model::Node>,
-    call_weights: &BTreeMap<String, f64>,
 ) {
     let mut cursor = branch_node.walk();
     for child in branch_node.children(&mut cursor) {
         if is_nested_definition(child) {
             continue;
         }
-        if !visit_child(
-            branch_node,
-            child,
-            source,
-            captures,
-            nesting,
-            out,
-            call_weights,
-        ) {
+        if !visit_child(ctx, branch_node, child, out) {
             if child.kind() == "block" {
-                out.push(crate::model::Node::NestedBlock(build_block(
-                    child,
-                    source,
-                    captures,
-                    nesting + 1,
-                    call_weights,
-                )));
+                let inner = WalkCtx {
+                    nesting: ctx.nesting + 1,
+                    ..*ctx
+                };
+                out.push(crate::model::Node::NestedBlock(build_block(&inner, child)));
             } else {
-                collect_nested_blocks(child, source, captures, nesting, out, call_weights);
+                collect_nested_blocks(ctx, child, out);
             }
         }
     }
@@ -1029,12 +1052,15 @@ mod tests {
     }
 
     fn weighted_engine(weights: BTreeMap<String, BranchWeights>) -> QueryEngine {
+        let empty_calls = BTreeMap::new();
         QueryEngine::new_with_branch_weights(
             python_language(),
             Language::Python,
             python_query_source(),
-            &weights,
-            &BTreeMap::new(),
+            &WeightMaps {
+                branch: &weights,
+                call: &empty_calls,
+            },
         )
         .unwrap()
     }

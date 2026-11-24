@@ -127,7 +127,7 @@ fn count_cpp_mutable_bindings(source: &str) -> MutableBindingAnalysis {
 }
 
 /// A void-return method that mutates `self`/`this` fields.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoidMutator {
     #[allow(dead_code)] // informative metadata for future output formats
     pub name: String,
@@ -223,6 +223,12 @@ pub fn detect_void_mutators(
         }
     }
 
+    // pretender-gv5: the caller's unit iteration order (walk order,
+    // parallel collection) must not leak into the result. Canonicalize by
+    // stable keys so repeated scans of an unchanged tree produce an
+    // identical finding vector; the finding SET is unchanged.
+    result.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.name.cmp(&b.name)));
+
     result
 }
 
@@ -291,7 +297,8 @@ mod tests {
     use super::*;
     use crate::model::{Parameter, Span};
 
-    fn make_unit(name: &str, kind: UnitKind, start: u32, end: u32, params: Vec<&str>) -> CodeUnit {
+    fn make_unit(name: &str, kind: UnitKind, span: (u32, u32), params: Vec<&str>) -> CodeUnit {
+        let (start, end) = span;
         CodeUnit {
             name: name.to_string(),
             kind,
@@ -337,8 +344,7 @@ impl MyStruct {
         let units = vec![make_unit(
             "update",
             UnitKind::Method,
-            3,
-            5,
+            (3, 5),
             vec!["&mut self", "value"],
         )];
         let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
@@ -353,7 +359,7 @@ fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 "#;
-        let units = vec![make_unit("add", UnitKind::Function, 1, 3, vec!["a", "b"])];
+        let units = vec![make_unit("add", UnitKind::Function, (1, 3), vec!["a", "b"])];
         let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
         assert_eq!(result.len(), 0);
     }
@@ -370,8 +376,7 @@ impl MyStruct {
         let units = vec![make_unit(
             "update",
             UnitKind::Method,
-            2,
-            4,
+            (2, 4),
             vec!["&mut self"],
         )];
         let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
@@ -389,7 +394,7 @@ impl MyStruct {
     }
 }
 "#;
-        let units = vec![make_unit("new", UnitKind::Ctor, 2, 4, vec![])];
+        let units = vec![make_unit("new", UnitKind::Ctor, (2, 4), vec![])];
         let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
         assert_eq!(result.len(), 0);
     }
@@ -400,6 +405,81 @@ impl MyStruct {
         let units = vec![];
         let result = detect_void_mutators(source, &Language::Julia, &units, Path::new("test.jl"));
         assert_eq!(result.len(), 0);
+    }
+
+    // ── Determinism (pretender-gv5): the finding vector must be identical
+    // run-to-run regardless of the order in which units arrive (walk order /
+    // parallel collection). Output is canonicalized by stable keys
+    // (line, name) so upstream reordering cannot change the result. ───
+
+    fn three_mutator_fixture() -> (String, Vec<CodeUnit>) {
+        let source = "\
+impl Counter {
+    fn refresh(&mut self) {
+        self.count = 1;
+    }
+    fn reset(&mut self) {
+        self.count = 0;
+    }
+    fn sync(&mut self) {
+        self.total = 9;
+    }
+}
+";
+        let units = vec![
+            make_unit("refresh", UnitKind::Method, (2, 4), vec!["&mut self"]),
+            make_unit("reset", UnitKind::Method, (5, 7), vec!["&mut self"]),
+            make_unit("sync", UnitKind::Method, (8, 10), vec!["&mut self"]),
+        ];
+        (source.to_string(), units)
+    }
+
+    #[test]
+    fn void_mutators_identical_across_repeated_runs() {
+        let (source, units) = three_mutator_fixture();
+        let first = detect_void_mutators(&source, &Language::Rust, &units, Path::new("a.rs"));
+        assert_eq!(first.len(), 3);
+        for _ in 0..4 {
+            let again = detect_void_mutators(&source, &Language::Rust, &units, Path::new("a.rs"));
+            assert_eq!(again, first);
+        }
+    }
+
+    fn vm(name: &str, line: u32) -> VoidMutator {
+        VoidMutator {
+            name: name.to_string(),
+            line,
+        }
+    }
+
+    #[test]
+    fn void_mutators_independent_of_unit_iteration_order() {
+        let (source, units) = three_mutator_fixture();
+        let scan = |units: &[CodeUnit]| {
+            detect_void_mutators(&source, &Language::Rust, units, Path::new("a.rs"))
+        };
+
+        let forward = scan(&units);
+        let mut reordered = units.clone();
+        reordered.rotate_left(1); // walk-order / parallel-collection shuffle
+        let mut reversed = units.clone();
+        reversed.reverse();
+
+        assert_eq!(
+            scan(&reordered),
+            forward,
+            "finding vector must not follow input order"
+        );
+        assert_eq!(
+            scan(&reversed),
+            forward,
+            "finding vector must not follow input order"
+        );
+        assert_eq!(
+            forward,
+            vec![vm("refresh", 2), vm("reset", 5), vm("sync", 8)],
+            "canonical order is (line, name), independent of input order"
+        );
     }
 
     #[test]

@@ -28,8 +28,10 @@ impl ClojureParser {
             tree_sitter_clojure::LANGUAGE.into(),
             Language::Clojure,
             CLOJURE_QUERY,
-            &m.branches,
-            &m.smell_weights,
+            &crate::engine::WeightMaps {
+                branch: &m.branches,
+                call: &m.smell_weights,
+            },
         )
     }
 }
