@@ -124,18 +124,20 @@ dogfood-red path rule baseline="pretender-baseline.json":
         exit 1
     fi
     before="$(jq '.finding_ids | length' "$baseline")"
-    after="$(jq --arg path "$path" --arg rule "$rule" \
-        '[.finding_ids[] | select((split("::")[0] != $path) or ((split("::") | last) != $rule))] | length' \
-        "$baseline")"
+    tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' EXIT
+    # Single filter instance: mutate first, guard the ACTUAL output, then
+    # move it into place (review finding: the guard used to measure a
+    # hand-copied duplicate of this filter, so drift at the mutation could
+    # evade it).
+    jq --arg path "$path" --arg rule "$rule" \
+        '.finding_ids |= map(select((split("::")[0] != $path) or ((split("::") | last) != $rule)))' \
+        "$baseline" > "$tmp"
+    after="$(jq '.finding_ids | length' "$tmp")"
     if (( after > before )); then
         echo "dogfood-red: guard violated: filtered set ($after) larger than input ($before); removal only, additions forbidden" >&2
         exit 1
     fi
-    tmp="$(mktemp)"
-    trap 'rm -f "$tmp"' EXIT
-    jq --arg path "$path" --arg rule "$rule" \
-        '.finding_ids |= map(select((split("::")[0] != $path) or ((split("::") | last) != $rule)))' \
-        "$baseline" > "$tmp"
     cat "$tmp" > "$baseline"
     echo "dogfood-red: removed $((before - after)) finding id(s) for ${path}::${rule} from ${baseline} (${before} -> ${after})"
     if [[ "$baseline" == "pretender-baseline.json" ]]; then

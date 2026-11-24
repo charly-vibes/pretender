@@ -14,4 +14,4 @@ Dogfooding shows `params=0` for every Rust unit, which means `AppThresholds.para
 
 - Affected specs: none added/changed — this repairs conformance with the existing params metric behavior spec (ADDED scenario only if the repo's spec requires an explicit Rust example).
 - Affected code: `pretender/src/engine.rs` (`extract_params` field fallback + `self_parameter` handling), `pretender/src/config.rs` (additive test only).
-- Non-breaking: only ever adds parameters that were previously dropped; findings may newly appear where `params_max` was not enforced for Rust (measured and reported, baseline not edited in this change).
+- Non-breaking: only ever adds parameters that were previously dropped; findings may newly appear where `params_max` was not enforced for Rust (measured and reported). No params-related baseline edits in this change; the sibling remediation tickets co-committed in the foundation commit drove three unrelated `function_lines_max` IDs below threshold (ledger shrink: 164 → 161).
