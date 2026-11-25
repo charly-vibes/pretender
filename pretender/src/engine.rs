@@ -1,38 +1,36 @@
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
-use streaming_iterator::StreamingIterator;
 
 use crate::model::{
-    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Field, Import,
-    Language, Module, Parameter, Span, TypeDefinition, TypeKind, UnitKind,
+    Block, Branch, BranchKind, CallSite, CodeUnit, Field, Language, Parameter, Span, TypeDefinition,
+    TypeKind, UnitKind,
 };
 use crate::plugin::BranchWeights;
 
 pub struct QueryEngine {
-    language: tree_sitter::Language,
-    lang_kind: Language,
-    query: tree_sitter::Query,
-    fn_def_idx: u32,
-    fn_name_idx: u32,
-    fn_params_idx: u32,
-    fn_body_idx: u32,
-    branch_captures: Vec<(u32, BranchCaptureSpec)>,
-    assert_capture_indices: Vec<u32>,
-    call_idx: Option<u32>,
-    call_callee_idx: Option<u32>,
-    assign_idx: Option<u32>,
-    import_idx: Option<u32>,
-    type_def_idx: Option<u32>,
-    type_name_idx: Option<u32>,
-    type_field_idx: Option<u32>,
-    type_field_name_idx: Option<u32>,
-    type_field_type_idx: Option<u32>,
-    call_weights: BTreeMap<String, f64>,
+    pub(crate) language: tree_sitter::Language,
+    pub(crate) lang_kind: Language,
+    pub(crate) query: tree_sitter::Query,
+    pub(crate) fn_def_idx: u32,
+    pub(crate) fn_name_idx: u32,
+    pub(crate) fn_params_idx: u32,
+    pub(crate) fn_body_idx: u32,
+    pub(crate) branch_captures: Vec<(u32, BranchCaptureSpec)>,
+    pub(crate) assert_capture_indices: Vec<u32>,
+    pub(crate) call_idx: Option<u32>,
+    pub(crate) call_callee_idx: Option<u32>,
+    pub(crate) assign_idx: Option<u32>,
+    pub(crate) import_idx: Option<u32>,
+    pub(crate) type_def_idx: Option<u32>,
+    pub(crate) type_name_idx: Option<u32>,
+    pub(crate) type_field_idx: Option<u32>,
+    pub(crate) type_field_name_idx: Option<u32>,
+    pub(crate) type_field_type_idx: Option<u32>,
+    pub(crate) call_weights: BTreeMap<String, f64>,
 }
 
 #[derive(Clone, Copy)]
-struct BranchCaptureSpec {
+pub(crate) struct BranchCaptureSpec {
     kind: BranchKind,
     cyclomatic_weight: u32,
     cognitive_weight: u32,
@@ -170,209 +168,14 @@ impl QueryEngine {
         })
     }
 
-    pub fn parse(&self, path: &Path, source: &str) -> Result<(Module, Vec<Diagnostic>)> {
-        let source_bytes = source.as_bytes();
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&self.language)
-            .context("failed to set language")?;
-
-        let tree = parser
-            .parse(source_bytes, None)
-            .context("tree-sitter returned no tree")?;
-
-        let root = tree.root_node();
-        let mut diagnostics = Vec::new();
-        let lines_total = source.lines().count() as u32;
-
-        let (lines_code, lines_comment) = classify_lines(root, lines_total);
-
-        if root.has_error() {
-            diagnostics.push(Diagnostic {
-                message: format!("Parse errors detected in {}", path.display()),
-                span: Some(node_span(root)),
-                severity: DiagnosticSeverity::Warning,
-            });
-            return Ok((
-                Module {
-                    path: path.to_path_buf(),
-                    language: self.lang_kind.clone(),
-                    span: Span {
-                        start_line: 1,
-                        end_line: lines_total,
-                    },
-                    lines_total,
-                    lines_code,
-                    lines_comment,
-                    units: Vec::new(),
-                    imports: Vec::new(),
-                    ..Default::default()
-                },
-                diagnostics,
-            ));
-        }
-
-        let mut query_cursor = tree_sitter::QueryCursor::new();
-        let mut functions: Vec<FunctionCapture> = Vec::new();
-        let mut captures = CaptureMap::default();
-        let mut imports: Vec<Import> = Vec::new();
-        let mut type_defs: Vec<TypeDefCapture> = Vec::new();
-        let mut type_names: Vec<tree_sitter::Node> = Vec::new();
-        let mut type_fields: Vec<TypeFieldCapture> = Vec::new();
-
-        let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
-        while let Some(m) = query_matches.next() {
-            let has_fn_def = m.captures.iter().any(|c| c.index == self.fn_def_idx);
-
-            if has_fn_def {
-                let mut fc = FunctionCapture::default();
-                for capture in m.captures {
-                    if capture.index == self.fn_def_idx {
-                        fc.def_node = Some(capture.node);
-                    } else if capture.index == self.fn_name_idx {
-                        fc.name_node = Some(capture.node);
-                    } else if capture.index == self.fn_params_idx {
-                        fc.params_node = Some(capture.node);
-                    } else if capture.index == self.fn_body_idx {
-                        fc.body_node = Some(capture.node);
-                    }
-                }
-                functions.push(fc);
-            } else {
-                let mut pending_call: Option<(usize, Option<String>)> = None;
-                let mut type_def_node: Option<tree_sitter::Node> = None;
-                let mut type_name_node: Option<tree_sitter::Node> = None;
-                let mut type_field_node: Option<tree_sitter::Node> = None;
-                let mut type_field_name_node: Option<tree_sitter::Node> = None;
-                let mut type_field_type_node: Option<tree_sitter::Node> = None;
-                for capture in m.captures {
-                    if let Some(spec) = self.branch_capture_for_index(capture.index) {
-                        captures.branches.insert(capture.node.id(), spec);
-                    } else if self.assert_capture_indices.contains(&capture.index) {
-                        captures.assertions.insert(capture.node.id());
-                    } else if Some(capture.index) == self.assign_idx {
-                        captures.assignments.insert(capture.node.id());
-                    } else if Some(capture.index) == self.call_idx {
-                        let id = capture.node.id();
-                        match &mut pending_call {
-                            Some((existing_id, _)) if *existing_id == id => {}
-                            _ => pending_call = Some((id, None)),
-                        }
-                    } else if Some(capture.index) == self.call_callee_idx {
-                        let callee = capture
-                            .node
-                            .utf8_text(source_bytes)
-                            .ok()
-                            .map(str::to_string);
-                        if let Some((_, slot)) = pending_call.as_mut() {
-                            *slot = callee;
-                        }
-                    } else if Some(capture.index) == self.import_idx {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            imports.push(Import {
-                                module: text.to_string(),
-                                name: None,
-                                alias: None,
-                                span: node_span(capture.node),
-                            });
-                        }
-                    } else if Some(capture.index) == self.type_def_idx {
-                        type_def_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_name_idx {
-                        type_name_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_field_idx {
-                        type_field_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_field_name_idx {
-                        type_field_name_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_field_type_idx {
-                        type_field_type_node = Some(capture.node);
-                    }
-                }
-                if let Some((id, callee)) = pending_call {
-                    captures.calls.insert(id, callee.unwrap_or_default());
-                }
-
-                match type_def_node {
-                    Some(def_node) => type_defs.push(TypeDefCapture {
-                        node: def_node,
-                        name_node: type_name_node,
-                    }),
-                    // A @type.name capture in a match of its own binds
-                    // positionally to the innermost enclosing definition
-                    // in build_type_definitions.
-                    None => {
-                        if let Some(name_node) = type_name_node {
-                            type_names.push(name_node);
-                        }
-                    }
-                }
-                if type_field_node.is_some() || type_field_name_node.is_some() {
-                    type_fields.push(TypeFieldCapture {
-                        node: type_field_node
-                            .or(type_field_name_node)
-                            .or(type_field_type_node)
-                            .unwrap(),
-                        name_node: type_field_name_node,
-                        type_node: type_field_type_node,
-                        // Definition id when the same match carried
-                        // @type.definition; otherwise resolved by position.
-                        owner: type_def_node.map(|n| n.id()),
-                    });
-                }
-            }
-        }
-
-        let units: Vec<CodeUnit> = functions
-            .iter()
-            .filter_map(|fc| {
-                self.build_code_unit(fc, source_bytes, &captures)
-                    .map_err(|e| {
-                        diagnostics.push(Diagnostic {
-                            message: format!("Failed to build CodeUnit: {e}"),
-                            span: fc.def_node.map(node_span),
-                            severity: DiagnosticSeverity::Error,
-                        });
-                    })
-                    .ok()
-            })
-            .collect();
-
-        let type_definitions = self.build_type_definitions(
-            TypeCaptures {
-                defs: type_defs,
-                names: type_names,
-                fields: type_fields,
-            },
-            source_bytes,
-        );
-
-        Ok((
-            Module {
-                path: path.to_path_buf(),
-                language: self.lang_kind.clone(),
-                span: Span {
-                    start_line: 1,
-                    end_line: lines_total,
-                },
-                lines_total,
-                lines_code,
-                lines_comment,
-                units,
-                imports,
-                type_definitions,
-            },
-            diagnostics,
-        ))
-    }
-
-    fn branch_capture_for_index(&self, idx: u32) -> Option<BranchCaptureSpec> {
+    pub(crate) fn branch_capture_for_index(&self, idx: u32) -> Option<BranchCaptureSpec> {
         self.branch_captures
             .iter()
             .find(|(capture_idx, _)| *capture_idx == idx)
             .map(|(_, spec)| *spec)
     }
 
-    fn build_code_unit(
+    pub(crate) fn build_code_unit(
         &self,
         fc: &FunctionCapture,
         source: &[u8],
@@ -382,25 +185,11 @@ impl QueryEngine {
         let name_node = fc.name_node.ok_or("missing name node")?;
         let body_node = fc.body_node.ok_or("missing body node")?;
 
-        let name = name_node
-            .utf8_text(source)
-            .map_err(|_| "name contains invalid UTF-8")?
-            .to_string();
-
+        let name = unit_name(name_node, source)?;
+        let parameters = unit_parameters(fc, source);
+        let body = self.unit_body(body_node, captures);
         let kind = determine_unit_kind(def_node, &name);
         let is_exported = !name.starts_with('_');
-
-        let parameters = fc
-            .params_node
-            .map(|p| extract_params(p, source))
-            .unwrap_or_default();
-
-        let walk_ctx = WalkCtx {
-            captures,
-            call_weights: &self.call_weights,
-            nesting: 0,
-        };
-        let body = build_block(&walk_ctx, body_node);
 
         Ok(CodeUnit {
             name,
@@ -415,11 +204,20 @@ impl QueryEngine {
         })
     }
 
+    fn unit_body(&self, body_node: tree_sitter::Node, captures: &CaptureMap) -> Block {
+        let walk_ctx = WalkCtx {
+            captures,
+            call_weights: &self.call_weights,
+            nesting: 0,
+        };
+        build_block(&walk_ctx, body_node)
+    }
+
     /// Assemble `TypeDefinition`s from raw type captures. Fields whose
     /// match carried no `@type.definition` bind to the innermost enclosing
     /// definition; captures with no enclosing definition are dropped.
     /// Fields keep source order.
-    fn build_type_definitions<'a>(
+    pub(crate) fn build_type_definitions<'a>(
         &self,
         captures: TypeCaptures<'a>,
         source: &[u8],
@@ -510,40 +308,40 @@ impl QueryEngine {
 }
 
 #[derive(Default)]
-struct CaptureMap {
-    branches: HashMap<usize, BranchCaptureSpec>,
-    calls: HashMap<usize, String>,
-    assignments: std::collections::HashSet<usize>,
-    assertions: std::collections::HashSet<usize>,
+pub(crate) struct CaptureMap {
+    pub(crate) branches: HashMap<usize, BranchCaptureSpec>,
+    pub(crate) calls: HashMap<usize, String>,
+    pub(crate) assignments: std::collections::HashSet<usize>,
+    pub(crate) assertions: std::collections::HashSet<usize>,
 }
 
 #[derive(Default)]
-struct FunctionCapture<'a> {
-    def_node: Option<tree_sitter::Node<'a>>,
-    name_node: Option<tree_sitter::Node<'a>>,
-    params_node: Option<tree_sitter::Node<'a>>,
-    body_node: Option<tree_sitter::Node<'a>>,
+pub(crate) struct FunctionCapture<'a> {
+    pub(crate) def_node: Option<tree_sitter::Node<'a>>,
+    pub(crate) name_node: Option<tree_sitter::Node<'a>>,
+    pub(crate) params_node: Option<tree_sitter::Node<'a>>,
+    pub(crate) body_node: Option<tree_sitter::Node<'a>>,
 }
 
-struct TypeDefCapture<'a> {
-    node: tree_sitter::Node<'a>,
-    name_node: Option<tree_sitter::Node<'a>>,
+pub(crate) struct TypeDefCapture<'a> {
+    pub(crate) node: tree_sitter::Node<'a>,
+    pub(crate) name_node: Option<tree_sitter::Node<'a>>,
 }
 
-struct TypeFieldCapture<'a> {
-    node: tree_sitter::Node<'a>,
-    name_node: Option<tree_sitter::Node<'a>>,
-    type_node: Option<tree_sitter::Node<'a>>,
+pub(crate) struct TypeFieldCapture<'a> {
+    pub(crate) node: tree_sitter::Node<'a>,
+    pub(crate) name_node: Option<tree_sitter::Node<'a>>,
+    pub(crate) type_node: Option<tree_sitter::Node<'a>>,
     /// Definition node id when the same match carried @type.definition.
-    owner: Option<usize>,
+    pub(crate) owner: Option<usize>,
 }
 
 /// Raw type captures gathered during a parse, passed as one bundle to
 /// `build_type_definitions`.
-struct TypeCaptures<'a> {
-    defs: Vec<TypeDefCapture<'a>>,
-    names: Vec<tree_sitter::Node<'a>>,
-    fields: Vec<TypeFieldCapture<'a>>,
+pub(crate) struct TypeCaptures<'a> {
+    pub(crate) defs: Vec<TypeDefCapture<'a>>,
+    pub(crate) names: Vec<tree_sitter::Node<'a>>,
+    pub(crate) fields: Vec<TypeFieldCapture<'a>>,
 }
 
 /// Best-effort kind mapping (D3): struct declarations → Struct, record
@@ -818,53 +616,6 @@ fn collect_nested_blocks(
     }
 }
 
-/// Classify each line in the file using tree-sitter node types.
-/// Returns (lines_code, lines_comment).
-/// A line is a comment line if every leaf node on that line is a comment.
-/// Otherwise if any named non-comment leaf touches the line, it is a code line.
-fn classify_lines(root: tree_sitter::Node, lines_total: u32) -> (u32, u32) {
-    use std::collections::HashSet;
-
-    let mut comment_lines: HashSet<u32> = HashSet::new();
-    let mut code_lines: HashSet<u32> = HashSet::new();
-
-    let mut cursor = root.walk();
-    loop {
-        let node = cursor.node();
-        if node.child_count() == 0 {
-            // leaf node
-            let start = node.start_position().row as u32 + 1;
-            let end = node.end_position().row as u32 + 1;
-            let is_comment = node.kind().contains("comment");
-            for line in start..=end {
-                if is_comment {
-                    if !code_lines.contains(&line) {
-                        comment_lines.insert(line);
-                    }
-                } else if !node.kind().trim().is_empty() {
-                    code_lines.insert(line);
-                    comment_lines.remove(&line);
-                }
-            }
-        }
-
-        if cursor.goto_first_child() {
-            continue;
-        }
-        loop {
-            if cursor.goto_next_sibling() {
-                break;
-            }
-            if !cursor.goto_parent() {
-                return (
-                    code_lines.len() as u32,
-                    comment_lines.iter().filter(|&&l| l <= lines_total).count() as u32,
-                );
-            }
-        }
-    }
-}
-
 fn count_captured_nodes(
     node: tree_sitter::Node,
     captured_ids: &std::collections::HashSet<usize>,
@@ -923,11 +674,24 @@ fn is_nested_definition(node: tree_sitter::Node) -> bool {
     )
 }
 
-fn node_span(node: tree_sitter::Node) -> Span {
+pub(crate) fn node_span(node: tree_sitter::Node) -> Span {
     Span {
         start_line: node.start_position().row as u32 + 1,
         end_line: node.end_position().row as u32 + 1,
     }
+}
+
+fn unit_name(name_node: tree_sitter::Node, source: &[u8]) -> Result<String, String> {
+    Ok(name_node
+        .utf8_text(source)
+        .map_err(|_| "name contains invalid UTF-8")?
+        .to_string())
+}
+
+fn unit_parameters(fc: &FunctionCapture, source: &[u8]) -> Vec<Parameter> {
+    fc.params_node
+        .map(|p| extract_params(p, source))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -936,6 +700,7 @@ mod tests {
     use crate::model::*;
     use crate::plugin::BranchWeights;
     use std::collections::BTreeMap;
+    use std::path::Path;
 
     fn python_language() -> tree_sitter::Language {
         tree_sitter_python::LANGUAGE.into()
