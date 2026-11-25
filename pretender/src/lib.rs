@@ -42,6 +42,7 @@ pub mod plugin;
 pub mod primitive_obsession;
 pub mod python;
 pub mod r;
+pub(crate) mod role_resolution;
 pub mod roles;
 pub mod ruby;
 pub mod rust;
