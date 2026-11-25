@@ -9,6 +9,20 @@
   value: (_) @function.body) @function.definition
   (#match? @_defn "^(defn|defn-)$")
 
+; Function definitions — deftest (no parameter vector, pretender-1v8k.8)
+(list_lit
+  value: (sym_lit) @_deftest
+  .
+  value: (sym_lit) @function.name
+  .
+  value: (_) @function.body) @function.definition
+  (#match? @_deftest "^deftest$")
+
+; Assertions (test role min_assertions) — is-family forms
+(list_lit
+  value: (sym_lit) @_assert_callee
+  (#match? @_assert_callee "^(is|is-not|are|assert|thrown\\?|thrown-with-msg\\?|with-test)$")) @assert.statement
+
 ; Branches — single-decision conditionals
 (list_lit
   value: (sym_lit) @_cond
@@ -54,7 +68,7 @@
 ; binding/sequence forms and error scaffolding contribute no C-count
 (list_lit
   value: (sym_lit) @_consumed
-  (#match? @_consumed "^(let|binding|do|try|finally)$")) @consumed
+  (#match? @_consumed "^(let|binding|do|try|finally|testing)$")) @consumed
 
 ; Logical operators
 (list_lit

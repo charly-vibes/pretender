@@ -67,6 +67,19 @@
       "units": [
         {
           "metrics": {
+            "abc": 3.0,
+            "assertions": 1,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "arith-test",
+          "violations": []
+        },
+        {
+          "metrics": {
             "abc": 3.1622776601683795,
             "assertions": 0,
             "cognitive": 1,
@@ -167,6 +180,19 @@
             "params": 1
           },
           "name": "looper",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 7.0,
+            "assertions": 3,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 5,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "throws-test",
           "violations": []
         }
       ]
