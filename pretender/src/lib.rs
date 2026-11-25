@@ -35,6 +35,7 @@ pub mod mock_detector;
 pub mod model;
 pub mod mutability_metrics;
 pub mod mutation;
+pub(crate) mod mutation_entry;
 pub(crate) mod parse;
 pub mod plugin;
 pub mod primitive_obsession;
