@@ -29,31 +29,36 @@ fn quoted_language_list(options: &InitOptions) -> String {
         .join(", ")
 }
 
-pub(super) fn render_init_config(options: &InitOptions) -> String {
-    let mode = mode_label(options.mode);
-    let languages = quoted_language_list(options);
+/// Header of the generated config, verbatim since fb3.
+const ROLES_TABLES: &str = concat!(
+    "[roles.test]\n",
+    "paths = [\"tests/**\", \"**/*_test.*\", \"spec/**\"]\n\n",
+    "[roles.library]\n",
+    "paths = [\"pkg/**\", \"lib/**\"]\n\n",
+    "[roles.script]\n",
+    "paths = [\"scripts/**\", \"examples/**\"]\n\n",
+    "[roles.generated]\n",
+    "paths = [\"**/*.pb.go\", \"**/*_generated.*\"]\n\n",
+    "[roles.vendor]\n",
+    "paths = [\"vendor/**\", \"node_modules/**\"]\n\n",
+);
 
+pub(super) fn render_init_config(options: &InitOptions) -> String {
+    config_header(mode_label(options.mode), &quoted_language_list(options))
+        + ROLES_TABLES
+        + &preset_tables(options.preset)
+}
+
+fn config_header(mode: &str, languages: &str) -> String {
     format!(
         concat!(
             "[pretender]\n",
             "mode = \"{mode}\"\n",
             "languages = [{languages}]\n",
             "exclude = [\"vendor/**\", \"node_modules/**\", \"**/*_generated.*\"]\n\n",
-            "[roles.test]\n",
-            "paths = [\"tests/**\", \"**/*_test.*\", \"spec/**\"]\n\n",
-            "[roles.library]\n",
-            "paths = [\"pkg/**\", \"lib/**\"]\n\n",
-            "[roles.script]\n",
-            "paths = [\"scripts/**\", \"examples/**\"]\n\n",
-            "[roles.generated]\n",
-            "paths = [\"**/*.pb.go\", \"**/*_generated.*\"]\n\n",
-            "[roles.vendor]\n",
-            "paths = [\"vendor/**\", \"node_modules/**\"]\n\n",
-            "{thresholds}"
         ),
         mode = mode,
         languages = languages,
-        thresholds = preset_tables(options.preset),
     )
 }
 
@@ -67,59 +72,77 @@ fn preset_tables(preset: ThresholdPreset) -> String {
     app_preset_table(strict) + &test_preset_table(strict)
 }
 
+/// `(key, strict, default)` rows of the `[thresholds]` app table, in
+/// emission order (update-app-threshold-defaults). Strict deviations are
+/// pinned by the spec ("Strict Preset Values"); every other value matches
+/// the built-in defaults.
+const APP_THRESHOLD_ROWS: &[(&str, u64, u64)] = &[
+    ("cyclomatic_max", 8, 10),
+    ("cognitive_max", 12, 15),
+    ("function_lines_max", 25, 30),
+    ("file_lines_max", 300, 400),
+    ("nesting_max", 2, 3),
+    ("params_max", 3, 4),
+    ("abc_max", 25, 30),
+    ("duplication_pct_max", 4, 5),
+];
+
+/// Fixed remainder of the `[thresholds]` app table, verbatim since fb3.
+const APP_TABLE_FIXED: &str = concat!(
+    "void_mutators_max = 3\n",
+    "mut_ratio_max = 0.3\n",
+    "unwrap_max = 5\n",
+    "bool_cluster_max = 3\n",
+    "primitive_param_check = false\n",
+    "inheritance_depth_max = 2\n\n",
+);
+
+/// `(key, strict, default)` rows of the `[thresholds.test]` table.
+const TEST_THRESHOLD_ROWS: &[(&str, u64, u64)] = &[
+    ("cyclomatic_max", 2, 3),
+    ("cognitive_max", 3, 5),
+    ("function_lines_max", 60, 80),
+];
+
+/// Fixed remainder of the `[thresholds.test]` table, verbatim since fb3.
+const TEST_TABLE_FIXED: &str = concat!(
+    "nesting_max = 2\n",
+    "params_max = 2\n",
+    "duplication_pct_max = 30\n",
+    "min_assertions = 1\n",
+    "mock_count_max = 5\n",
+    "unwrap_max = 5\n",
+    "lazy_cluster_min = 3\n",
+);
+
+/// One `key = value` threshold row; `strict` picks the strict value.
+fn preset_row(key: &str, strict_value: u64, default_value: u64, strict: bool) -> String {
+    let value = if strict { strict_value } else { default_value };
+    format!("{key} = {value}\n")
+}
+
 /// The `[thresholds]` app table; `strict` picks the pinned strict values.
 fn app_preset_table(strict: bool) -> String {
-    let v = |strict_val, default_val| if strict { strict_val } else { default_val };
-    format!(
-        concat!(
-            "[thresholds]\n",
-            "cyclomatic_max = {app_cyclomatic}\n",
-            "cognitive_max = {app_cognitive}\n",
-            "function_lines_max = {app_function_lines}\n",
-            "file_lines_max = {app_file_lines}\n",
-            "nesting_max = {app_nesting}\n",
-            "params_max = {app_params}\n",
-            "abc_max = {app_abc}\n",
-            "duplication_pct_max = {app_duplication}\n",
-            "void_mutators_max = 3\n",
-            "mut_ratio_max = 0.3\n",
-            "unwrap_max = 5\n",
-            "bool_cluster_max = 3\n",
-            "primitive_param_check = false\n",
-            "inheritance_depth_max = 2\n\n",
-        ),
-        app_cyclomatic = v(8, 10),
-        app_cognitive = v(12, 15),
-        app_function_lines = v(25, 30),
-        app_file_lines = v(300, 400),
-        app_nesting = v(2, 3),
-        app_params = v(3, 4),
-        app_abc = v(25, 30),
-        app_duplication = v(4, 5),
-    )
+    let rows: Vec<String> = APP_THRESHOLD_ROWS
+        .iter()
+        .copied()
+        .map(|(key, strict_value, default_value)| {
+            preset_row(key, strict_value, default_value, strict)
+        })
+        .collect();
+    format!("[thresholds]\n{}", rows.join("")) + APP_TABLE_FIXED
 }
 
 /// The `[thresholds.test]` table; `strict` picks the pinned strict values.
 fn test_preset_table(strict: bool) -> String {
-    let v = |strict_val, default_val| if strict { strict_val } else { default_val };
-    format!(
-        concat!(
-            "[thresholds.test]\n",
-            "cyclomatic_max = {test_cyclomatic}\n",
-            "cognitive_max = {test_cognitive}\n",
-            "function_lines_max = {test_function_lines}\n",
-            "nesting_max = 2\n",
-            "params_max = 2\n",
-            "duplication_pct_max = 30\n",
-            "min_assertions = 1\n",
-            "mock_count_max = 5\n",
-            "unwrap_max = 5\n",
-            "lazy_cluster_min = 3\n"
-        ),
-        test_cyclomatic = v(2, 3),
-        test_cognitive = v(3, 5),
-        test_function_lines = v(60, 80),
-    )
+    let rows: Vec<String> = TEST_THRESHOLD_ROWS
+        .iter()
+        .copied()
+        .map(|(key, strict_value, default_value)| {
+            preset_row(key, strict_value, default_value, strict)
+        })
+        .collect();
+    format!("[thresholds.test]\n{}", rows.join("")) + TEST_TABLE_FIXED
 }
 
 /// Generated GitHub Actions workflow, verbatim since pretender-fb3.

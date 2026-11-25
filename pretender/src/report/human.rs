@@ -13,7 +13,7 @@
 //! stage helpers so every function fits the gate's limits; bodies moved
 //! verbatim from `main.rs`.
 
-use super::summary::{fmt_metric, summarize_file, Severity};
+use super::summary::{fmt_metric, summarize_file, FileSummary, Severity};
 use super::{CheckReport, FileReport, UnitReport};
 use anyhow::Result;
 use pretender::config::{Bands, Mode};
@@ -39,11 +39,20 @@ struct HumanPalette {
     accent: &'static str,
 }
 
+/// ANSI code when color is on, empty string otherwise.
+fn color_or_empty(color: bool, code: &'static str) -> &'static str {
+    if color {
+        code
+    } else {
+        ""
+    }
+}
+
 fn human_palette(color: bool, blocking: bool) -> HumanPalette {
-    let red = if color { "\u{1b}[31m" } else { "" };
-    let yellow = if color { "\u{1b}[33m" } else { "" };
-    let green = if color { "\u{1b}[32m" } else { "" };
-    let reset = if color { "\u{1b}[0m" } else { "" };
+    let red = color_or_empty(color, "\u{1b}[31m");
+    let yellow = color_or_empty(color, "\u{1b}[33m");
+    let green = color_or_empty(color, "\u{1b}[32m");
+    let reset = color_or_empty(color, "\u{1b}[0m");
     let (icon, label, accent) = if blocking {
         ("✗", "VIOLATION", red)
     } else {
@@ -73,22 +82,23 @@ pub(crate) fn write_human_report(
     write_human_test_findings(sink, report, blocking, &palette)
 }
 
-/// The (icon, accent) pair a file's severity renders with. Gate mode stains
-/// red findings with the hard-fail icon; advisory modes keep them yellow.
+/// The (icon, accent, reset) triple a file's severity renders with. Gate
+/// mode stains red findings with the hard-fail icon; advisory modes keep
+/// them yellow.
 fn severity_marker(
     severity: Severity,
     palette: &HumanPalette,
     blocking: bool,
-) -> (&'static str, &'static str) {
+) -> (&'static str, &'static str, &'static str) {
     let red_accent = if blocking {
         palette.red
     } else {
         palette.yellow
     };
     match severity {
-        Severity::Green => ("✓", palette.green),
-        Severity::Yellow => ("⚠", palette.yellow),
-        Severity::Red => (palette.icon, red_accent),
+        Severity::Green => ("✓", palette.green, palette.reset),
+        Severity::Yellow => ("⚠", palette.yellow, palette.reset),
+        Severity::Red => (palette.icon, red_accent, palette.reset),
     }
 }
 
@@ -100,18 +110,28 @@ fn write_human_file(
 ) -> Result<()> {
     let blocking = matches!(opts.mode, Mode::Gate);
     let summary = summarize_file(file, opts.bands);
-    let (icon, accent) = severity_marker(summary.severity, palette, blocking);
-
-    writeln!(
-        sink,
-        "{}{}{} {} — {}",
-        accent, icon, palette.reset, file.path, summary.message
-    )?;
+    let marker = severity_marker(summary.severity, palette, blocking);
+    write_human_file_heading(sink, file, &summary, marker)?;
     writeln!(sink, "  role: {}", file.role)?;
-
     write_human_file_violations(sink, file, palette)?;
     write_human_units(sink, file, opts, palette)?;
     write_human_annotations(sink, file, palette)?;
+    Ok(())
+}
+
+/// The heading line introducing one file's section.
+fn write_human_file_heading(
+    sink: &mut dyn Write,
+    file: &FileReport,
+    summary: &FileSummary,
+    marker: (&'static str, &'static str, &'static str),
+) -> Result<()> {
+    let (icon, accent, reset) = marker;
+    writeln!(
+        sink,
+        "{}{}{} {} — {}",
+        accent, icon, reset, file.path, summary.message
+    )?;
     Ok(())
 }
 
@@ -158,6 +178,16 @@ fn write_human_unit(
         return Ok(());
     }
     writeln!(sink, "{}", unit_metrics_line(unit))?;
+    write_human_unit_violations(sink, unit, palette)?;
+    Ok(())
+}
+
+/// A unit's violation lines, indented under its metrics line.
+fn write_human_unit_violations(
+    sink: &mut dyn Write,
+    unit: &UnitReport,
+    palette: &HumanPalette,
+) -> Result<()> {
     for violation in &unit.violations {
         writeln!(
             sink,
@@ -221,16 +251,35 @@ fn write_human_test_findings(
         write_human_test_finding(sink, finding, palette)?;
     }
     if blocking {
-        writeln!(
-            sink,
-            "{}{}{} {} test duration violation(s)",
-            palette.accent,
-            palette.label,
-            palette.reset,
-            report.test_findings.len(),
-        )?;
+        write_human_test_summary(sink, &report.test_findings, palette)?;
     }
     Ok(())
+}
+
+/// The gate-mode count line closing the test-duration section.
+fn write_human_test_summary(
+    sink: &mut dyn Write,
+    findings: &[TestDurationFinding],
+    palette: &HumanPalette,
+) -> Result<()> {
+    writeln!(
+        sink,
+        "{}{}{} {} test duration violation(s)",
+        palette.accent,
+        palette.label,
+        palette.reset,
+        findings.len(),
+    )?;
+    Ok(())
+}
+
+/// Path label for a duration finding; `?` when the file is unknown.
+fn finding_file_label(finding: &TestDurationFinding) -> String {
+    finding
+        .file
+        .as_ref()
+        .map(|f| f.display().to_string())
+        .unwrap_or_else(|| "?".to_string())
 }
 
 fn write_human_test_finding(
@@ -238,11 +287,7 @@ fn write_human_test_finding(
     finding: &TestDurationFinding,
     palette: &HumanPalette,
 ) -> Result<()> {
-    let file_str = finding
-        .file
-        .as_ref()
-        .map(|f| f.display().to_string())
-        .unwrap_or_else(|| "?".to_string());
+    let file_str = finding_file_label(finding);
     writeln!(
         sink,
         "  {}{}{} {} {} {}: {}ms > {}ms",

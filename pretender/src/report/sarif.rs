@@ -13,8 +13,9 @@
 //! helpers so every function fits the gate's limits; bodies moved verbatim
 //! from `main.rs`.
 
-use super::{CheckReport, ViolationReport};
+use super::{CheckReport, FileReport, UnitReport, ViolationReport};
 use anyhow::Result;
+use pretender::test_report::TestDurationFinding;
 use serde_sarif::sarif;
 use std::collections::HashMap;
 use std::io::Write;
@@ -70,30 +71,39 @@ impl SarifAccumulator {
     /// File and unit violations of `report`, in report order.
     fn collect_violations(&mut self, report: &CheckReport) {
         for file in &report.files {
-            for violation in &file.file_violations {
-                self.push_result(&ViolationContext {
-                    violation,
-                    file_path: &file.path,
-                    start_line: 1,
-                    label: &file.path,
-                });
-            }
-            for unit in &file.units {
-                for violation in &unit.violations {
-                    self.push_result(&ViolationContext {
-                        violation,
-                        file_path: &file.path,
-                        start_line: unit.start_line as i64,
-                        label: &unit.name,
-                    });
-                }
-            }
+            self.collect_file(file);
+        }
+    }
+
+    /// One file's file-level and per-unit violations, in report order.
+    fn collect_file(&mut self, file: &FileReport) {
+        for violation in &file.file_violations {
+            self.push_result(&ViolationContext {
+                violation,
+                file_path: &file.path,
+                start_line: 1,
+                label: &file.path,
+            });
+        }
+        for unit in &file.units {
+            self.collect_unit(file, unit);
+        }
+    }
+
+    /// One unit's violations, in report order.
+    fn collect_unit(&mut self, file: &FileReport, unit: &UnitReport) {
+        for violation in &unit.violations {
+            self.push_result(&ViolationContext {
+                violation,
+                file_path: &file.path,
+                start_line: unit.start_line as i64,
+                label: &unit.name,
+            });
         }
     }
 
     /// Test-duration findings, in report order.
     fn collect_duration_findings(&mut self, report: &CheckReport) {
-        // ── SARIF: duration findings ───────────────────────────────
         let duration_rule_id = "pretender/test-duration";
         let duration_rule_idx = self.rules.len() as i64;
         self.rules.push(
@@ -102,23 +112,25 @@ impl SarifAccumulator {
                 .build(),
         );
         for finding in &report.test_findings {
-            let file_uri = finding
-                .file
-                .as_ref()
-                .map(|f| f.display().to_string())
-                .unwrap_or_else(|| "?".to_string());
-            let message_text = format!(
-                "{} {}: {}ms exceeds {}ms threshold",
-                finding.role, finding.test_name, finding.observed_ms, finding.threshold_ms
-            );
-            let location = duration_location(&file_uri);
-            self.results.push(sarif_result(
-                duration_rule_id,
-                duration_rule_idx,
-                message_text,
-                location,
-            ));
+            self.push_duration_finding(finding, duration_rule_id, duration_rule_idx);
         }
+    }
+
+    /// One duration finding as a SARIF result under the duration rule.
+    fn push_duration_finding(
+        &mut self,
+        finding: &TestDurationFinding,
+        rule_id: &str,
+        rule_index: i64,
+    ) {
+        let file_uri = duration_file_uri(finding);
+        let message_text = format!(
+            "{} {}: {}ms exceeds {}ms threshold",
+            finding.role, finding.test_name, finding.observed_ms, finding.threshold_ms
+        );
+        let location = duration_location(&file_uri);
+        self.results
+            .push(sarif_result(rule_id, rule_index, message_text, location));
     }
 
     /// Assembles the finished SARIF log.
@@ -157,6 +169,15 @@ fn violation_location(
                 .build(),
         )
         .build()
+}
+
+/// Path URI for a duration finding; `?` when the file is unknown.
+fn duration_file_uri(finding: &TestDurationFinding) -> String {
+    finding
+        .file
+        .as_ref()
+        .map(|f| f.display().to_string())
+        .unwrap_or_else(|| "?".to_string())
 }
 
 /// Physical location for a test-duration finding.

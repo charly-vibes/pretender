@@ -24,7 +24,10 @@ pub(crate) fn write_html_report(
     bands: &Bands,
 ) -> Result<()> {
     writeln!(sink, "<!doctype html>")?;
-    writeln!(sink, "<html><head><meta charset=\"utf-8\"><title>Pretender report</title><style>body{{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem}} .green{{color:#18794e}} .yellow{{color:#9a6700}} .red{{color:#cf222e}} code{{background:#f6f8fa;padding:.1rem .3rem;border-radius:4px}} ul{{line-height:1.5}}</style></head><body>")?;
+    writeln!(
+        sink,
+        "<html><head><meta charset=\"utf-8\"><title>Pretender report</title><style>body{{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem}} .green{{color:#18794e}} .yellow{{color:#9a6700}} .red{{color:#cf222e}} code{{background:#f6f8fa;padding:.1rem .3rem;border-radius:4px}} ul{{line-height:1.5}}</style></head><body>"
+    )?;
     writeln!(sink, "<h1>Pretender report</h1>")?;
 
     for file in &report.files {
@@ -51,11 +54,22 @@ fn write_html_heading(
     file: &FileReport,
     summary: &FileSummary,
 ) -> Result<()> {
-    let (icon, class_name) = match summary.severity {
-        Severity::Green => ("✓", "green"),
-        Severity::Yellow => ("⚠", "yellow"),
-        Severity::Red => ("✗", "red"),
-    };
+    write_html_section_heading(sink, file, summary)?;
+    writeln!(
+        sink,
+        "<p>Role: <code>{}</code></p><ul>",
+        html_escape(&file.role)
+    )?;
+    Ok(())
+}
+
+/// The `<section>` heading line introducing one file.
+fn write_html_section_heading(
+    sink: &mut dyn Write,
+    file: &FileReport,
+    summary: &FileSummary,
+) -> Result<()> {
+    let (icon, class_name) = heading_marker(summary.severity);
     writeln!(
         sink,
         "<section><h2><code>{}</code> <span class=\"{}\">{} {}</span></h2>",
@@ -64,12 +78,16 @@ fn write_html_heading(
         icon,
         html_escape(&summary.message)
     )?;
-    writeln!(
-        sink,
-        "<p>Role: <code>{}</code></p><ul>",
-        html_escape(&file.role)
-    )?;
     Ok(())
+}
+
+/// The icon and CSS class a file's severity renders with.
+fn heading_marker(severity: Severity) -> (&'static str, &'static str) {
+    match severity {
+        Severity::Green => ("✓", "green"),
+        Severity::Yellow => ("⚠", "yellow"),
+        Severity::Red => ("✗", "red"),
+    }
 }
 
 fn write_html_file_violations(sink: &mut dyn Write, file: &FileReport) -> Result<()> {
