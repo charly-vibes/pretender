@@ -77,7 +77,6 @@
     "pretender/tests/cli_test.rs::::unwraps",
     "pretender/src/main.rs::run::cognitive_max",
     "pretender/src/main.rs::run::function_lines_max",
-    "pretender/src/main.rs::run::nesting_max",
-    "pretender/src/main.rs::violation_findings::function_lines_max"
+    "pretender/src/main.rs::run::nesting_max"
   ]
 }
