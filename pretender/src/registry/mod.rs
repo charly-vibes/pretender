@@ -56,7 +56,7 @@ impl LangRecord {
 /// The single [`Parser`] implementation: behavior is fully determined by the
 /// record. TS and TSX are two records over one grammar crate.
 pub struct GenericParser {
-    pub(crate) record: &'static LangRecord,
+    pub record: &'static LangRecord,
 }
 
 impl Parser for GenericParser {

@@ -6,14 +6,14 @@
 //! `super::super::collect`) and this registry honor.
 //!
 //! # Rationale
-//! Split from the scan module (pretender-5zo.15.12); bodies moved verbatim
-//! with the extension match split in two only to stay within the
-//! function-size limit.
+//! Split from the scan module (pretender-5zo.15.12). Since pretender-948q
+//! the dispatch itself is data: `lookup` resolves the extension against the
+//! declarative language registry and hands back the one `GenericParser`,
+//! so adding a language no longer edits a `match` here.
+
 use anyhow::{anyhow, Result};
 use pretender::model;
-use pretender::{
-    c, clojure, cpp, csharp, go, java, javascript, julia, python, r, ruby, rust, typescript,
-};
+use pretender::registry::{self, GenericParser};
 use std::path::Path;
 
 /// Resolve the parser for `path` based on its file extension.
@@ -25,30 +25,8 @@ pub(crate) fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
     parser_for_extension(ext).ok_or_else(|| anyhow!("unsupported file extension '.{}'", ext))
 }
 
-/// Parser lookup for the first half of the supported extensions.
+/// Parser lookup, backed by the declarative language registry.
 fn parser_for_extension(ext: &str) -> Option<Box<dyn model::Parser>> {
-    match ext {
-        "cs" => Some(Box::new(csharp::CSharpParser)),
-        "clj" | "cljs" | "cljc" | "edn" => Some(Box::new(clojure::ClojureParser)),
-        "c" | "h" => Some(Box::new(c::CParser)),
-        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some(Box::new(cpp::CppParser)),
-        "go" => Some(Box::new(go::GoParser)),
-        "java" => Some(Box::new(java::JavaParser)),
-        "jl" => Some(Box::new(julia::JuliaParser)),
-        "js" | "jsx" | "mjs" | "cjs" => Some(Box::new(javascript::JavaScriptParser)),
-        _ => parser_for_extension_rest(ext),
-    }
-}
-
-/// Parser lookup for the remaining supported extensions.
-fn parser_for_extension_rest(ext: &str) -> Option<Box<dyn model::Parser>> {
-    match ext {
-        "py" => Some(Box::new(python::PythonParser)),
-        "r" | "R" => Some(Box::new(r::RParser)),
-        "rb" => Some(Box::new(ruby::RubyParser)),
-        "rs" => Some(Box::new(rust::RustParser)),
-        "ts" | "mts" => Some(Box::new(typescript::TypeScriptParser)),
-        "tsx" | "cts" => Some(Box::new(typescript::TypeScriptXParser)),
-        _ => None,
-    }
+    registry::lookup(ext)
+        .map(|record| Box::new(GenericParser { record }) as Box<dyn model::Parser>)
 }
