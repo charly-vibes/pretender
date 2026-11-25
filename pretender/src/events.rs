@@ -45,7 +45,7 @@ pub(crate) fn emit_history_events(
     let new_events = all_violation_events(report, &run_id, &timestamp, config);
     // Snapshot runs on EVERY check (including clean runs) so that "fixed" is
     // distinguishable from "not rescanned" — the core of ticket u8a.
-    let current_ids: Vec<String> = new_events.iter().map(|e| e.fingerprint.clone()).collect();
+    let current_ids = finding_ids(&new_events);
     let store = history::EventStore::new(Path::new(".pretender"));
     let Some(delta) = load_delta(&store, &run_id, &timestamp, &current_ids) else {
         return;
@@ -244,6 +244,14 @@ fn finding_scope(unit_name: &Option<String>) -> &'static str {
     }
 }
 
+/// Stable finding IDs (fingerprints) of the given events, in order.
+fn finding_ids(events: &[history::ViolationEvent]) -> Vec<String> {
+    events
+        .iter()
+        .map(|e| e.measure.fingerprint.clone())
+        .collect()
+}
+
 /// Build the history event for one violation finding.
 fn violation_event(
     finding: crate::check::gate::ViolationFinding,
@@ -251,25 +259,28 @@ fn violation_event(
     timestamp: &str,
     mode: &str,
 ) -> history::ViolationEvent {
-    let metric_family = metric_to_family(&finding.metric).to_string();
-    let scope = finding_scope(&finding.unit_name).to_string();
-    let fingerprint = violation_finding_id(&finding);
     history::ViolationEvent {
-        schema_version: 1,
-        timestamp: timestamp.to_string(),
-        run_id: run_id.to_string(),
-        mode: mode.to_string(),
-        path: finding.path,
-        unit_name: finding.unit_name,
-        role: finding.role,
-        rule_key: finding.rule_key,
-        metric_family,
-        scope,
-        severity: "red".to_string(),
-        actual: finding.actual,
-        limit: finding.limit,
-        delta: finding.actual - finding.limit,
-        fingerprint,
+        measure: history::EventMeasure {
+            actual: finding.actual,
+            limit: finding.limit,
+            delta: finding.actual - finding.limit,
+            fingerprint: violation_finding_id(&finding),
+        },
+        origin: history::EventOrigin {
+            schema_version: 1,
+            timestamp: timestamp.to_string(),
+            run_id: run_id.to_string(),
+            mode: mode.to_string(),
+        },
+        finding: history::EventFinding {
+            path: finding.path,
+            role: finding.role,
+            rule_key: finding.rule_key,
+            metric_family: metric_to_family(&finding.metric).to_string(),
+            scope: finding_scope(&finding.unit_name).to_string(),
+            unit_name: finding.unit_name,
+            severity: "red".to_string(),
+        },
     }
 }
 
