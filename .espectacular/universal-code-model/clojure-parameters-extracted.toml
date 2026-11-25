@@ -1,0 +1,9 @@
+id = "clojure-parameters-extracted"
+description = "Function parameters come from the arity vector, one per binding name; params/params_max fire."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_single_arity_defn_names_params"}]

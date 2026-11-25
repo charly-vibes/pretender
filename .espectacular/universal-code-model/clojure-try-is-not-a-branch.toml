@@ -1,0 +1,9 @@
+id = "clojure-try-is-not-a-branch"
+description = "try contributes no branch; exactly one catch branch per catch clause; finally contributes none."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_try_counts_one_catch"}]

@@ -1,0 +1,9 @@
+id = "python-match-arms-are-branches"
+description = "Each case clause of a match statement is a match-case branch; the enclosing match adds none."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "python_match_statement_counts_one_branch_per_case_clause"}]

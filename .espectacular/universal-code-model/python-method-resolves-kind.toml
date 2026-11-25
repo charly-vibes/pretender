@@ -1,0 +1,9 @@
+id = "python-method-resolves-kind"
+description = "def members of a class resolve to Method; property/staticmethod decorators keep that kind."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "python_forms_fixture_kinds_and_cyclomatic"}]

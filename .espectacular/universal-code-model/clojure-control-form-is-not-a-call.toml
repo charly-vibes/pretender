@@ -1,0 +1,9 @@
+id = "clojure-control-form-is-not-a-call"
+description = "Captured control forms contribute to the B-count or are excluded, never to the ABC C-count."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_control_forms_leave_call_count"}]

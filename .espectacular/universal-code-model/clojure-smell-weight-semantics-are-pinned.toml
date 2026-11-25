@@ -1,0 +1,9 @@
+id = "clojure-smell-weight-semantics-are-pinned"
+description = "Round-trip ABC values document whether [smell_weights] entries contribute to the C-count."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_control_forms_abc_semantics_pin"}]

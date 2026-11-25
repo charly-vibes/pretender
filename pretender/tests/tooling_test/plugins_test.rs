@@ -214,3 +214,21 @@ fn every_builtin_manifest_parses_and_matches_the_registry() {
     }
     assert_eq!(pinned.len(), 13, "13 builtin language dirs pinned");
 }
+
+/// Spec pin (universal-code-model / clojure-readme-declares-unsupported-
+/// metrics, pretender-1v8k.14): each shipped adapter README must carry the
+/// Known unsupported metrics section and separate not-implemented-yet from
+/// grammar-unsupported, so a missing metric never reads as "supported and
+/// clean".
+#[test]
+fn test_clojure_readme_declares_unsupported_metrics() {
+    let readme = include_str!("../../languages/clojure/README.md").to_lowercase();
+    assert!(
+        readme.contains("## known unsupported metrics"),
+        "clojure README must declare its unsupported metrics"
+    );
+    assert!(
+        readme.contains("not supported by the grammar") && readme.contains("not implemented yet"),
+        "unsupported metrics must be classified with both reasons"
+    );
+}

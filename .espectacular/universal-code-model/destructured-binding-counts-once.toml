@@ -1,0 +1,9 @@
+id = "destructured-binding-counts-once"
+description = "A destructuring binding vector counts as one parameter, not per inner element."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_variadic_and_destructuring_bind_shapes"}]

@@ -2,9 +2,60 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-25
+
 ### Added
 
-- **Data-model checks: `excessive_fields` and `primitive_field` (add-data-model-checks)** — type definitions are now first-class on the universal model: a `TypeDefinition` entity (name, kind, span, fields) populated by optional `@type.*` tree-sitter captures. Captured: Rust `struct_item` → Struct; Go `struct_type` → Struct; Python `class_definition` → Class (`@dataclass` ships as Class); Java and C# `class_declaration`/`record_declaration` → Class/Record; JavaScript and TypeScript `class_declaration` → Class (TS also captures class `property_signature` fields); C `struct_specifier` → Struct (unions not captured); C++ `struct_specifier`/`class_specifier` → Struct/Class; Julia `struct_definition` → Struct. Zero captures (empty `type_definitions`, checks stay silent): Clojure (pinned tree-sitter-clojure 0.1.0 has no distinct `defrecord`/`deftype` nodes), Ruby (`attr_*` are method calls), R (S3/S4/R6 are function-based).
+- **Declarative language registry (948q, PRs #70–#72)** — adapters, extension
+  sets, and grammar wiring are data-driven from a registry instead of
+  hand-written structs; the 13 dead per-language adapter structs were deleted.
+  No CLI behavior change.
+- **Analyzer fidelity: Python and Clojure capture coverage (1v8k epic, PRs
+  #74–#80)** —
+  - Python: `match` arms as `match-case` branches (the `match` itself adds
+    none), comprehension `for` clauses as `loop` branches with each `if`
+    filter as `comprehension-filter` (guards single-count).
+  - Clojure: `cond`/`case`/`condp` as one `cond-clause` branch per
+    test/result pair, `recur` as a `recur` branch, exactly one `catch` per
+    catch clause (`try`/`finally` are not branches); nesting via block wrap
+    (branch/loop bodies nest; `let`/`binding`/`do`/`testing` do not);
+    parameters extracted from arity vectors (one per binding name, incl.
+    `&` rest as one `&` parameter); `deftest` forms become units of kind
+    `Test` with is-family (`is`, `is-not`, `are`, `assert`, `thrown?`,
+    `thrown-with-msg?`, `with-test`) assertion counts (`testing` is
+    consumed scaffolding; assertions inside still count); `defrecord`/
+    `deftype`/`defprotocol` members resolve to `Method`.
+  - Clojure multi-arity `defn` now produces **one unit per arity** (params
+    per arity, per-arity metrics) — previously it matched no pattern at all,
+    so multi-arity files analyzed as clean.
+  - Every language README documents its **Known unsupported metrics**,
+    classified as *not implemented yet* (ticket pointer) vs *not supported
+    by the grammar* (grammar + version + reason).
+
+### Fixed
+
+- **Phantom function units from failing query text predicates
+  (pretender-krou)** — tree-sitter-clojure 0.1.0 (ABI 14) under
+  tree-sitter 0.25 does not suppress query matches whose `#match?`/
+  `#eq?`/`#any-of?` predicate fails; failing structural matches replayed
+  stale capture buffers carrying `@function.definition`, so ordinary call
+  forms could appear as function units (repro: `(defn f [x] (inc x))` +
+  `(foo x [y] z)` produced a phantom unit named `x`; the shipped query
+  yielded 38 junk function captures on a 1-defn source — now 0). The engine
+  re-extracts text predicates from the query source per pattern slice and
+  re-validates every match at collection time.
+
+### Changed
+
+- **Reported outputs change for existing Clojure and Python code.** Clojure
+  files with multi-arity `defn` now yield units (previously absent — a
+  silent false green), control forms no longer pollute call counts, and
+  branch/nesting/params counts rise where the new captures apply. Python
+  code using `match` or comprehensions reports higher cyclomatic/cognitive.
+  Consumers pinning a `pretender-baseline.json` should re-baseline after
+  upgrading.
+
+- **Data-model checks: `excessive_fields` and `primitive_field` (add-data-model-checks)** — type definitions are now first-class on the universal model: a `TypeDefinition` entity (name, kind, span, fields) populated by optional `@type.*` tree-sitter captures. Captured: Rust `struct_item` → Struct; Go `struct_type` → Struct; Python `class_definition` → Class (`@dataclass` ships as Class); Java and C# `class_declaration`/`record_declaration` → Class/Record; JavaScript and TypeScript `class_declaration` → Class (TS also captures class `property_signature` fields); C `struct_specifier` → Struct (unions not captured); C++ `struct_specifier`/`class_specifier` → Struct/Class; Julia `struct_definition` → Struct. Zero captures (empty `type_defini…
   - **`excessive_fields`** flags a type with more than `excessive_fields_max` fields (default 10; `0` disables). The default 10 is provisional pending corpus calibration (pretender-uwz) — documented precedents range from 7 (pylint) to 20 (SonarQube).
   - **`primitive_field`** flags primitive-typed fields on captured types; **opt-in and experimental** (`primitive_field_check = false` by default), with a configurable `domain_patterns` list extending the domain-name patterns (case-insensitive substring match) used to flag candidate domain-typed names.
   - New config keys under `[thresholds.app]`: `excessive_fields_max` (integer, default 10), `primitive_field_check` (boolean, default false), and `domain_patterns` (string list, default empty — app-level only, not role-overridable).

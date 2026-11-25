@@ -1,0 +1,9 @@
+id = "python-comprehension-filters-are-branches"
+description = "Comprehension for clauses are loop branches and each trailing if filter is a comprehension-filter branch."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "python_comprehension_counts_for_clause_and_if_filters"}]
