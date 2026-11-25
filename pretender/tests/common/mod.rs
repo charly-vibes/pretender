@@ -53,8 +53,8 @@ pub fn git_init(dir: &Path) {
         .unwrap_or_else(|e| panic!("git config name: {e:?}"));
 }
 
-// consumed by check_test (.4.1); the allow silences dead-code in the other
-// test targets until the wave-3 split completes
+// consumed by check_test (.4.1) and init_test (.4.3); the allow silences
+// dead-code in the other test targets
 #[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn git_add(dir: &Path, path: &Path) {
     assert!(Command::new("git")
@@ -67,8 +67,8 @@ pub fn git_add(dir: &Path, path: &Path) {
         .success());
 }
 
-// consumed by check_test (.4.1); the allow silences dead-code in the other
-// test targets until the wave-3 split completes
+// consumed by check_test (.4.1) and init_test (.4.3); the allow silences
+// dead-code in the other test targets
 #[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn git_commit(dir: &Path, message: &str) {
     assert!(Command::new("git")
@@ -124,7 +124,6 @@ fn subcommand_in(name: &str, dir: &Path) -> Command {
     })
 }
 
-#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn pretender_cmd() -> Command {
     build(|_cmd| {})
 }
@@ -199,27 +198,28 @@ pub fn check_in(dir: &Path, path: &Path) -> Command {
 }
 
 // consumed by report_format_test (.4.2); the allow silences dead-code in the
-// other test targets, which stop consuming it once the wave-3 split completes
+// other test targets
 #[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn report_in(dir: &Path) -> Command {
     subcommand_in("report", dir)
 }
 
-// consumed by later split children (.4.2/.4.3); remove the allow then
+// consumed by tooling_test (.4.4); the allow silences dead-code in the other
+// test targets
 #[allow(dead_code)]
 pub fn ci_generate_in(dir: &Path, provider: &str) -> Command {
     with_args(subcommand_in("ci", dir), &["generate", provider])
 }
 
 // consumed by init_test (.4.3); the allow silences dead-code in the other
-// test targets until the wave-3 split completes
+// test targets
 #[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn hooks_in(dir: &Path, action: &str) -> Command {
     with_args(subcommand_in("hooks", dir), &[action])
 }
 
 // consumed by init_test (.4.3); the allow silences dead-code in the other
-// test targets until the wave-3 split completes
+// test targets
 #[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn hooks_in_named(dir: &Path, action_and_hook: (&str, &str)) -> Command {
     let (action, hook) = action_and_hook;
@@ -227,7 +227,7 @@ pub fn hooks_in_named(dir: &Path, action_and_hook: (&str, &str)) -> Command {
 }
 
 // consumed by init_test (.4.3); the allow silences dead-code in the other
-// test targets until the wave-3 split completes
+// test targets
 #[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn init_in(dir: &Path) -> Command {
     subcommand_in("init", dir)
