@@ -56,31 +56,56 @@ struct Fingerprint {
     branch_counts: Vec<(String, u32)>,
 }
 
+/// Per-block tallies gathered by `collect_stats`. `branches` is a
+/// `BTreeMap` so fingerprint output ordering needs no separate sort.
+#[derive(Default)]
+struct BlockStats {
+    call_count: u32,
+    callee_names: Vec<String>,
+    branch_counts: std::collections::BTreeMap<String, u32>,
+}
+
+impl BlockStats {
+    /// Fold one node into the tallies.
+    fn absorb(&mut self, child: &Node) {
+        match child {
+            Node::Call(call) => {
+                self.call_count += 1;
+                self.callee_names.push(call.callee.clone());
+            }
+            Node::Branch(branch) => {
+                let name = format!("{:?}", branch.kind);
+                *self.branch_counts.entry(name).or_insert(0) += 1;
+            }
+            _ => {}
+        }
+    }
+
+    /// Merge nested-block tallies into this one.
+    fn merge(&mut self, nested: BlockStats) {
+        self.call_count += nested.call_count;
+        self.callee_names.extend(nested.callee_names);
+        for (name, count) in nested.branch_counts {
+            *self.branch_counts.entry(name).or_insert(0) += count;
+        }
+    }
+}
+
 /// Build the structural fingerprint of a single unit.
 fn fingerprint_unit(unit: &CodeUnit) -> Fingerprint {
-    let mut call_count = 0u32;
-    let mut callee_names = Vec::new();
-    let assertion_count = unit.assertions;
-    let mut branch_counts: std::collections::HashMap<String, u32> =
-        std::collections::HashMap::new();
+    finish_fingerprint(collect_stats(&unit.body), unit.assertions)
+}
 
-    collect_stats(
-        &unit.body,
-        &mut call_count,
-        &mut callee_names,
-        &mut branch_counts,
-    );
-
-    let mut branch_counts_vec: Vec<(String, u32)> = branch_counts.into_iter().collect();
-    branch_counts_vec.sort_by(|a, b| a.0.cmp(&b.0));
-
-    callee_names.sort();
+/// Sort callee names and branch kinds so structurally identical units
+/// produce byte-identical fingerprints.
+fn finish_fingerprint(mut stats: BlockStats, assertion_count: u32) -> Fingerprint {
+    stats.callee_names.sort();
 
     Fingerprint {
-        call_count,
-        callee_names,
+        call_count: stats.call_count,
+        callee_names: stats.callee_names,
         assertion_count,
-        branch_counts: branch_counts_vec,
+        branch_counts: stats.branch_counts.into_iter().collect(),
     }
 }
 
@@ -97,18 +122,16 @@ fn build_fingerprints(units: &[CodeUnit]) -> Vec<(usize, Fingerprint)> {
 fn group_by_fingerprint(
     fingerprints: &[(usize, Fingerprint)],
 ) -> std::collections::HashMap<String, Vec<usize>> {
-    let mut groups: std::collections::HashMap<String, Vec<usize>> =
-        std::collections::HashMap::new();
-
-    for (idx, fp) in fingerprints {
-        let key = format!(
-            "{}-{}-{:?}-{:?}",
-            fp.call_count, fp.assertion_count, fp.callee_names, fp.branch_counts
-        );
-        groups.entry(key).or_default().push(*idx);
-    }
-
-    groups
+    fingerprints
+        .iter()
+        .fold(std::collections::HashMap::new(), |mut groups, (idx, fp)| {
+            let key = format!(
+                "{}-{}-{:?}-{:?}",
+                fp.call_count, fp.assertion_count, fp.callee_names, fp.branch_counts
+            );
+            groups.entry(key).or_default().push(*idx);
+            groups
+        })
 }
 
 /// Convert each group with at least `min_size` members into a cluster.
@@ -117,13 +140,11 @@ fn clusters_from_groups(
     units: &[CodeUnit],
     min_size: u32,
 ) -> Vec<LazyCluster> {
-    let mut clusters = Vec::new();
-    for (_key, indices) in groups {
-        if indices.len() >= min_size as usize {
-            clusters.push(cluster_from_indices(&indices, units));
-        }
-    }
-    clusters
+    groups
+        .into_values()
+        .filter(|indices| indices.len() >= min_size as usize)
+        .map(|indices| cluster_from_indices(&indices, units))
+        .collect()
 }
 
 /// Build one cluster from a group of unit indices (first member names the SUT).
@@ -145,185 +166,19 @@ fn cluster_from_indices(indices: &[usize], units: &[CodeUnit]) -> LazyCluster {
     }
 }
 
-fn collect_stats(
-    block: &crate::model::Block,
-    call_count: &mut u32,
-    callee_names: &mut Vec<String>,
-    branch_counts: &mut std::collections::HashMap<String, u32>,
-) {
-    for child in &block.children {
-        match child {
-            Node::Call(call) => {
-                *call_count += 1;
-                callee_names.push(call.callee.clone());
+/// Recursively tally calls and branch kinds over a block tree.
+fn collect_stats(block: &crate::model::Block) -> BlockStats {
+    block
+        .children
+        .iter()
+        .fold(BlockStats::default(), |mut acc, child| {
+            match child {
+                Node::NestedBlock(nested) => acc.merge(collect_stats(nested)),
+                node => acc.absorb(node),
             }
-            Node::Branch(branch) => {
-                let name = format!("{:?}", branch.kind);
-                *branch_counts.entry(name).or_insert(0) += 1;
-            }
-            Node::NestedBlock(nested) => {
-                collect_stats(nested, call_count, callee_names, branch_counts);
-            }
-            _ => {}
-        }
-    }
+            acc
+        })
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::model::{Block, Branch, BranchKind, CallSite, Node, Span};
-
-    fn make_call(callee: &str) -> Node {
-        Node::Call(CallSite {
-            callee: callee.to_string(),
-            span: Span {
-                start_line: 1,
-                end_line: 1,
-            },
-            smell_weight: 1.0,
-        })
-    }
-
-    fn make_branch(kind: BranchKind) -> Node {
-        Node::Branch(Branch {
-            kind,
-            span: Span {
-                start_line: 1,
-                end_line: 1,
-            },
-            nesting_at: 0,
-            sequence_id: None,
-            cyclomatic_weight: 1,
-            cognitive_weight: 1,
-        })
-    }
-
-    fn make_unit(name: &str, body_children: Vec<Node>, assertions: u32, start: u32) -> CodeUnit {
-        CodeUnit {
-            name: name.to_string(),
-            kind: crate::model::UnitKind::Function,
-            span: Span {
-                start_line: start,
-                end_line: start + 2,
-            },
-            parameters: vec![],
-            body: Block {
-                span: Span {
-                    start_line: start,
-                    end_line: start + 2,
-                },
-                nesting: 0,
-                children: body_children,
-            },
-            is_exported: false,
-            assertions,
-            parent_class: None,
-            has_test_attribute: false,
-        }
-    }
-
-    #[test]
-    fn detects_cluster_of_three() {
-        let units = vec![
-            make_unit(
-                "test_add_1",
-                vec![make_call("add"), make_branch(BranchKind::If)],
-                2,
-                1,
-            ),
-            make_unit(
-                "test_add_2",
-                vec![make_call("add"), make_branch(BranchKind::If)],
-                2,
-                5,
-            ),
-            make_unit(
-                "test_add_3",
-                vec![make_call("add"), make_branch(BranchKind::If)],
-                2,
-                9,
-            ),
-        ];
-        let clusters = detect(&units, 3);
-        assert_eq!(clusters.len(), 1);
-        assert_eq!(clusters[0].count, 3);
-    }
-
-    #[test]
-    fn different_structure_not_clustered() {
-        let units = vec![
-            make_unit(
-                "test_a",
-                vec![make_call("add"), make_branch(BranchKind::If)],
-                2,
-                1,
-            ),
-            make_unit(
-                "test_b",
-                vec![
-                    make_call("add"),
-                    make_branch(BranchKind::If),
-                    make_branch(BranchKind::Loop),
-                ],
-                2,
-                5,
-            ),
-            make_unit(
-                "test_c",
-                vec![make_call("add"), make_branch(BranchKind::If)],
-                2,
-                9,
-            ),
-        ];
-        let clusters = detect(&units, 3);
-        // Different branch structure -> no cluster of 3
-        assert!(clusters.is_empty() || clusters.iter().all(|c| c.count < 3));
-    }
-
-    #[test]
-    fn below_threshold_not_clustered() {
-        let units = vec![
-            make_unit("test_a", vec![make_call("add")], 1, 1),
-            make_unit("test_b", vec![make_call("add")], 1, 3),
-        ];
-        let clusters = detect(&units, 3);
-        assert!(clusters.is_empty());
-    }
-
-    #[test]
-    fn empty_units_no_clusters() {
-        let clusters = detect(&[], 3);
-        assert!(clusters.is_empty());
-    }
-
-    #[test]
-    fn min_size_two_detects_pair() {
-        let units = vec![
-            make_unit("test_a", vec![make_call("add")], 1, 1),
-            make_unit("test_b", vec![make_call("add")], 1, 3),
-        ];
-        let clusters = detect(&units, 2);
-        assert_eq!(clusters.len(), 1);
-        assert_eq!(clusters[0].count, 2);
-    }
-
-    #[test]
-    fn cluster_ordering_pinned() {
-        // Pins detector output ordering: clusters are sorted by member count
-        // descending, and member lines follow unit order within a cluster.
-        let units = vec![
-            make_unit("test_add_1", vec![make_call("add")], 1, 1),
-            make_unit("test_add_2", vec![make_call("add")], 1, 5),
-            make_unit("test_add_3", vec![make_call("add")], 1, 9),
-            make_unit("test_sub_1", vec![make_call("sub")], 1, 13),
-            make_unit("test_sub_2", vec![make_call("sub")], 1, 17),
-        ];
-        let clusters = detect(&units, 2);
-        assert_eq!(clusters.len(), 2);
-        assert_eq!(clusters[0].count, 3);
-        assert_eq!(clusters[0].lines, vec![1, 5, 9]);
-        assert_eq!(clusters[1].count, 2);
-        assert_eq!(clusters[1].lines, vec![13, 17]);
-    }
-}
+mod tests;

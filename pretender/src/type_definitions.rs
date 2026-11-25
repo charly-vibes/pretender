@@ -109,10 +109,21 @@ fn bind_split_names(
     source: &[u8],
 ) {
     for name_node in names {
-        if let Some(idx) = innermost_enclosing_type(defs, *name_node) {
-            if built[idx].name.is_empty() {
-                fill_missing_name(&mut built[idx], *name_node, source);
-            }
+        fill_split_name(*name_node, defs, built, source);
+    }
+}
+
+/// Bind one split-pattern `@type.name` capture to the innermost enclosing
+/// definition, filling only definitions whose in-match name was absent.
+fn fill_split_name(
+    name_node: tree_sitter::Node,
+    defs: &[TypeDefCapture],
+    built: &mut [TypeDefinition],
+    source: &[u8],
+) {
+    if let Some(idx) = innermost_enclosing_type(defs, name_node) {
+        if built[idx].name.is_empty() {
+            fill_missing_name(&mut built[idx], name_node, source);
         }
     }
 }
@@ -155,11 +166,8 @@ fn field_entry(
     if field_inside_uncaptured_type(field.node, defs[owner].node, captured_def_ids) {
         return None;
     }
-    Some((
-        owner,
-        field.node.start_byte(),
-        captured_field(&field, name, source),
-    ))
+    let entry = captured_field(&field, name, source);
+    Some((owner, field.node.start_byte(), entry))
 }
 
 /// Build the `Field` model entry for one captured type member.
