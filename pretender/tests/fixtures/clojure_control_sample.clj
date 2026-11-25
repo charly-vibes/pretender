@@ -35,3 +35,20 @@
   (if (pos? a)
     (let [b (inc a)]
       (println b))))
+
+;; expected_cyclomatic: 4, expected_nesting: 3, expected_cognitive: 6
+;; doseq -> when -> if: each branch-bearing body wraps one level deeper
+;; (proposal D4); mirrors the audit's Python-deep row (4/6/3).
+(defn deeply-nested [acc xss]
+  (doseq [xs xss]
+    (when (seq xs)
+      (if (pos? (count xs))
+        (swap! acc + (count xs))
+        (reset! acc 0)))))
+
+;; expected_nesting: 1 — a single conditional body nests once, like a
+;; Python if-block.
+(defn branchy [acc a]
+  (if (pos? a)
+    (swap! acc inc)
+    (reset! acc 0)))

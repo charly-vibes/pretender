@@ -67,8 +67,9 @@ impl Parser for GenericParser {
             self.record.language.clone(),
             self.record.query,
             &WeightMaps {
-                branch: &manifest.branches,
-                call: &manifest.smell_weights,
+                branch: &manifest.metric_sections.branches,
+                call: &manifest.metric_sections.smell_weights,
+                nesting: &manifest.metric_sections.nesting,
             },
         )?;
         engine.parse(path, source)
@@ -259,8 +260,9 @@ mod tests {
                 record.language.clone(),
                 record.query,
                 &WeightMaps {
-                    branch: &manifest.branches,
-                    call: &manifest.smell_weights,
+                    branch: &manifest.metric_sections.branches,
+                    call: &manifest.metric_sections.smell_weights,
+                    nesting: &manifest.metric_sections.nesting,
                 },
             );
             assert!(

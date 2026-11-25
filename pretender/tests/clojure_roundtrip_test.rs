@@ -11,7 +11,7 @@
 //! directory so the pin rides the same bytes the production registry uses.
 
 use pretender::engine::QueryEngine;
-use pretender::metrics::{abc, cyclomatic};
+use pretender::metrics::{abc, cognitive, cyclomatic, nesting_max};
 use pretender::model::{CodeUnit, Language, Module, Parser};
 use pretender::registry::{lookup, GenericParser};
 use std::path::Path;
@@ -68,7 +68,9 @@ fn param_names(unit: &CodeUnit) -> Vec<&str> {
 }
 
 fn parse_clojure_source(source: &'static str) -> Module {
-    let (module, diags) = clojure_engine()
+    let record = lookup("clj").unwrap_or_else(|| panic!("clj must be registered"));
+    let parser = GenericParser { record };
+    let (module, diags) = parser
         .parse(Path::new("clojure_params.clj"), source)
         .unwrap_or_else(|e| panic!("clojure source must parse: {e:?}"));
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
@@ -166,6 +168,43 @@ fn clojure_control_forms_leave_call_count() {
         "abc was {}",
         abc(unit)
     );
+}
+
+/// D4 nesting: each branch-bearing body wraps one level deeper.
+/// doseq -> when -> if reaches depth 3, matching the audit's Python-deep
+/// row (cyclomatic 4, cognitive 6, nesting_max 3).
+#[test]
+fn clojure_deeply_nested_branches_nest_three_levels() {
+    let module = control_module();
+    let unit = find_unit(&module, "deeply-nested");
+    assert_eq!(cyclomatic(unit), 4);
+    assert_eq!(nesting_max(unit), 3);
+    assert_eq!(cognitive(unit), 6);
+}
+
+/// A single conditional body nests exactly once, like a Python if-block.
+#[test]
+fn clojure_single_conditional_nests_once() {
+    let module = control_module();
+    let unit = find_unit(&module, "branchy");
+    assert_eq!(nesting_max(unit), 1);
+}
+
+/// D4: consumed forms never add a level. complex-func's root branches
+/// sit at depth 0 (the wrapping `let` adds nothing) while their bodies
+/// nest — the same shape in Python also reports nesting_max 2,
+/// cognitive 6 (if1@0 + if2@1 + doseq@0 + if3@1).
+#[test]
+fn clojure_let_bodies_stay_flat() {
+    let module = parse_clojure_source(SAMPLE_SOURCE);
+    let unit = find_unit(&module, "complex-func");
+    assert_eq!(nesting_max(unit), 2);
+    assert_eq!(cognitive(unit), 6);
+    // `g` (control fixture): the if wraps once; the let inside its body
+    // adds no level.
+    let control = control_module();
+    let g = find_unit(&control, "g");
+    assert_eq!(nesting_max(g), 1);
 }
 
 /// D6 semantics pin (verified at HEAD), through the production registry

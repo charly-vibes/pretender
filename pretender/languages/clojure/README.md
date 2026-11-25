@@ -34,6 +34,15 @@ the text of the first `sym_lit` child (e.g., `defn`, `if`, `cond`).
   contributes no C-count (ABC de-inflation).
 - **Logical operators** (`and`, `or`) capture one branch each.
 
+### Nesting
+
+Branch-bearing forms (`if`-family, `cond`/`case`/`condp`, `loop`/`for`/
+`doseq`, `recur`, `catch`) wrap their body forms one level deeper as a
+nested block — the adapter opts in via `[nesting] wrap_branch_bodies`,
+mirroring Python's grammar-level `block` nodes. Consumed forms (`let`,
+`binding`, `do`, `try`, `finally`) add no level; logical operators
+(`and`/`or`) are expressions and never wrap.
+
 ### Smell weights
 
 `[smell_weights]` (e.g. `swap!` 1.5) currently do **not** scale the ABC

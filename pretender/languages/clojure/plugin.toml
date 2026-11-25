@@ -29,6 +29,9 @@ patterns = [
   "^thrown-with-msg\\?",
 ]
 
+[nesting]
+wrap_branch_bodies = true
+
 [smell_weights]
 "eval"       = 5.0
 "read-string" = 4.0

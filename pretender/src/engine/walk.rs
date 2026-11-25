@@ -18,8 +18,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::metric_application::{BranchCaptureSpec, CaptureMap};
-use crate::model::{Block, Branch, BranchKind, CallSite, Span};
+use super::clause::{clause_or_branch_nodes, named_forms};
+use crate::metric_application::CaptureMap;
+use crate::model::{Block, CallSite, Span};
 
 /// Shared immutable context threaded through the block walk below:
 /// everything the recursive visitors need except the mutable output list.
@@ -27,6 +28,8 @@ use crate::model::{Block, Branch, BranchKind, CallSite, Span};
 pub(crate) struct WalkCtx<'a> {
     pub(crate) captures: &'a CaptureMap,
     pub(crate) call_weights: &'a BTreeMap<String, f64>,
+    /// D4: branch-bearing forms wrap their body one level deeper.
+    pub(crate) wrap_branch_bodies: bool,
     pub(crate) nesting: u32,
 }
 
@@ -62,8 +65,53 @@ fn visit_child(
         return false;
     };
     out.extend(nodes);
+    if let Some(&spec) = ctx.captures.branches.get(&child.id()) {
+        if ctx.wrap_branch_bodies && spec.kind.nests_body() {
+            wrap_branch_body(ctx, child, out);
+            return true;
+        }
+    }
     collect_nested_blocks(ctx, child, out);
     true
+}
+
+/// D4: the branch-bearing form's body forms (its named children after
+/// the leading symbol) wrap one level deeper as a single
+/// [`crate::model::Node::NestedBlock`], mirroring Python's grammar-level
+/// `block` nodes. The adapter opts in via
+/// `[nesting] wrap_branch_bodies`; consumed forms (let/do/...) never
+/// take this path and stay at the same level.
+fn wrap_branch_body(ctx: &WalkCtx, form: tree_sitter::Node, out: &mut Vec<crate::model::Node>) {
+    let forms = named_forms(form);
+    let body = &forms[usize::min(1, forms.len())..];
+    if body.is_empty() {
+        return;
+    }
+    let inner = WalkCtx {
+        nesting: ctx.nesting + 1,
+        ..*ctx
+    };
+    let children = visit_body_forms(&inner, form, body);
+    out.push(crate::model::Node::NestedBlock(crate::model::Block {
+        span: node_span(form),
+        nesting: inner.nesting,
+        children,
+    }));
+}
+
+/// `form`'s body forms visited one level deeper, in traversal order.
+fn visit_body_forms(
+    inner: &WalkCtx,
+    form: tree_sitter::Node,
+    body: &[tree_sitter::Node],
+) -> Vec<crate::model::Node> {
+    let mut children = Vec::new();
+    for f in body {
+        if !visit_child(inner, form, *f, &mut children) {
+            walk_block(inner, *f, &mut children);
+        }
+    }
+    children
 }
 
 /// The captured model nodes for `child`, if any capture claims it:
@@ -88,94 +136,6 @@ fn captured_node(
         .calls
         .get(&child.id())
         .map(|callee| vec![crate::model::Node::Call(call_site(ctx, child, callee))])
-}
-
-/// Clause kinds emit one branch per test/result pair; every other kind
-/// emits its single branch node.
-fn clause_or_branch_nodes(
-    ctx: &WalkCtx,
-    parent: tree_sitter::Node,
-    child: tree_sitter::Node,
-    spec: BranchCaptureSpec,
-) -> Vec<crate::model::Node> {
-    match spec.kind {
-        BranchKind::CondClause | BranchKind::SwitchCase => clause_branch_nodes(ctx, child, spec),
-        _ => vec![crate::model::Node::Branch(branch_node(
-            ctx, parent, child, spec,
-        ))],
-    }
-}
-
-/// One branch per test/result pair: pairs start after the form's head
-/// (leading symbol plus any captured dispatch heads) and the test sits
-/// at every second named form from there.
-fn clause_branch_nodes(
-    ctx: &WalkCtx,
-    form: tree_sitter::Node,
-    spec: BranchCaptureSpec,
-) -> Vec<crate::model::Node> {
-    let forms = named_forms(form);
-    let head = clause_head(ctx, &forms).min(forms.len());
-    // chunks drop a dangling trailing expression: a clause needs
-    // both a test and a result (D7 — `(case e a 1 b 2 3)` has 2 pairs).
-    forms[head..]
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| crate::model::Node::Branch(clause_branch(ctx, pair[0], spec)))
-        .collect()
-}
-
-/// Named forms of a clause form; comments are excluded because they
-/// never carry clause semantics in any grammar.
-fn named_forms(form: tree_sitter::Node) -> Vec<tree_sitter::Node> {
-    (0..form.named_child_count())
-        .filter_map(|i| form.named_child(i))
-        .filter(|c| c.kind() != "comment")
-        .collect()
-}
-
-/// Head length: the leading symbol plus the form's dispatch-head
-/// children (`@clause.dispatch`) — `case`'s dispatch expression, or
-/// `condp`'s predicate and value.
-fn clause_head(ctx: &WalkCtx, forms: &[tree_sitter::Node]) -> usize {
-    1 + forms
-        .iter()
-        .filter(|c| ctx.captures.dispatch_heads.contains(&c.id()))
-        .count()
-}
-
-fn clause_branch(ctx: &WalkCtx, test: tree_sitter::Node, spec: BranchCaptureSpec) -> Branch {
-    Branch {
-        kind: spec.kind,
-        span: node_span(test),
-        nesting_at: ctx.nesting,
-        sequence_id: None,
-        cyclomatic_weight: spec.cyclomatic_weight,
-        cognitive_weight: spec.cognitive_weight,
-    }
-}
-
-/// A weighted branch node; logical operators share the parent's sequence
-/// id so `a and b and c` reports as one sequence.
-fn branch_node(
-    ctx: &WalkCtx,
-    parent: tree_sitter::Node,
-    child: tree_sitter::Node,
-    spec: BranchCaptureSpec,
-) -> Branch {
-    let sequence_id = match spec.kind {
-        BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
-        _ => None,
-    };
-    Branch {
-        kind: spec.kind,
-        span: node_span(child),
-        nesting_at: ctx.nesting,
-        sequence_id,
-        cyclomatic_weight: spec.cyclomatic_weight,
-        cognitive_weight: spec.cognitive_weight,
-    }
 }
 
 /// A call site with the adapter's smell weight for the callee, or 1.0.

@@ -200,15 +200,15 @@ fn every_builtin_manifest_parses_and_matches_the_registry() {
         );
 
         assert!(
-            !manifest.branches.is_empty(),
+            !manifest.metric_sections.branches.is_empty(),
             "branch weights drive cognitive/cyclomatic"
         );
         assert!(
-            !manifest.smell_weights.is_empty(),
+            !manifest.metric_sections.smell_weights.is_empty(),
             "smell weights drive score"
         );
         assert!(
-            !manifest.assertions.patterns.is_empty(),
+            !manifest.metric_sections.assertions.patterns.is_empty(),
             "assertion patterns drive the assertion count"
         );
     }

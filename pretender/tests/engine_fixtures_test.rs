@@ -21,6 +21,7 @@ use pretender::engine::{QueryEngine, WeightMaps};
 use pretender::metrics::{abc, cognitive, CyclomaticComplexity};
 use pretender::model::*;
 use pretender::plugin::BranchWeights;
+use pretender::plugin::NestingConfig;
 
 fn python_language() -> tree_sitter::Language {
     tree_sitter_python::LANGUAGE.into()
@@ -44,6 +45,7 @@ fn weighted_engine(weights: BTreeMap<String, BranchWeights>) -> QueryEngine {
         &WeightMaps {
             branch: &weights,
             call: &empty_calls,
+            nesting: &NestingConfig::default(),
         },
     )
     .unwrap_or_else(|e| panic!("engine: {e:?}"))

@@ -67,12 +67,25 @@
       "units": [
         {
           "metrics": {
+            "abc": 3.1622776601683795,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 4,
+            "nesting_max": 1,
+            "params": 2
+          },
+          "name": "branchy",
+          "violations": []
+        },
+        {
+          "metrics": {
             "abc": 2.0,
             "assertions": 0,
             "cognitive": 2,
             "cyclomatic": 3,
             "function_lines": 5,
-            "nesting_max": 0,
+            "nesting_max": 1,
             "params": 1
           },
           "name": "caser",
@@ -85,7 +98,7 @@
             "cognitive": 1,
             "cyclomatic": 2,
             "function_lines": 5,
-            "nesting_max": 0,
+            "nesting_max": 1,
             "params": 1
           },
           "name": "catcher",
@@ -98,7 +111,7 @@
             "cognitive": 2,
             "cyclomatic": 3,
             "function_lines": 5,
-            "nesting_max": 0,
+            "nesting_max": 1,
             "params": 1
           },
           "name": "condpr",
@@ -111,10 +124,23 @@
             "cognitive": 3,
             "cyclomatic": 4,
             "function_lines": 5,
-            "nesting_max": 0,
+            "nesting_max": 1,
             "params": 1
           },
           "name": "condy",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 6.708203932499369,
+            "assertions": 0,
+            "cognitive": 6,
+            "cyclomatic": 4,
+            "function_lines": 6,
+            "nesting_max": 3,
+            "params": 2
+          },
+          "name": "deeply-nested",
           "violations": []
         },
         {
@@ -124,7 +150,7 @@
             "cognitive": 1,
             "cyclomatic": 2,
             "function_lines": 4,
-            "nesting_max": 0,
+            "nesting_max": 1,
             "params": 1
           },
           "name": "g",
@@ -134,10 +160,10 @@
           "metrics": {
             "abc": 3.605551275463989,
             "assertions": 0,
-            "cognitive": 3,
+            "cognitive": 6,
             "cyclomatic": 4,
             "function_lines": 5,
-            "nesting_max": 0,
+            "nesting_max": 3,
             "params": 1
           },
           "name": "looper",
@@ -196,10 +222,10 @@
           "metrics": {
             "abc": 7.211102550927978,
             "assertions": 0,
-            "cognitive": 4,
+            "cognitive": 6,
             "cyclomatic": 5,
             "function_lines": 9,
-            "nesting_max": 0,
+            "nesting_max": 2,
             "params": 3
           },
           "name": "complex-func",
@@ -225,7 +251,7 @@
             "cognitive": 1,
             "cyclomatic": 2,
             "function_lines": 4,
-            "nesting_max": 0,
+            "nesting_max": 1,
             "params": 1
           },
           "name": "with-branch",

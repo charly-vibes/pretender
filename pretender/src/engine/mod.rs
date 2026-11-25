@@ -20,8 +20,9 @@ use std::collections::BTreeMap;
 
 use crate::metric_application::BranchCaptureSpec;
 use crate::model::Language;
-use crate::plugin::BranchWeights;
+use crate::plugin::{BranchWeights, NestingConfig};
 
+mod clause;
 mod walk;
 
 pub(crate) use walk::{build_block, count_captured_nodes, has_test_marker, node_span, WalkCtx};
@@ -32,6 +33,8 @@ pub struct QueryEngine {
     pub(crate) query: tree_sitter::Query,
     pub(crate) slots: CaptureSlots,
     pub(crate) call_weights: BTreeMap<String, f64>,
+    /// D4: adapter opted into branch-body nesting (Clojure).
+    pub(crate) wrap_branch_bodies: bool,
 }
 
 /// Every capture index one compiled query provides, grouped by role:
@@ -140,4 +143,6 @@ pub struct WeightMaps<'a> {
     pub branch: &'a BTreeMap<String, BranchWeights>,
     /// Per-callee smell-weight overrides.
     pub call: &'a BTreeMap<String, f64>,
+    /// Nesting-walk configuration (D4 body wrapping opt-in).
+    pub nesting: &'a NestingConfig,
 }

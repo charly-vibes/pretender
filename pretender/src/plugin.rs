@@ -16,12 +16,32 @@ pub struct PluginManifest {
     pub shebangs: Vec<String>,
     pub tree_sitter: TreeSitterSource,
     pub query: String,
+    /// Flattened so every metric table stays top-level in `plugin.toml`.
+    #[serde(flatten, default)]
+    pub metric_sections: MetricSections,
+}
+
+/// Adapter metric weight/behavior sections: branch weights, assertion
+/// capture config, per-callee smell weights, and the nesting-walk flag.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct MetricSections {
     #[serde(default)]
     pub branches: BTreeMap<String, BranchWeights>,
     #[serde(default)]
     pub assertions: Assertions,
     #[serde(default)]
     pub smell_weights: BTreeMap<String, f64>,
+    #[serde(default)]
+    pub nesting: NestingConfig,
+}
+
+/// Adapter nesting-walk configuration (proposal D4).
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct NestingConfig {
+    /// Branch-bearing forms wrap their body forms one level deeper
+    /// (Clojure's list forms have no grammar-level `block` node).
+    #[serde(default)]
+    pub wrap_branch_bodies: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -73,6 +93,7 @@ mod tests {
     fn python_manifest_has_branch_weights() {
         let manifest = PluginManifest::from_toml(PYTHON_MANIFEST).unwrap();
         let if_weight = manifest
+            .metric_sections
             .branches
             .get("@branch.if")
             .expect("@branch.if entry present");
@@ -83,8 +104,9 @@ mod tests {
     #[test]
     fn python_manifest_has_assertion_patterns() {
         let manifest = PluginManifest::from_toml(PYTHON_MANIFEST).unwrap();
-        assert!(!manifest.assertions.patterns.is_empty());
+        assert!(!manifest.metric_sections.assertions.patterns.is_empty());
         assert!(manifest
+            .metric_sections
             .assertions
             .patterns
             .iter()
@@ -118,7 +140,7 @@ extensions = [".x"]
             let manifest = record.manifest().expect("builtin manifest must parse");
             for capture in branch_capture_names(record.query) {
                 assert!(
-                    manifest.branches.contains_key(&capture),
+                    manifest.metric_sections.branches.contains_key(&capture),
                     "{:?}: query capture {capture} has no [branches] manifest entry",
                     record.language
                 );
