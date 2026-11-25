@@ -20,7 +20,11 @@ use crate::model::{CodeUnit, Diagnostic, DiagnosticSeverity, Import, Module};
 use crate::type_definitions::{TypeDefCapture, TypeFieldCapture};
 
 mod assemble;
+mod extract;
 mod pending;
+mod predicates;
+
+use predicates::PredicateChecks;
 
 impl QueryEngine {
     /// Parse `source` into a [`Module`] plus any parse diagnostics.
@@ -78,6 +82,8 @@ impl QueryEngine {
                 }
                 fc
             })
+        // Zero derives from FunctionCapture::default; every real
+        // pattern index is assigned right after by the caller.
     }
 
     /// One pass over the query matches, in match order.
@@ -89,14 +95,35 @@ impl QueryEngine {
     ) -> CollectedCaptures<'a> {
         let mut query_cursor = tree_sitter::QueryCursor::new();
         let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
+        let checks = PredicateChecks::extract(&self.query, &self.query_source);
+        let scan = MatchScan {
+            checks: &checks,
+            source_bytes,
+        };
         while let Some(m) = query_matches.next() {
-            if m.captures.iter().any(|c| c.index == self.slots.fn_def_idx) {
-                out.functions.push(self.function_capture(m));
-            } else {
-                self.collect_non_function_match(m, source_bytes, &mut out);
-            }
+            self.absorb_match(m, &scan, &mut out);
         }
         out
+    }
+
+    /// Absorb one query match: re-validate its predicates, then route
+    /// function vs non-function captures.
+    fn absorb_match<'a>(
+        &self,
+        m: &tree_sitter::QueryMatch<'_, 'a>,
+        scan: &MatchScan<'a, '_>,
+        out: &mut CollectedCaptures<'a>,
+    ) {
+        if !scan.checks.pass(m, scan.source_bytes) {
+            return;
+        }
+        if m.captures.iter().any(|c| c.index == self.slots.fn_def_idx) {
+            let mut fc = self.function_capture(m);
+            fc.pattern_index = m.pattern_index;
+            out.functions.push(fc);
+        } else {
+            self.collect_non_function_match(m, scan.source_bytes, out);
+        }
     }
 
     /// Collect a non-function match: metric captures go straight into `out`.
@@ -154,4 +181,11 @@ pub(super) struct CollectedCaptures<'a> {
     pub(super) type_defs: Vec<TypeDefCapture<'a>>,
     pub(super) type_names: Vec<tree_sitter::Node<'a>>,
     pub(super) type_fields: Vec<TypeFieldCapture<'a>>,
+}
+
+/// Match-absorption context for one query pass: the extracted predicate
+/// checks and the source they are validated against.
+struct MatchScan<'a, 'q> {
+    checks: &'q PredicateChecks,
+    source_bytes: &'a [u8],
 }
