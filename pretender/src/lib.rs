@@ -30,6 +30,7 @@ pub mod inheritance_depth;
 pub mod java;
 pub mod javascript;
 pub mod julia;
+pub(crate) mod metric_application;
 pub mod metrics;
 pub mod mock_detector;
 pub mod model;

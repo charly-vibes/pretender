@@ -10,7 +10,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use streaming_iterator::StreamingIterator;
 
-use crate::engine::{node_span, CaptureMap, FunctionCapture, QueryEngine};
+use crate::engine::{node_span, QueryEngine};
+use crate::metric_application::{CaptureMap, FunctionCapture};
 use crate::model::{
     CodeUnit, Diagnostic, DiagnosticSeverity, Import, Language, Module, Span, TypeDefinition,
 };
@@ -30,8 +31,7 @@ impl QueryEngine {
         }
 
         let source_bytes = source.as_bytes();
-        let captures =
-            self.collect_query_captures(root, source_bytes, CollectedCaptures::default());
+        let captures = self.collect_query_captures(root, source_bytes, CollectedCaptures::default());
         let (units, diagnostics) = self.build_units(&captures, source_bytes);
         let type_definitions = build_type_definitions(
             TypeCaptures {
@@ -66,13 +66,13 @@ impl QueryEngine {
         m.captures
             .iter()
             .fold(FunctionCapture::default(), |mut fc, capture| {
-                if capture.index == self.fn_def_idx {
+                if capture.index == self.slots.fn_def_idx {
                     fc.def_node = Some(capture.node);
-                } else if capture.index == self.fn_name_idx {
+                } else if capture.index == self.slots.fn_name_idx {
                     fc.name_node = Some(capture.node);
-                } else if capture.index == self.fn_params_idx {
+                } else if capture.index == self.slots.fn_params_idx {
                     fc.params_node = Some(capture.node);
-                } else if capture.index == self.fn_body_idx {
+                } else if capture.index == self.slots.fn_body_idx {
                     fc.body_node = Some(capture.node);
                 }
                 fc
@@ -89,7 +89,7 @@ impl QueryEngine {
         let mut query_cursor = tree_sitter::QueryCursor::new();
         let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
         while let Some(m) = query_matches.next() {
-            if m.captures.iter().any(|c| c.index == self.fn_def_idx) {
+            if m.captures.iter().any(|c| c.index == self.slots.fn_def_idx) {
                 out.functions.push(self.function_capture(m));
             } else {
                 self.collect_non_function_match(m, source_bytes, &mut out);
@@ -128,23 +128,20 @@ impl QueryEngine {
         captures: &CollectedCaptures<'a>,
         source_bytes: &[u8],
     ) -> (Vec<CodeUnit>, Vec<Diagnostic>) {
-        captures
-            .functions
-            .iter()
-            .fold(
-                (Vec::new(), Vec::new()),
-                |(mut units, mut diagnostics), fc| {
-                    match self.build_code_unit(fc, source_bytes, &captures.map) {
-                        Ok(unit) => units.push(unit),
-                        Err(e) => diagnostics.push(Diagnostic {
-                            message: format!("Failed to build CodeUnit: {e}"),
-                            span: fc.def_node.map(node_span),
-                            severity: DiagnosticSeverity::Error,
-                        }),
-                    }
-                    (units, diagnostics)
-                },
-            )
+        captures.functions.iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut units, mut diagnostics), fc| {
+                match self.build_code_unit(fc, source_bytes, &captures.map) {
+                    Ok(unit) => units.push(unit),
+                    Err(e) => diagnostics.push(Diagnostic {
+                        message: format!("Failed to build CodeUnit: {e}"),
+                        span: fc.def_node.map(node_span),
+                        severity: DiagnosticSeverity::Error,
+                    }),
+                }
+                (units, diagnostics)
+            },
+        )
     }
 }
 
@@ -208,9 +205,9 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
     ) -> bool {
         if let Some(spec) = self.engine.branch_capture_for_index(capture.index) {
             map.branches.insert(capture.node.id(), spec);
-        } else if self.engine.assert_capture_indices.contains(&capture.index) {
+        } else if self.engine.slots.assert_capture_indices.contains(&capture.index) {
             map.assertions.insert(capture.node.id());
-        } else if Some(capture.index) == self.engine.assign_idx {
+        } else if Some(capture.index) == self.engine.slots.assign_idx {
             map.assignments.insert(capture.node.id());
         } else {
             return false;
@@ -220,13 +217,13 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
 
     /// Call and call.callee captures accumulate into the pending call site.
     fn dispatch_call(&mut self, capture: &tree_sitter::QueryCapture<'a>) -> bool {
-        if Some(capture.index) == self.engine.call_idx {
+        if Some(capture.index) == self.engine.slots.call_idx {
             let id = capture.node.id();
             match &mut self.pending_call {
                 Some((existing_id, _)) if *existing_id == id => {}
                 _ => self.pending_call = Some((id, None)),
             }
-        } else if Some(capture.index) == self.engine.call_callee_idx {
+        } else if Some(capture.index) == self.engine.slots.call_callee_idx {
             let callee = capture.node.utf8_text(self.source).ok().map(str::to_string);
             if let Some((_, slot)) = self.pending_call.as_mut() {
                 *slot = callee;
@@ -243,7 +240,7 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
         out: &mut CollectedCaptures<'a>,
         capture: &tree_sitter::QueryCapture<'a>,
     ) -> bool {
-        if Some(capture.index) == self.engine.import_idx {
+        if Some(capture.index) == self.engine.slots.import_idx {
             if let Ok(text) = capture.node.utf8_text(self.source) {
                 out.imports.push(Import {
                     module: text.to_string(),
@@ -252,15 +249,15 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
                     span: node_span(capture.node),
                 });
             }
-        } else if Some(capture.index) == self.engine.type_def_idx {
+        } else if Some(capture.index) == self.engine.slots.type_def_idx {
             self.type_def_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.type_name_idx {
+        } else if Some(capture.index) == self.engine.slots.type_name_idx {
             self.type_name_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.type_field_idx {
+        } else if Some(capture.index) == self.engine.slots.type_field_idx {
             self.type_field_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.type_field_name_idx {
+        } else if Some(capture.index) == self.engine.slots.type_field_name_idx {
             self.type_field_name_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.type_field_type_idx {
+        } else if Some(capture.index) == self.engine.slots.type_field_type_idx {
             self.type_field_type_node = Some(capture.node);
         } else {
             return false;
@@ -351,10 +348,7 @@ fn parse_error_diagnostic(path: &Path, root: tree_sitter::Node) -> Diagnostic {
 /// Otherwise if any named non-comment leaf touches the line, it is a code line.
 fn classify_lines(root: tree_sitter::Node, lines_total: u32) -> (u32, u32) {
     let (code, comment) = walk_classify(HashSet::new(), HashSet::new(), root);
-    (
-        code.len() as u32,
-        comment.iter().filter(|&&l| l <= lines_total).count() as u32,
-    )
+    (code.len() as u32, comment.iter().filter(|&&l| l <= lines_total).count() as u32)
 }
 
 /// Depth-first walk over the whole tree, classifying every leaf's lines.

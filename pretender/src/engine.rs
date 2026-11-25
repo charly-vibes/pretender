@@ -1,15 +1,22 @@
 use anyhow::{Context, Result};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use crate::model::{
-    Block, Branch, BranchKind, CallSite, CodeUnit, Language, Parameter, Span, UnitKind,
-};
+use crate::metric_application::{BranchCaptureSpec, CaptureMap};
+use crate::model::{Block, Branch, BranchKind, CallSite, Language, Span};
 use crate::plugin::BranchWeights;
 
 pub struct QueryEngine {
     pub(crate) language: tree_sitter::Language,
     pub(crate) lang_kind: Language,
     pub(crate) query: tree_sitter::Query,
+    pub(crate) slots: CaptureSlots,
+    pub(crate) call_weights: BTreeMap<String, f64>,
+}
+
+/// Every capture index one compiled query provides: the four required
+/// function captures, the weighted branch captures, the assertion capture
+/// ids, and the optional call/import/type captures (D2).
+pub(crate) struct CaptureSlots {
     pub(crate) fn_def_idx: u32,
     pub(crate) fn_name_idx: u32,
     pub(crate) fn_params_idx: u32,
@@ -25,14 +32,54 @@ pub struct QueryEngine {
     pub(crate) type_field_idx: Option<u32>,
     pub(crate) type_field_name_idx: Option<u32>,
     pub(crate) type_field_type_idx: Option<u32>,
-    pub(crate) call_weights: BTreeMap<String, f64>,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct BranchCaptureSpec {
-    kind: BranchKind,
-    cyclomatic_weight: u32,
-    cognitive_weight: u32,
+/// Compile `query_source` for `language`.
+pub(crate) fn compile_query(
+    language: &tree_sitter::Language,
+    query_source: &str,
+) -> Result<tree_sitter::Query> {
+    tree_sitter::Query::new(language, query_source)
+        .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))
+}
+
+fn require_capture_idx(query: &tree_sitter::Query, name: &str) -> Result<u32> {
+    query
+        .capture_index_for_name(name)
+        .with_context(|| format!("query missing @{name} capture"))
+}
+
+/// Resolve every capture index of `query`, carrying `branch_captures`
+/// (already weight-resolved by the metric layer) into the slots.
+pub(crate) fn index_capture_slots(
+    query: &tree_sitter::Query,
+    branch_captures: Vec<(u32, BranchCaptureSpec)>,
+) -> Result<CaptureSlots> {
+    Ok(CaptureSlots {
+        fn_def_idx: require_capture_idx(query, "function.definition")?,
+        fn_name_idx: require_capture_idx(query, "function.name")?,
+        fn_params_idx: require_capture_idx(query, "function.parameters")?,
+        fn_body_idx: require_capture_idx(query, "function.body")?,
+        branch_captures,
+        assert_capture_indices: query
+            .capture_names()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, name)| name.starts_with("assert.").then_some(idx as u32))
+            .collect(),
+        call_idx: query.capture_index_for_name("call"),
+        call_callee_idx: query.capture_index_for_name("call.callee"),
+        assign_idx: query.capture_index_for_name("assign"),
+        import_idx: query.capture_index_for_name("import"),
+        // Type captures are optional (D2): their absence leaves
+        // type_definitions empty instead of failing the query,
+        // mirroring how @import is handled.
+        type_def_idx: query.capture_index_for_name("type.definition"),
+        type_name_idx: query.capture_index_for_name("type.name"),
+        type_field_idx: query.capture_index_for_name("type.field"),
+        type_field_name_idx: query.capture_index_for_name("type.field.name"),
+        type_field_type_idx: query.capture_index_for_name("type.field.type"),
+    })
 }
 
 /// Weight overrides supplied by a language adapter, passed to
@@ -44,286 +91,23 @@ pub struct WeightMaps<'a> {
     pub call: &'a BTreeMap<String, f64>,
 }
 
-impl QueryEngine {
-    #[allow(dead_code)]
-    pub fn new(
-        language: tree_sitter::Language,
-        lang_kind: Language,
-        query_source: &str,
-    ) -> Result<Self> {
-        let empty_branches = BTreeMap::new();
-        let empty_calls = BTreeMap::new();
-        Self::new_with_branch_weights(
-            language,
-            lang_kind,
-            query_source,
-            &WeightMaps {
-                branch: &empty_branches,
-                call: &empty_calls,
-            },
-        )
+pub(crate) fn node_span(node: tree_sitter::Node) -> Span {
+    Span {
+        start_line: node.start_position().row as u32 + 1,
+        end_line: node.end_position().row as u32 + 1,
     }
-
-    pub fn new_with_branch_weights(
-        language: tree_sitter::Language,
-        lang_kind: Language,
-        query_source: &str,
-        weights: &WeightMaps<'_>,
-    ) -> Result<Self> {
-        let query = tree_sitter::Query::new(&language, query_source)
-            .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))?;
-
-        let fn_def_idx = query
-            .capture_index_for_name("function.definition")
-            .context("query missing @function.definition capture")?;
-        let fn_name_idx = query
-            .capture_index_for_name("function.name")
-            .context("query missing @function.name capture")?;
-        let fn_params_idx = query
-            .capture_index_for_name("function.parameters")
-            .context("query missing @function.parameters capture")?;
-        let fn_body_idx = query
-            .capture_index_for_name("function.body")
-            .context("query missing @function.body capture")?;
-
-        let branch_mapping = [
-            ("branch.if", BranchKind::If),
-            ("branch.elif", BranchKind::ElseIf),
-            ("branch.switch_case", BranchKind::SwitchCase),
-            ("branch.loop", BranchKind::Loop),
-            ("branch.catch", BranchKind::Catch),
-            ("branch.ternary", BranchKind::Ternary),
-            ("branch.logical.and", BranchKind::LogicalAnd),
-            ("branch.logical.or", BranchKind::LogicalOr),
-        ];
-
-        let branch_captures: Vec<(u32, BranchCaptureSpec)> = branch_mapping
-            .iter()
-            .filter_map(|(name, kind)| {
-                query.capture_index_for_name(name).map(|idx| {
-                    let capture_name = format!("@{name}");
-                    let defaults = BranchWeights {
-                        cyclomatic: 1,
-                        cognitive: 1,
-                    };
-                    let w = weights
-                        .branch
-                        .get(&capture_name)
-                        .copied()
-                        .unwrap_or(defaults);
-                    (
-                        idx,
-                        BranchCaptureSpec {
-                            kind: *kind,
-                            cyclomatic_weight: w.cyclomatic,
-                            cognitive_weight: w.cognitive,
-                        },
-                    )
-                })
-            })
-            .collect();
-
-        let assert_capture_indices = query
-            .capture_names()
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, name)| name.starts_with("assert.").then_some(idx as u32))
-            .collect();
-
-        let call_idx = query.capture_index_for_name("call");
-        let call_callee_idx = query.capture_index_for_name("call.callee");
-        let assign_idx = query.capture_index_for_name("assign");
-        let import_idx = query.capture_index_for_name("import");
-
-        // Type captures are optional (D2): their absence leaves
-        // type_definitions empty instead of failing the query,
-        // mirroring how @import is handled.
-        let type_def_idx = query.capture_index_for_name("type.definition");
-        let type_name_idx = query.capture_index_for_name("type.name");
-        let type_field_idx = query.capture_index_for_name("type.field");
-        let type_field_name_idx = query.capture_index_for_name("type.field.name");
-        let type_field_type_idx = query.capture_index_for_name("type.field.type");
-
-        Ok(Self {
-            language,
-            lang_kind,
-            query,
-            fn_def_idx,
-            fn_name_idx,
-            fn_params_idx,
-            fn_body_idx,
-            branch_captures,
-            assert_capture_indices,
-            call_idx,
-            call_callee_idx,
-            assign_idx,
-            import_idx,
-            type_def_idx,
-            type_name_idx,
-            type_field_idx,
-            type_field_name_idx,
-            type_field_type_idx,
-            call_weights: weights.call.clone(),
-        })
-    }
-
-    pub(crate) fn branch_capture_for_index(&self, idx: u32) -> Option<BranchCaptureSpec> {
-        self.branch_captures
-            .iter()
-            .find(|(capture_idx, _)| *capture_idx == idx)
-            .map(|(_, spec)| *spec)
-    }
-
-    pub(crate) fn build_code_unit(
-        &self,
-        fc: &FunctionCapture,
-        source: &[u8],
-        captures: &CaptureMap,
-    ) -> Result<CodeUnit, String> {
-        let def_node = fc.def_node.ok_or("missing definition node")?;
-        let name_node = fc.name_node.ok_or("missing name node")?;
-        let body_node = fc.body_node.ok_or("missing body node")?;
-
-        let name = unit_name(name_node, source)?;
-        let parameters = unit_parameters(fc, source);
-        let body = self.unit_body(body_node, captures);
-        let kind = determine_unit_kind(def_node, &name);
-        let is_exported = !name.starts_with('_');
-
-        Ok(CodeUnit {
-            name,
-            kind,
-            span: node_span(def_node),
-            parameters,
-            body,
-            is_exported,
-            assertions: count_captured_nodes(body_node, &captures.assertions),
-            parent_class: None,
-            has_test_attribute: has_test_marker(def_node, source),
-        })
-    }
-
-    fn unit_body(&self, body_node: tree_sitter::Node, captures: &CaptureMap) -> Block {
-        let walk_ctx = WalkCtx {
-            captures,
-            call_weights: &self.call_weights,
-            nesting: 0,
-        };
-        build_block(&walk_ctx, body_node)
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct CaptureMap {
-    pub(crate) branches: HashMap<usize, BranchCaptureSpec>,
-    pub(crate) calls: HashMap<usize, String>,
-    pub(crate) assignments: std::collections::HashSet<usize>,
-    pub(crate) assertions: std::collections::HashSet<usize>,
-}
-
-#[derive(Default)]
-pub(crate) struct FunctionCapture<'a> {
-    pub(crate) def_node: Option<tree_sitter::Node<'a>>,
-    pub(crate) name_node: Option<tree_sitter::Node<'a>>,
-    pub(crate) params_node: Option<tree_sitter::Node<'a>>,
-    pub(crate) body_node: Option<tree_sitter::Node<'a>>,
-}
-
-fn determine_unit_kind(node: tree_sitter::Node, name: &str) -> UnitKind {
-    let mut current = node.parent();
-    while let Some(parent) = current {
-        match parent.kind() {
-            "class_definition" => {
-                if name == "__init__" || name == "__new__" {
-                    return UnitKind::Ctor;
-                }
-                return UnitKind::Method;
-            }
-            "function_definition" => return UnitKind::Function,
-            "module" => break,
-            _ => {
-                current = parent.parent();
-            }
-        }
-    }
-    UnitKind::Function
-}
-
-fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Parameter> {
-    let mut params = Vec::new();
-    let mut cursor = params_node.walk();
-    for child in params_node.children(&mut cursor) {
-        let param_name = match child.kind() {
-            "identifier" => child.utf8_text(source).ok().map(str::to_string),
-            "typed_parameter" | "default_parameter" | "typed_default_parameter" => child
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(str::to_string),
-            "parameter" => {
-                // Python/Go-style parameters expose a `name` field; Rust
-                // (tree-sitter-rust) exposes a `pattern` field instead.
-                child
-                    .child_by_field_name("name")
-                    .or_else(|| child.child_by_field_name("pattern"))
-                    .and_then(|pattern| {
-                        if pattern.kind() == "self" {
-                            return Some("self".to_string());
-                        }
-                        let mut name = None;
-                        let mut c = pattern.walk();
-                        for n in pattern.children(&mut c) {
-                            if n.kind() == "identifier" {
-                                name = n.utf8_text(source).ok().map(str::to_string);
-                                break;
-                            }
-                        }
-                        name.or_else(|| pattern.utf8_text(source).ok().map(str::to_string))
-                    })
-            }
-            // Rust `self` parameters (`fn f(&self)` / `fn f(&mut self)`).
-            "self_parameter" | "self" => Some("self".to_string()),
-            "list_splat_pattern" | "dictionary_splat_pattern" => {
-                let prefix = if child.kind() == "list_splat_pattern" {
-                    "*"
-                } else {
-                    "**"
-                };
-                let mut c = child.walk();
-                let ident = child
-                    .children(&mut c)
-                    .find(|n| n.kind() == "identifier")
-                    .and_then(|n| n.utf8_text(source).ok())
-                    .map(|s| format!("{prefix}{s}"));
-                ident
-            }
-            _ => None,
-        };
-        if let Some(name) = param_name {
-            let type_name = child
-                .child_by_field_name("type")
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(str::to_string);
-
-            params.push(Parameter {
-                span: node_span(child),
-                name,
-                type_name,
-            });
-        }
-    }
-    params
 }
 
 /// Shared immutable context threaded through the block walk below:
 /// everything the recursive visitors need except the mutable output list.
 #[derive(Clone, Copy)]
-struct WalkCtx<'a> {
-    captures: &'a CaptureMap,
-    call_weights: &'a BTreeMap<String, f64>,
-    nesting: u32,
+pub(crate) struct WalkCtx<'a> {
+    pub(crate) captures: &'a CaptureMap,
+    pub(crate) call_weights: &'a BTreeMap<String, f64>,
+    pub(crate) nesting: u32,
 }
 
-fn build_block(ctx: &WalkCtx, block_node: tree_sitter::Node) -> Block {
+pub(crate) fn build_block(ctx: &WalkCtx, block_node: tree_sitter::Node) -> Block {
     let mut children = Vec::new();
     // Check the block_node itself against captures first.
     // This handles languages where the function body IS a branch node
@@ -346,39 +130,53 @@ fn visit_child(
     out: &mut Vec<crate::model::Node>,
 ) -> bool {
     if let Some(&spec) = ctx.captures.branches.get(&child.id()) {
-        let sequence_id = match spec.kind {
-            BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
-            _ => None,
-        };
-        out.push(crate::model::Node::Branch(Branch {
-            kind: spec.kind,
-            span: node_span(child),
-            nesting_at: ctx.nesting,
-            sequence_id,
-            cyclomatic_weight: spec.cyclomatic_weight,
-            cognitive_weight: spec.cognitive_weight,
-        }));
+        out.push(crate::model::Node::Branch(branch_node(ctx, parent, child, spec)));
         collect_nested_blocks(ctx, child, out);
-        true
-    } else if ctx.captures.assignments.contains(&child.id()) {
+        return true;
+    }
+    if ctx.captures.assignments.contains(&child.id()) {
         out.push(crate::model::Node::Assignment(node_span(child)));
         collect_nested_blocks(ctx, child, out);
-        true
-    } else if let Some(callee) = ctx.captures.calls.get(&child.id()) {
-        let smell_weight = ctx
-            .call_weights
-            .get(callee.as_str())
-            .copied()
-            .unwrap_or(1.0);
-        out.push(crate::model::Node::Call(CallSite {
-            callee: callee.clone(),
-            span: node_span(child),
-            smell_weight,
-        }));
+        return true;
+    }
+    if let Some(callee) = ctx.captures.calls.get(&child.id()) {
+        out.push(crate::model::Node::Call(call_site(ctx, child, callee)));
         collect_nested_blocks(ctx, child, out);
         true
     } else {
         false
+    }
+}
+
+/// A weighted branch node; logical operators share the parent's sequence
+/// id so `a and b and c` reports as one sequence.
+fn branch_node(
+    ctx: &WalkCtx,
+    parent: tree_sitter::Node,
+    child: tree_sitter::Node,
+    spec: BranchCaptureSpec,
+) -> Branch {
+    let sequence_id = match spec.kind {
+        BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
+        _ => None,
+    };
+    Branch {
+        kind: spec.kind,
+        span: node_span(child),
+        nesting_at: ctx.nesting,
+        sequence_id,
+        cyclomatic_weight: spec.cyclomatic_weight,
+        cognitive_weight: spec.cognitive_weight,
+    }
+}
+
+/// A call site with the adapter's smell weight for the callee, or 1.0.
+fn call_site(ctx: &WalkCtx, child: tree_sitter::Node, callee: &str) -> CallSite {
+    let smell_weight = ctx.call_weights.get(callee).copied().unwrap_or(1.0);
+    CallSite {
+        callee: callee.to_owned(),
+        span: node_span(child),
+        smell_weight,
     }
 }
 
@@ -418,7 +216,7 @@ fn collect_nested_blocks(
     }
 }
 
-fn count_captured_nodes(
+pub(crate) fn count_captured_nodes(
     node: tree_sitter::Node,
     captured_ids: &std::collections::HashSet<usize>,
 ) -> u32 {
@@ -437,7 +235,7 @@ fn count_captured_nodes(
 /// (e.g. Rust `#[test]`). Attributes precede the definition as siblings;
 /// scanning stops at the first non-attribute sibling so an outer unit
 /// never claims another unit's marker.
-fn has_test_marker(def_node: tree_sitter::Node, source: &[u8]) -> bool {
+pub(crate) fn has_test_marker(def_node: tree_sitter::Node, source: &[u8]) -> bool {
     let mut sibling = def_node.prev_sibling();
     while let Some(node) = sibling {
         if node.kind() != "attribute_item" {
@@ -474,26 +272,6 @@ fn is_nested_definition(node: tree_sitter::Node) -> bool {
             | "lambda_expression"       // Java, C++, C#
             | "anonymous_method_expression" // C#
     )
-}
-
-pub(crate) fn node_span(node: tree_sitter::Node) -> Span {
-    Span {
-        start_line: node.start_position().row as u32 + 1,
-        end_line: node.end_position().row as u32 + 1,
-    }
-}
-
-fn unit_name(name_node: tree_sitter::Node, source: &[u8]) -> Result<String, String> {
-    Ok(name_node
-        .utf8_text(source)
-        .map_err(|_| "name contains invalid UTF-8")?
-        .to_string())
-}
-
-fn unit_parameters(fc: &FunctionCapture, source: &[u8]) -> Vec<Parameter> {
-    fc.params_node
-        .map(|p| extract_params(p, source))
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
