@@ -49,25 +49,40 @@ pub fn analyze(
         }
 
         if primitive_field_check {
-            for field in &type_def.fields {
-                let is_primitive = field
-                    .type_name
-                    .as_deref()
-                    .is_some_and(is_bare_primitive_type);
-                if is_primitive && is_domain_param_name(&field.name, domain_patterns) {
-                    violations.push(DataModelViolation {
-                        metric: PRIMITIVE_FIELD,
-                        subject: format!("{}.{}", type_def.name, field.name),
-                        span: field.span.clone(),
-                        actual: 1,
-                        limit: 1,
-                    });
-                }
-            }
+            check_primitive_fields(type_def, domain_patterns, &mut violations);
         }
     }
 
     violations
+}
+
+/// Purpose: per-type primitive-obsession field scan.
+/// Responsibilities: push one `primitive_field` violation for each field
+/// whose type is a bare primitive and whose name looks like a domain
+/// concept, preserving field order within the type.
+/// Rationale: innermost block of `analyze` moved verbatim; extracting it
+/// keeps `analyze` within the function-length and nesting limits with
+/// identical emission order.
+fn check_primitive_fields(
+    type_def: &TypeDefinition,
+    domain_patterns: &[String],
+    violations: &mut Vec<DataModelViolation>,
+) {
+    for field in &type_def.fields {
+        let is_primitive = field
+            .type_name
+            .as_deref()
+            .is_some_and(is_bare_primitive_type);
+        if is_primitive && is_domain_param_name(&field.name, domain_patterns) {
+            violations.push(DataModelViolation {
+                metric: PRIMITIVE_FIELD,
+                subject: format!("{}.{}", type_def.name, field.name),
+                span: field.span.clone(),
+                actual: 1,
+                limit: 1,
+            });
+        }
+    }
 }
 
 #[cfg(test)]
