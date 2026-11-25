@@ -29,24 +29,62 @@ pub fn diff_base_files(cwd: &Path, base_ref: &str) -> Result<HashSet<PathBuf>> {
     let repo = git2::Repository::discover(cwd)
         .context("failed to open git repository (is this a git repo?)")?;
     let root = workdir(&repo)?;
-    let base_tree = resolve_tree(&repo, base_ref)?;
-    let head_tree = head_tree(&repo);
     let index = repo.index().context("failed to read git index")?;
+    let diffs = base_diffs(&repo, base_ref, &index)?;
 
-    let committed = repo
-        .diff_tree_to_tree(Some(&base_tree), head_tree.as_ref(), None)
-        .context("failed to diff base against HEAD")?;
-    let staged = repo
-        .diff_tree_to_index(head_tree.as_ref(), Some(&index), None)
-        .context("failed to diff index against HEAD")?;
-    let pending = repo
-        .diff_index_to_workdir(Some(&index), None)
-        .context("failed to diff worktree against index")?;
-
-    let mut files = paths_from_diff(&root, &committed);
-    files.extend(paths_from_diff(&root, &staged));
-    files.extend(paths_from_diff(&root, &pending));
+    let mut files = paths_from_diff(&root, &diffs.committed);
+    files.extend(paths_from_diff(&root, &diffs.staged));
+    files.extend(paths_from_diff(&root, &diffs.pending));
     Ok(files)
+}
+
+/// Diffs covering the full checked-out state relative to `base_ref`.
+struct BaseDiffs<'r> {
+    committed: git2::Diff<'r>,
+    staged: git2::Diff<'r>,
+    pending: git2::Diff<'r>,
+}
+
+/// Build the three diffs: `base_ref..HEAD` (committed), `HEAD..index`
+/// (staged), and `index..worktree` (pending).
+fn base_diffs<'r>(
+    repo: &'r git2::Repository,
+    base_ref: &str,
+    index: &git2::Index,
+) -> Result<BaseDiffs<'r>> {
+    let base_tree = resolve_tree(repo, base_ref)?;
+    let head_tree = head_tree(repo);
+    Ok(BaseDiffs {
+        committed: committed_diff(repo, &base_tree, head_tree.as_ref())?,
+        staged: staged_diff(repo, head_tree.as_ref(), index)?,
+        pending: pending_diff(repo, index)?,
+    })
+}
+
+/// `base_ref..HEAD`: commits between the reviewed base and HEAD.
+fn committed_diff<'r>(
+    repo: &'r git2::Repository,
+    base_tree: &git2::Tree<'r>,
+    head_tree: Option<&git2::Tree<'r>>,
+) -> Result<git2::Diff<'r>> {
+    repo.diff_tree_to_tree(Some(base_tree), head_tree, None)
+        .context("failed to diff base against HEAD")
+}
+
+/// `HEAD..index`: staged changes, including freshly `git add`ed files.
+fn staged_diff<'r>(
+    repo: &'r git2::Repository,
+    head_tree: Option<&git2::Tree<'r>>,
+    index: &git2::Index,
+) -> Result<git2::Diff<'r>> {
+    repo.diff_tree_to_index(head_tree, Some(index), None)
+        .context("failed to diff index against HEAD")
+}
+
+/// `index..worktree`: unstaged edits still pending before the commit.
+fn pending_diff<'r>(repo: &'r git2::Repository, index: &git2::Index) -> Result<git2::Diff<'r>> {
+    repo.diff_index_to_workdir(Some(index), None)
+        .context("failed to diff worktree against index")
 }
 
 fn workdir(repo: &git2::Repository) -> Result<PathBuf> {
