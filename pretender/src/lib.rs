@@ -45,4 +45,5 @@ pub mod roles;
 pub mod ruby;
 pub mod rust;
 pub mod test_report;
+pub(crate) mod type_definitions;
 pub mod typescript;

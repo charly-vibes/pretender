@@ -10,12 +10,12 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use streaming_iterator::StreamingIterator;
 
-use crate::engine::{
-    node_span, CaptureMap, FunctionCapture, QueryEngine, TypeCaptures, TypeDefCapture,
-    TypeFieldCapture,
-};
+use crate::engine::{node_span, CaptureMap, FunctionCapture, QueryEngine};
 use crate::model::{
     CodeUnit, Diagnostic, DiagnosticSeverity, Import, Language, Module, Span, TypeDefinition,
+};
+use crate::type_definitions::{
+    build_type_definitions, TypeCaptures, TypeDefCapture, TypeFieldCapture,
 };
 
 impl QueryEngine {
@@ -33,13 +33,14 @@ impl QueryEngine {
         let captures =
             self.collect_query_captures(root, source_bytes, CollectedCaptures::default());
         let (units, diagnostics) = self.build_units(&captures, source_bytes);
-        let type_definitions = self.build_type_definitions(
+        let type_definitions = build_type_definitions(
             TypeCaptures {
                 defs: captures.type_defs,
                 names: captures.type_names,
                 fields: captures.type_fields,
             },
             source_bytes,
+            self.lang_kind.clone(),
         );
         let module = finished_module(
             base_module(path, &self.lang_kind, lines),
