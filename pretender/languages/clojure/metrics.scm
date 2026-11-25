@@ -9,6 +9,21 @@
   value: (_) @function.body) @function.definition
   (#match? @_defn "^(defn|defn-)$")
 
+; Function definitions — multi-arity defn/defn-: the quantifier repeats
+; @function.parameters/@function.body once per arity clause within ONE
+; match, pairwise and in order; the engine splits them into one unit per
+; arity (pretender-1v8k.5, design D2).
+(list_lit
+  value: (sym_lit) @_defn_multi
+  .
+  value: (sym_lit) @function.name
+  .
+  value: (list_lit
+    .
+    value: (vec_lit) @function.parameters
+    value: (_) @function.body)+) @function.definition
+  (#match? @_defn_multi "^(defn|defn-)$")
+
 ; Function definitions — deftest (no parameter vector, pretender-1v8k.8)
 (list_lit
   value: (sym_lit) @_deftest

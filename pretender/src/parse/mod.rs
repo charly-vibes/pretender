@@ -66,24 +66,38 @@ impl QueryEngine {
             .context("tree-sitter returned no tree")
     }
 
-    /// Bundle the captures of one `@function.definition` match.
-    fn function_capture<'a>(&self, m: &tree_sitter::QueryMatch<'_, 'a>) -> FunctionCapture<'a> {
+    /// Bundle the captures of one `@function.definition` match into one
+    /// `FunctionCapture` per arity clause: a quantified pattern repeats
+    /// `@function.parameters`/`@function.body` within the same match
+    /// (probe-verified), so a multi-arity defn splits pairwise.
+    fn function_captures<'a>(
+        &self,
+        m: &tree_sitter::QueryMatch<'_, 'a>,
+    ) -> Vec<FunctionCapture<'a>> {
+        let mut fc = FunctionCapture::default();
+        for capture in m.captures.iter() {
+            if capture.index == self.slots.fn_def_idx {
+                fc.def_node = Some(capture.node);
+            } else if capture.index == self.slots.fn_name_idx {
+                fc.name_node = Some(capture.node);
+            }
+        }
+        let params = self.captured_nodes(m, self.slots.fn_params_idx);
+        let bodies = self.captured_nodes(m, self.slots.fn_body_idx);
+        split_arities(fc, &params, &bodies)
+    }
+
+    /// Every node captured under one capture index, in match order.
+    fn captured_nodes<'a>(
+        &self,
+        m: &tree_sitter::QueryMatch<'_, 'a>,
+        idx: u32,
+    ) -> Vec<tree_sitter::Node<'a>> {
         m.captures
             .iter()
-            .fold(FunctionCapture::default(), |mut fc, capture| {
-                if capture.index == self.slots.fn_def_idx {
-                    fc.def_node = Some(capture.node);
-                } else if capture.index == self.slots.fn_name_idx {
-                    fc.name_node = Some(capture.node);
-                } else if capture.index == self.slots.fn_params_idx {
-                    fc.params_node = Some(capture.node);
-                } else if capture.index == self.slots.fn_body_idx {
-                    fc.body_node = Some(capture.node);
-                }
-                fc
-            })
-        // Zero derives from FunctionCapture::default; every real
-        // pattern index is assigned right after by the caller.
+            .filter(|c| c.index == idx)
+            .map(|c| c.node)
+            .collect()
     }
 
     /// One pass over the query matches, in match order.
@@ -118,9 +132,7 @@ impl QueryEngine {
             return;
         }
         if m.captures.iter().any(|c| c.index == self.slots.fn_def_idx) {
-            let mut fc = self.function_capture(m);
-            fc.pattern_index = m.pattern_index;
-            out.functions.push(fc);
+            out.functions.extend(self.function_captures(m));
         } else {
             self.collect_non_function_match(m, scan.source_bytes, out);
         }
@@ -161,6 +173,47 @@ impl QueryEngine {
             },
         )
     }
+}
+
+/// One capture per arity clause: pairwise params+body when the match
+/// quantified them; otherwise keep the last-seen nodes (pre-split fold).
+fn split_arities<'a>(
+    fc: FunctionCapture<'a>,
+    params: &[tree_sitter::Node<'a>],
+    bodies: &[tree_sitter::Node<'a>],
+) -> Vec<FunctionCapture<'a>> {
+    if params.len() > 1 && params.len() == bodies.len() {
+        return params
+            .iter()
+            .zip(bodies)
+            .map(|(&p, &b)| arity_capture(&fc, Some(p), Some(b)))
+            .collect();
+    }
+    vec![FunctionCapture {
+        span_node: None,
+        params_node: last_of(params),
+        body_node: last_of(bodies),
+        ..fc
+    }]
+}
+
+/// One unit's capture from one arity clause; the clause list node scopes
+/// the span, so function_lines count the clause, not the whole defn.
+fn arity_capture<'a>(
+    fc: &FunctionCapture<'a>,
+    params: Option<tree_sitter::Node<'a>>,
+    body: Option<tree_sitter::Node<'a>>,
+) -> FunctionCapture<'a> {
+    FunctionCapture {
+        params_node: params,
+        body_node: body,
+        span_node: params.and_then(|p| p.parent()),
+        ..fc.clone()
+    }
+}
+
+fn last_of<'a>(nodes: &[tree_sitter::Node<'a>]) -> Option<tree_sitter::Node<'a>> {
+    nodes.last().copied()
 }
 
 /// Flush a finished match: commit the pending call site and type captures.

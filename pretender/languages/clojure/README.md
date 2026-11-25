@@ -77,6 +77,13 @@ guarded by `every_branch_capture_has_a_manifest_entry`.
 
 ## Parameters
 
+Multi-arity `defn`/`defn-` (`(defn f ([x] x) ([x y] …))`) becomes **one
+unit per arity clause** (pretender-1v8k.5): every clause yields a unit
+named `f` (no arity suffix), whose parameters, complexity, and
+function_lines are computed from that clause only; the clause list node
+scopes the unit's span. Single-arity `defn`/`defn-` behave exactly as
+before.
+
 Single-arity `defn`/`defn-` parameter vectors report one parameter per
 binding (pretender-1v8k.6):
 
@@ -88,7 +95,6 @@ binding (pretender-1v8k.6):
 - a destructuring binding (`[b c]`, `{:keys [x]}`) counts as **one**
   parameter, named by its source text; per-element destructured counts are
   declared unsupported (no nominal-name for a binding form)
-- multi-arity `defn` arity vectors are not captured yet (separate ticket)
 
 ## Predicates
 
