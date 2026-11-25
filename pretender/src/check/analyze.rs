@@ -16,8 +16,9 @@
 //! 203-line `analyze_path` was split into stage helpers sharing a
 //! `FileCheckCtx` so every function lands within the structural limits
 //! while check semantics and violation ordering stay identical.
+use super::scan::get_parser;
 use super::unit::{build_unit_report, limit_violation};
-use crate::{FileReport, MockFindingReport, UnitReport, ViolationReport, get_parser};
+use crate::report::{FileReport, MockFindingReport, UnitReport, ViolationReport};
 use anyhow::{Context, Result};
 use pretender::config::Config;
 use pretender::model::{Diagnostic, Module};

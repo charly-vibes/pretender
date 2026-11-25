@@ -17,14 +17,18 @@
 //! functions split into verbatim-behaving helpers.
 use super::analyze::analyze_path;
 use super::collect::{apply_file_filter, collect_input_files_with_override};
-use crate::{CheckArgs, CheckReport, CouplingViolationReport, FileReport, ModuleReport, get_parser};
-use anyhow::{Context, Result};
+use crate::report::{CheckReport, CouplingViolationReport, FileReport, ModuleReport};
+use crate::CheckArgs;
+use anyhow::{anyhow, Context, Result};
 use pretender::config::Config;
 use pretender::model::Module;
 use pretender::roles::RoleDetector;
+use pretender::{
+    c, clojure, cpp, csharp, go, java, javascript, julia, model, python, r, ruby, rust, typescript,
+};
 use pretender::{coupling, external_plugin, git, test_report};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Collect and analyze the files to check. `Ok(None)` means a staged/diff
 /// run found no allowed files — the caller short-circuits with a
@@ -303,5 +307,43 @@ fn wait_with_timeout(
             }
             Err(e) => return Err(e),
         }
+    }
+}
+
+/// Resolve the parser for `path` based on its file extension.
+pub(crate) fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
+    parser_for_extension(ext)
+        .ok_or_else(|| anyhow!("unsupported file extension '.{}'", ext))
+}
+
+/// Parser lookup for the first half of the supported extensions.
+fn parser_for_extension(ext: &str) -> Option<Box<dyn model::Parser>> {
+    match ext {
+        "cs" => Some(Box::new(csharp::CSharpParser)),
+        "clj" | "cljs" | "cljc" | "edn" => Some(Box::new(clojure::ClojureParser)),
+        "c" | "h" => Some(Box::new(c::CParser)),
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some(Box::new(cpp::CppParser)),
+        "go" => Some(Box::new(go::GoParser)),
+        "java" => Some(Box::new(java::JavaParser)),
+        "jl" => Some(Box::new(julia::JuliaParser)),
+        "js" | "jsx" | "mjs" | "cjs" => Some(Box::new(javascript::JavaScriptParser)),
+        _ => parser_for_extension_rest(ext),
+    }
+}
+
+/// Parser lookup for the remaining supported extensions.
+fn parser_for_extension_rest(ext: &str) -> Option<Box<dyn model::Parser>> {
+    match ext {
+        "py" => Some(Box::new(python::PythonParser)),
+        "r" | "R" => Some(Box::new(r::RParser)),
+        "rb" => Some(Box::new(ruby::RubyParser)),
+        "rs" => Some(Box::new(rust::RustParser)),
+        "ts" | "mts" => Some(Box::new(typescript::TypeScriptParser)),
+        "tsx" | "cts" => Some(Box::new(typescript::TypeScriptXParser)),
+        _ => None,
     }
 }

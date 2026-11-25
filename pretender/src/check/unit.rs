@@ -15,7 +15,7 @@
 //! limits. The push-into-`&mut` accumulator style was restructured into
 //! Option-returning constructors chained in evaluation order (same
 //! violations, same order, no mutable bindings).
-use crate::{MetricValues, UnitReport, ViolationReport};
+use crate::report::{MetricValues, UnitReport, ViolationReport};
 use pretender::metrics;
 use pretender::model::CodeUnit;
 use pretender::roles::EffectiveThresholds;

@@ -12,7 +12,7 @@
 //! per-file stage helpers so every function fits the gate's limits; bodies
 //! moved verbatim from `main.rs`.
 
-use crate::{CheckReport, FileReport};
+use super::{CheckReport, FileReport};
 use super::summary::{summarize_file, Severity};
 use anyhow::Result;
 use pretender::config::Bands;

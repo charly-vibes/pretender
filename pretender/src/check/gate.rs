@@ -16,7 +16,7 @@
 //! Extracted verbatim from main.rs (pretender-5zo.2.2); the two long
 //! functions were split into verbatim-behaving helpers while moving so
 //! every function lands within the structural limits unchanged.
-use crate::{CheckReport, FileReport};
+use crate::report::{CheckReport, FileReport};
 use pretender::config::{Mode, is_lease_expired};
 use pretender::history;
 use std::collections::HashSet;
@@ -203,7 +203,7 @@ fn test_lease_diagnostic_mentions_all_remediations() {
 #[cfg(test)]
 mod baseline_gate_tests {
     use super::*;
-    use crate::{
+    use crate::report::{
         CouplingViolationReport, FileReport, MetricValues, ModuleReport, UnitReport,
         ViolationReport,
     };

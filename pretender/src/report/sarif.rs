@@ -13,7 +13,7 @@
 //! helpers so every function fits the gate's limits; bodies moved verbatim
 //! from `main.rs`.
 
-use crate::{CheckReport, ViolationReport};
+use super::{CheckReport, ViolationReport};
 use anyhow::Result;
 use serde_sarif::sarif;
 use std::collections::HashMap;
@@ -193,4 +193,80 @@ pub(crate) fn write_sarif_report(sink: &mut dyn Write, report: &CheckReport) -> 
     serde_json::to_writer_pretty(&mut *sink, &acc.build_log())?;
     writeln!(sink)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod sarif_region_tests {
+    use super::super::violation;
+    use super::super::{FileReport, MetricValues, UnitReport};
+    use super::*;
+
+    fn metric_values() -> MetricValues {
+        MetricValues {
+            cyclomatic: 1,
+            cognitive: 0,
+            assertions: 1,
+            function_lines: 0,
+            params: 0,
+            nesting_max: 0,
+            abc: 1.0,
+        }
+    }
+
+    fn unit_report(name: &str, violations: Vec<ViolationReport>) -> UnitReport {
+        UnitReport {
+            name: name.to_string(),
+            kind: "function".to_string(),
+            start_line: 10,
+            metrics: metric_values(),
+            violations,
+        }
+    }
+
+    fn file_report(path: &str, units: Vec<UnitReport>) -> FileReport {
+        FileReport {
+            path: path.to_string(),
+            role: "app".to_string(),
+            diagnostics: vec![],
+            file_violations: vec![],
+            units,
+            external_findings: vec![],
+            mock_findings: vec![],
+        }
+    }
+
+    fn report(files: Vec<FileReport>) -> CheckReport {
+        CheckReport {
+            files,
+            modules: vec![],
+            cycles: vec![],
+            test_findings: vec![],
+            history: None,
+        }
+    }
+
+    #[test]
+    fn sarif_region_uses_line_when_present() {
+        let file = file_report(
+            "src/a.rs",
+            vec![unit_report("fn_a", vec![violation(Some(50))])],
+        );
+        let report = report(vec![file]);
+        let mut buf = Vec::new();
+        write_sarif_report(&mut buf, &report).expect("sarif");
+        let v: serde_json::Value = serde_json::from_slice(&buf).expect("parse sarif");
+        let region = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(region["startLine"], 50);
+    }
+
+    #[test]
+    fn sarif_region_falls_back_to_default_start_line_when_line_none() {
+        let file = file_report("src/a.rs", vec![unit_report("fn_a", vec![violation(None)])]);
+        let report = report(vec![file]);
+        let mut buf = Vec::new();
+        write_sarif_report(&mut buf, &report).expect("sarif");
+        let v: serde_json::Value = serde_json::from_slice(&buf).expect("parse sarif");
+        let region = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(region["startLine"], 10);
+    }
 }

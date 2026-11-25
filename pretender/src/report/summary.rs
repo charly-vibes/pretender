@@ -15,7 +15,7 @@
 //! every function stays within the gate's limits and the file stays
 //! mutation-free; bodies moved verbatim from `main.rs`.
 
-use crate::{FileReport, UnitReport};
+use super::{FileReport, UnitReport};
 use pretender::config::{Band, Bands};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

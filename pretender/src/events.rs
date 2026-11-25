@@ -18,7 +18,9 @@
 //! write-failure messages, and output bytes stay identical, with every
 //! function within the structural limits.
 use crate::check::gate::{violation_finding_id, violation_findings};
-use crate::{color_enabled, CheckReport, ReportFormat};
+use crate::cli::args::ReportFormat;
+use crate::cli::infra::color_enabled;
+use crate::report::CheckReport;
 use anyhow::Result;
 use pretender::config;
 use pretender::history;
