@@ -43,8 +43,6 @@
     "pretender/src/main.rs::status::function_lines_max",
     "pretender/src/mutation.rs::::file_lines",
     "pretender/src/roles.rs::::excessive_fields",
-    "pretender/src/roles.rs::::file_lines",
-    "pretender/src/roles.rs::::unwraps",
     "pretender/src/roles.rs::for_role::abc_max",
     "pretender/src/roles.rs::for_role::function_lines_max",
     "pretender/src/roles.rs::heuristic_role::abc_max",
