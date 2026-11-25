@@ -12,11 +12,19 @@
 
 use std::path::Path;
 
-use pretender::csharp::CSharpParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for cs, through the public registry API.
+fn parser_for_cs() -> GenericParser {
+    match lookup("cs") {
+        Some(record) => GenericParser { record },
+        None => panic!("cs must be registered"),
+    }
+}
 use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind};
 
-fn engine() -> CSharpParser {
-    CSharpParser
+fn engine() -> GenericParser {
+    parser_for_cs()
 }
 
 /// Reusable harness pattern (tasks 6.3): the language's real metrics.scm

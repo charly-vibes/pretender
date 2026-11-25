@@ -10,7 +10,15 @@
 //! target.
 
 use pretender::model::Parser;
-use pretender::ruby::RubyParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for rb, through the public registry API.
+fn parser_for_rb() -> GenericParser {
+    match lookup("rb") {
+        Some(record) => GenericParser { record },
+        None => panic!("rb must be registered"),
+    }
+}
 use std::path::Path;
 
 #[test]
@@ -19,7 +27,7 @@ fn ruby_types_zero_capture_round_trip() {
     // attr_writer are method calls in the grammar, not field nodes.
     // The documented zero-capture case: the adapter parses cleanly
     // with an empty type_definitions list.
-    let parser = RubyParser;
+    let parser = parser_for_rb();
     let source = include_str!("fixtures/ruby_sample.rb");
     let (module, diags) = parser.parse(Path::new("ruby_sample.rb"), source).unwrap();
 

@@ -19,6 +19,7 @@ pub use report::{
     compute_score, parse_cargo_mutants_list, MutationReport, PlannedMutant, SurvivingMutant,
 };
 
+use crate::model::Language;
 use anyhow::{Context, Result};
 use cargo_mutants::parse_cargo_mutants_outcomes;
 use mutmut::build_mutmut_report;
@@ -50,15 +51,26 @@ impl MutationLang {
     }
 }
 
+/// The mutation-tool subset: which tool language maps to which model
+/// language. The accepted extension set itself derives from the registry —
+/// adding e.g. `mts` to the TypeScript record extends detection with no
+/// edit here.
+const MUTATION_SUBSET: &[(MutationLang, Language)] = &[
+    (MutationLang::Python, Language::Python),
+    (MutationLang::Rust, Language::Rust),
+    (MutationLang::JavaScript, Language::JavaScript),
+    (MutationLang::TypeScript, Language::TypeScript),
+    (MutationLang::Java, Language::Java),
+];
+
 pub fn detect_language(path: &Path) -> Option<MutationLang> {
-    match path.extension()?.to_str()? {
-        "py" => Some(MutationLang::Python),
-        "rs" => Some(MutationLang::Rust),
-        "js" | "jsx" | "mjs" | "cjs" => Some(MutationLang::JavaScript),
-        "ts" | "tsx" | "mts" | "cts" => Some(MutationLang::TypeScript),
-        "java" => Some(MutationLang::Java),
-        _ => None,
-    }
+    let ext = path.extension()?.to_str()?;
+    MUTATION_SUBSET.iter().find_map(|(mlang, slang)| {
+        (crate::registry::REGISTRY
+            .iter()
+            .any(|record| record.language == *slang && record.extensions.contains(&ext)))
+        .then_some(mlang.clone())
+    })
 }
 
 /// Return the most-represented language across `paths`, or None if none recognised.

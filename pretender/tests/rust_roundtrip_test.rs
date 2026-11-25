@@ -10,7 +10,15 @@
 //! matching integration target.
 
 use pretender::model::Parser;
-use pretender::rust::RustParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for rs, through the public registry API.
+fn parser_for_rs() -> GenericParser {
+    match lookup("rs") {
+        Some(record) => GenericParser { record },
+        None => panic!("rs must be registered"),
+    }
+}
 use std::path::Path;
 
 #[test]
@@ -19,7 +27,7 @@ fn rust_sample_function_yields_nonzero_params() {
     // enforced; grammar trap: avoid locals named `raw`, tree-sitter-rust
     // 0.23.3 mis-parses them.
     let source = "fn sample(alpha: u32, beta: u32) -> u32 {\n    alpha + beta\n}\n";
-    let (module, _diagnostics) = RustParser
+    let (module, _diagnostics) = parser_for_rs()
         .parse(Path::new("sample.rs"), source)
         .unwrap_or_else(|e| panic!("parse rust sample: {e:?}"));
     assert_eq!(module.units.len(), 1, "sample has one function");

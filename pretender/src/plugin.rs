@@ -1,6 +1,7 @@
-// Plugin infrastructure is not yet wired to production code; allow dead_code
-// until the plugin loader is implemented.
-#![allow(dead_code)]
+// Load-bearing since the registry migration (948q): `LangRecord::manifest`
+// parses these manifests in production and `WeightMaps` reads branches and
+// smell_weights on every parse. The contract is pinned by
+// `tests/tooling_test/plugins_test.rs::every_builtin_manifest_parses_and_matches_the_registry`.
 
 use anyhow::{Context, Result};
 use serde::Deserialize;

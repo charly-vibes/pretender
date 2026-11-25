@@ -148,3 +148,69 @@ fn test_external_plugin_ruff_json_findings() {
         "finding code should be 'E501'"
     );
 }
+
+/// Every builtin manifest parses via the plugin contract and stays in sync
+/// with the registry record set (fvo9 design step 6): the manifests are
+/// load-bearing — `WeightMaps` reads branches and smell_weights on every
+/// parse — so this pins the required fields and the record/manifest
+/// extension agreement for all 13 language dirs (TS/TSX share one).
+#[test]
+fn every_builtin_manifest_parses_and_matches_the_registry() {
+    use pretender::plugin::PluginManifest;
+    use pretender::registry;
+
+    let mut pinned: Vec<pretender::model::Language> = Vec::new();
+    for record in registry::REGISTRY.iter() {
+        if pinned.contains(&record.language) {
+            continue; // TS/TSX dual records share the typescript manifest
+        }
+        pinned.push(record.language.clone());
+
+        let manifest = PluginManifest::from_toml(record.manifest)
+            .unwrap_or_else(|e| panic!("builtin manifest must parse: {e:?}"));
+
+        assert!(!manifest.name.is_empty(), "name is the language id");
+        assert!(!manifest.display_name.is_empty(), "display_name renders");
+        assert!(
+            manifest
+                .tree_sitter
+                .source
+                .starts_with("builtin:tree-sitter-"),
+            "builtin manifests bind a builtin grammar, got {}",
+            manifest.tree_sitter.source
+        );
+        assert!(
+            !manifest.tree_sitter.rev.is_empty(),
+            "grammar rev is pinned"
+        );
+        assert_eq!(manifest.query, "metrics.scm", "builtin query file name");
+
+        let mut manifest_exts = manifest.extensions.clone();
+        manifest_exts.sort();
+        let mut record_exts: Vec<String> = registry::REGISTRY
+            .iter()
+            .filter(|r| r.language == record.language)
+            .flat_map(|r| r.extensions.iter().map(|e| format!(".{e}")))
+            .collect();
+        record_exts.sort();
+        record_exts.dedup();
+        assert_eq!(
+            manifest_exts, record_exts,
+            "manifest and registry extension sets must agree"
+        );
+
+        assert!(
+            !manifest.branches.is_empty(),
+            "branch weights drive cognitive/cyclomatic"
+        );
+        assert!(
+            !manifest.smell_weights.is_empty(),
+            "smell weights drive score"
+        );
+        assert!(
+            !manifest.assertions.patterns.is_empty(),
+            "assertion patterns drive the assertion count"
+        );
+    }
+    assert_eq!(pinned.len(), 13, "13 builtin language dirs pinned");
+}

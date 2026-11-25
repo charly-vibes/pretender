@@ -83,6 +83,11 @@ pub fn lookup(ext: &str) -> Option<&'static LangRecord> {
         .find(|record| record.extensions.contains(&ext))
 }
 
+/// Whether `ext` is parser-backed, per the same registry the dispatch honors.
+pub fn supports_extension(ext: &str) -> bool {
+    lookup(ext).is_some()
+}
+
 pub static REGISTRY: [LangRecord; 14] = [
     LangRecord {
         grammar: Grammar::CSharp,
