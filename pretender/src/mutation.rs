@@ -410,7 +410,8 @@ mod tests {
             {"mutant": {"file": "src/lib.rs", "line": 10, "function_name": "bar", "text": "negate"}, "outcome": "missed"},
             {"mutant": {"file": "src/lib.rs", "line": 15, "function_name": "baz", "text": "remove"}, "outcome": "timeout"}
         ]"#;
-        let report = parse_cargo_mutants_outcomes(json).unwrap();
+        let report = parse_cargo_mutants_outcomes(json)
+            .unwrap_or_else(|e| panic!("valid outcomes json: {e}"));
         assert_eq!(report.tool, "cargo-mutants");
         assert_eq!(report.total, 3);
         assert_eq!(report.survived, 1);
@@ -427,7 +428,8 @@ mod tests {
             {"mutant": {"file": "src/lib.rs", "line": 1, "text": "a"}, "outcome": "caught"},
             {"mutant": {"file": "src/lib.rs", "line": 2, "text": "b"}, "outcome": "caught"}
         ]"#;
-        let report = parse_cargo_mutants_outcomes(json).unwrap();
+        let report =
+            parse_cargo_mutants_outcomes(json).unwrap_or_else(|e| panic!("valid outcomes json: {e}"));
         assert_eq!(report.survived, 0);
         assert!((report.score_pct - 100.0).abs() < 0.01);
     }
@@ -439,7 +441,8 @@ mod tests {
             {"mutant": {"file": "src/a.rs", "line": 99, "text": "y"}, "outcome": "missed"},
             {"mutant": {"file": "src/a.rs", "line": 5, "text": "z"}, "outcome": "missed"}
         ]"#;
-        let report = parse_cargo_mutants_outcomes(json).unwrap();
+        let report =
+            parse_cargo_mutants_outcomes(json).unwrap_or_else(|e| panic!("valid outcomes json: {e}"));
         assert_eq!(report.survivors[0].file, "src/a.rs");
         assert_eq!(report.survivors[0].line, 5);
         assert_eq!(report.survivors[1].file, "src/a.rs");
@@ -516,7 +519,7 @@ mod tests {
                 }
             }
         }"#;
-        let report = parse_stryker_report(json).unwrap();
+        let report = parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
         assert_eq!(report.tool, "stryker");
         assert_eq!(report.total, 2);
         assert_eq!(report.survived, 1);
@@ -546,7 +549,8 @@ mod tests {
                 }
             }
         }"#;
-        let report = parse_stryker_report(json).unwrap();
+        let report =
+            parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
         assert_eq!(report.total, 1);
         assert_eq!(report.survived, 0);
         assert_eq!(report.killed, 1);
@@ -566,7 +570,8 @@ mod tests {
                 ]}
             }
         }"#;
-        let report = parse_stryker_report(json).unwrap();
+        let report =
+            parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
         assert_eq!(report.survivors[0].file, "src/a.js");
         assert_eq!(report.survivors[1].file, "src/b.js");
     }
@@ -581,7 +586,7 @@ mod tests {
     fn fixture_path(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .unwrap()
+            .unwrap_or_else(|| panic!("manifest dir has no parent"))
             .join("tests/fixtures")
             .join(name)
     }
