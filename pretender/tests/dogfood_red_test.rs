@@ -4,18 +4,31 @@
 //! findings. `dogfood-red` un-grandfathers findings by REMOVING exactly the IDs
 //! whose path-part (first `::` field) and rule-part (last `::` field) match the
 //! given arguments; it can never add IDs. These tests run the real `just`
-//! recipe against temporary copies of the committed baseline; the committed
-//! `pretender-baseline.json` itself is never mutated.
+//! recipe against a FIXTURE baseline: filtering is pure string matching, so the
+//! mechanics (exact-ID removal, byte-preservation of the rest) are exercised
+//! without coupling to the live ledger — coupling to the committed ledger would
+//! break by design once the ledger reaches its target state: empty.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BASELINE_NAME: &str = "pretender-baseline.json";
 
-/// Picks the selector exercised by the recipe run from the committed ledger
-/// itself: the first finding ID's path-part and rule-part. The selector must
-/// track the live ledger — the epic's whole point is that rows disappear as
-/// refactors land, so any hard-coded (path, rule) fixture would break by design.
+/// Self-contained fixture ledger. The first ID's (path, rule) selects the
+/// filter target: exactly one ID matches (`engine.rs :: file_lines`); the
+/// other two must survive byte-identically, in order.
+const FIXTURE_BASELINE: &str = r#"{
+  "schema_version": 1,
+  "adopted_at": "2026-11-25T00:00:00Z",
+  "finding_ids": [
+    "pretender/src/engine.rs::::file_lines",
+    "pretender/src/engine.rs::compile_query::cyclomatic_max",
+    "pretender/src/history.rs::::file_lines"
+  ]
+}"#;
+
+/// Picks the selector exercised by the recipe run from the fixture ledger: the
+/// first finding ID's path-part and rule-part.
 fn pick_selector(baseline: &serde_json::Value) -> (String, String) {
     let first = baseline["finding_ids"]
         .as_array()
@@ -23,7 +36,7 @@ fn pick_selector(baseline: &serde_json::Value) -> (String, String) {
         .first()
         .and_then(|id| id.as_str())
         .unwrap_or_else(|| {
-            panic!("committed ledger must retain at least one finding for the fixture")
+            panic!("fixture ledger must retain at least one finding for the fixture")
         })
         .to_string();
     let parts: Vec<&str> = first.split("::").collect();
@@ -46,9 +59,8 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn committed_baseline_bytes() -> Vec<u8> {
-    std::fs::read(repo_root().join(BASELINE_NAME))
-        .unwrap_or_else(|e| panic!("committed baseline is readable: {e}"))
+fn fixture_baseline_bytes() -> Vec<u8> {
+    FIXTURE_BASELINE.as_bytes().to_vec()
 }
 
 fn id_parts(id: &str) -> (&str, &str) {
@@ -96,7 +108,7 @@ fn run_dogfood_red(baseline: &Path, selector: (&str, &str)) -> std::process::Out
         .unwrap_or_else(|e| panic!("run just dogfood-red: {e}"))
 }
 
-/// Runs the recipe on a temp copy of the committed baseline and returns
+/// Runs the recipe on a temp copy of the fixture baseline and returns
 /// (original, filtered, matched count, the (path, rule) selector used).
 fn run_dogfood_red_on_temp_copy() -> (
     serde_json::Value,
@@ -104,9 +116,9 @@ fn run_dogfood_red_on_temp_copy() -> (
     usize,
     (String, String),
 ) {
-    let original_bytes = committed_baseline_bytes();
+    let original_bytes = fixture_baseline_bytes();
     let original: serde_json::Value = serde_json::from_slice(&original_bytes)
-        .unwrap_or_else(|e| panic!("committed baseline parses: {e}"));
+        .unwrap_or_else(|e| panic!("fixture baseline parses: {e}"));
 
     let (test_path, test_rule) = pick_selector(&original);
     let matched = count_matching(&original, (&test_path, &test_rule));
@@ -190,8 +202,8 @@ fn dogfood_red_fails_cleanly_on_missing_baseline() {
     let missing = dir.path().join("does-not-exist.json");
 
     let (test_path, test_rule) = pick_selector(
-        &serde_json::from_slice(&committed_baseline_bytes())
-            .unwrap_or_else(|e| panic!("committed baseline parses: {e}")),
+        &serde_json::from_slice(&fixture_baseline_bytes())
+            .unwrap_or_else(|e| panic!("fixture baseline parses: {e}")),
     );
 
     let output = run_dogfood_red(&missing, (&test_path, &test_rule));

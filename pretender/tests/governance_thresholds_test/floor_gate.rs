@@ -21,7 +21,7 @@
 #[path = "defaults.rs"]
 mod defaults;
 
-use defaults::{Defaults, TABLE_GROUPS, struct_defaults, struct_name};
+use defaults::{struct_defaults, struct_name, Defaults, TABLE_GROUPS};
 use std::path::Path;
 
 fn as_num(value: &toml::Value) -> Option<f64> {
