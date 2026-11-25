@@ -57,6 +57,12 @@ declarations and constructors as function scopes. Enhanced `for` loops and
 - **Mutation testing** (`pretender mutation`) does not yet run PIT automatically.
   See [Mutation testing](../../docs/mutation.md) for the manual workflow.
 
+## Known unsupported metrics
+
+- **`min_assertions`** — *Not implemented yet*: `metrics.scm` has no
+  `@assert.*` capture, so unit assertion totals are always 0 (the
+  `[assertions]` patterns serve rule scopes only). No ticket filed yet.
+
 ## Example output
 
 ```

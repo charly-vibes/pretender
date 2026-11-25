@@ -45,6 +45,12 @@ Rust's exhaustive pattern matching.
   `while_expression` respectively, contributing one branch each.
 - **Wildcard `_` arms** in `match` are counted as branches like any other arm.
 
+## Known unsupported metrics
+
+- **Logical-operator branches (`&&` / `||`)** — *Not implemented yet*
+  (deliberate; see Quirks above): tree-sitter-rust exposes `binary_expression`
+  for both operators, but no capture exists. No ticket filed yet.
+
 ## Example output
 
 ```

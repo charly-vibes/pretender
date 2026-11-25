@@ -35,22 +35,37 @@ anonymous; pretender attaches the name from the left-hand side of the
 | `^assert_` | `assert_that(...)`-family and `assert_*` helpers |
 | `^stopifnot` | `stopifnot(...)` |
 
-## Unsupported metrics
+## Known unsupported metrics
 
-- **Type definitions and fields are not captured** — R has no nominal type
-  declarations, so no `@type.*` queries exist for R.
-- **`switch` is not captured** — R's `switch(...)` is an ordinary call and
-  contributes only an ABC C-count, no branches.
-- **`tryCatch`/`withCallingHandlers` are not captured as branches** — they
-  are ordinary calls; error handlers add no cyclomatic or cognitive
-  complexity.
-- **Ternary-style `ifelse` is not a branch** — `ifelse()` is a call; only
-  the `if_statement` control form counts.
-- **S4/R5/R6 classes are not tracked** — `setClass`, `setRefClass`, and
-  R6 `R6Class` definitions produce no type scopes.
+- **Type definitions and fields are not captured** — *Not supported by the
+  grammar*: R has no nominal type declarations, so no `@type.*` queries
+  exist for R; zero captures are deliberate per the archived data-model
+  design (D2).
+- **`switch` is not captured** — *Not implemented yet*: R's `switch(...)` is
+  an ordinary call and contributes only an ABC C-count, no branches. No
+  ticket filed yet.
+- **`tryCatch`/`withCallingHandlers` are not captured as branches** — *Not
+  implemented yet*: they are ordinary calls; error handlers add no cyclomatic
+  or cognitive complexity. No ticket filed yet.
+- **Ternary-style `ifelse` is not a branch** — *Not implemented yet*:
+  `ifelse()` is a call; only the `if_statement` control form counts. No
+  ticket filed yet.
+- **S4/R5/R6 classes are not tracked** — *Not supported by the grammar*:
+  `setClass`, `setRefClass`, and R6 `R6Class` definitions are calls and
+  produce no type scopes.
 - **Anonymous functions** assigned with no name (e.g. passed as arguments)
-  are not captured as function scopes; their branches fall through
-  uncaptured.
+  are not captured as function scopes — *Not supported by the grammar*: an
+  anonymous `function_definition` carries no name node to anchor
+  `@function.name`, so their branches fall through uncaptured.
+- **`min_assertions`** — *Not implemented yet*: `metrics.scm` has no
+  `@assert.*` capture, so unit assertion totals are always 0 (the
+  `[assertions]` patterns serve rule scopes only). No ticket filed yet.
+- **Nesting depth** — *Not supported by the grammar*: tree-sitter-r 1.3.0
+  wraps no bodies (branch bodies are bare statements) and the engine nests
+  only `block`-kind nodes, so `nesting_max` stays 0.
+- **Unwrap density** — *Not implemented yet*: the engine's risky
+  error-handling detector covers Rust, Python, JavaScript/TypeScript, Java,
+  and Go only; R has no matcher. No ticket filed yet.
 
 ## Quirks and limitations
 

@@ -356,6 +356,10 @@
       ]
     },
     {
+      "path": "corpus/clojure_types_sample.clj",
+      "units": []
+    },
+    {
       "path": "corpus/cpp_sample.cpp",
       "units": [
         {
@@ -936,6 +940,115 @@
             "params": 2
           },
           "name": "unique_logic",
+          "violations": []
+        }
+      ]
+    },
+    {
+      "path": "corpus/python_forms_sample.py",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "fetch",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.4142135623730951,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 4,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "greet",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 6,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "make_greeter",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "pulse",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 2.8284271247461903,
+            "assertions": 0,
+            "cognitive": 2,
+            "cyclomatic": 3,
+            "function_lines": 7,
+            "nesting_max": 1,
+            "params": 1
+          },
+          "name": "shield",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 5.477225575051661,
+            "assertions": 0,
+            "cognitive": 5,
+            "cyclomatic": 6,
+            "function_lines": 4,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "sieve",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "size",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 0
+          },
+          "name": "tag",
           "violations": []
         }
       ]

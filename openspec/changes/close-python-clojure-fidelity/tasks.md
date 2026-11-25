@@ -22,10 +22,10 @@
 ## 4. Guardrails and tests
 
 - [x] 4.1 Weight-table completeness guard test: every `@branch.<kind>` in a `metrics.scm` has a `[branches]` row (both adapters), fails naming the missing kind.
-- [ ] 4.2 New Clojure fixtures (multi-arity defn, deftest+is-family, 3-clause cond, recur, try/catch/finally, nesting) with `;; expected_*` annotations; new `tests/clojure_roundtrip_test.rs` asserting measured values.
-- [ ] 4.3 Extend `tests/python_roundtrip_test.rs` with match/comprehension fixture asserting measured values; assert-guard existing uncovered adapter forms (child .4).
-- [ ] 4.4 Update both adapter READMEs: capture summary + declared-unsupported lists (Clojure: type definitions, destructured-parameter granularity, ctor kinds; Python: none new).
-- [ ] 4.5 Re-adopt repo self-check ledger if ABC/count changes touch it (expected no-op — no Clojure sources in-repo); `just ci` green; SARIF snapshot byte-compat check on report_format fixtures.
+- [x] 4.2 New Clojure fixtures (multi-arity defn, deftest+is-family, 3-clause cond, recur, try/catch/finally, nesting) with `;; expected_*` annotations; new `tests/clojure_roundtrip_test.rs` asserting measured values.
+- [x] 4.3 Extend `tests/python_roundtrip_test.rs` with match/comprehension fixture asserting measured values; assert-guard existing uncovered adapter forms (child .4).
+- [x] 4.4 Update both adapter READMEs: capture summary + declared-unsupported lists (Clojure: type definitions, destructured-parameter granularity, ctor kinds; Python: none new).
+- [x] 4.5 Re-adopt repo self-check ledger if ABC/count changes touch it (expected no-op — no Clojure sources in-repo); `just ci` green; SARIF snapshot byte-compat check on report_format fixtures.
 
 ## 5. Docs and ledger
 

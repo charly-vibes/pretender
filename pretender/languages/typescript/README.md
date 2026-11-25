@@ -59,6 +59,15 @@ Same as JavaScript:
 - TypeScript-specific syntax uses the same tree-sitter grammar revision as
   JavaScript (`.tsx` files are parsed as TSX).
 
+## Known unsupported metrics
+
+- **`min_assertions`** — *Not implemented yet*: `metrics.scm` has no
+  `@assert.*` capture, so unit assertion totals are always 0 (the
+  `[assertions]` patterns serve rule scopes only). No ticket filed yet.
+- **Nesting depth** — *Not implemented yet*: the engine increments nesting
+  only inside `block`-kind nodes, but tree-sitter-typescript wraps bodies in
+  `statement_block`, so `nesting_max` stays 0. No ticket filed yet.
+
 ## Example output
 
 ```

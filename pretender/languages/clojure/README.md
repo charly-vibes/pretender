@@ -100,3 +100,15 @@ binding (pretender-1v8k.6):
 
 Uses `#match?` (regex) predicates instead of `#eq?` to avoid duplicate
 match issues seen when using separate patterns with identical structure.
+
+## Known unsupported metrics
+
+- **Type definitions and fields** — *Not supported by the grammar*:
+  tree-sitter-clojure 0.1 exposes only generic `list_lit`/`sym_lit` nodes,
+  so `defrecord`/`deftype`/`defprotocol` bodies cannot be captured
+  distinctly; zero `@type.*` captures are deliberate (archived design
+  D2/D3).
+- **ABC call weights** — *Not implemented yet*: `[smell_weights]` never
+  reach the engine's per-call weights, so every call contributes 1.0
+  regardless of its declared weight (pretender-x078, engine-wide). See
+  Smell weights above.

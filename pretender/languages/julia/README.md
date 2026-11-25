@@ -62,6 +62,16 @@ capture), plus the manifest patterns `^@test`, `^@inferred`,
 Calls to `eval` (5.0), `Meta.parse` (4.0), `ccall` (3.0), and `include`
 (2.0) carry elevated weights.
 
+## Known unsupported metrics
+
+- **Nesting depth** — *Not supported by the grammar*: tree-sitter-julia 0.23
+  exposes no `block` wrapper (function and branch bodies are direct
+  children), and the engine increments nesting only inside `block`-kind
+  nodes, so `nesting_max` stays 0.
+- **Unwrap density** — *Not implemented yet*: the engine's risky
+  error-handling detector covers Rust, Python, JavaScript/TypeScript, Java,
+  and Go only; Julia has no matcher. No ticket filed yet.
+
 ## Example output
 
 ```
