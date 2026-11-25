@@ -11,9 +11,10 @@
 //! # Rationale
 //! Split out of the extracted report writers (epic pretender-5zo) into
 //! stage helpers so every function fits the gate's limits; bodies moved
-//! verbatim from `main.rs`.
+//! verbatim from `main.rs`. The per-pass palette moved to the `palette`
+//! child module to keep this file within the file-lines cap.
 
-use super::summary::{fmt_metric, summarize_file, FileSummary, Severity};
+use super::summary::{fmt_metric, summarize_file, FileSummary};
 use super::{CheckReport, FileReport, UnitReport};
 use anyhow::Result;
 use pretender::config::{Bands, Mode};
@@ -28,46 +29,9 @@ pub(crate) struct HumanOpts<'a> {
     pub(crate) verbose: bool,
 }
 
-/// Color codes and icons shared by one human-report rendering pass.
-struct HumanPalette {
-    red: &'static str,
-    yellow: &'static str,
-    green: &'static str,
-    reset: &'static str,
-    icon: &'static str,
-    label: &'static str,
-    accent: &'static str,
-}
+mod palette;
 
-/// ANSI code when color is on, empty string otherwise.
-fn color_or_empty(color: bool, code: &'static str) -> &'static str {
-    if color {
-        code
-    } else {
-        ""
-    }
-}
-
-fn human_palette(color: bool, blocking: bool) -> HumanPalette {
-    let red = color_or_empty(color, "\u{1b}[31m");
-    let yellow = color_or_empty(color, "\u{1b}[33m");
-    let green = color_or_empty(color, "\u{1b}[32m");
-    let reset = color_or_empty(color, "\u{1b}[0m");
-    let (icon, label, accent) = if blocking {
-        ("✗", "VIOLATION", red)
-    } else {
-        ("⚠", "ADVISORY", yellow)
-    };
-    HumanPalette {
-        red,
-        yellow,
-        green,
-        reset,
-        icon,
-        label,
-        accent,
-    }
-}
+use self::palette::{human_palette, severity_marker, HumanPalette};
 
 pub(crate) fn write_human_report(
     sink: &mut dyn Write,
@@ -80,26 +44,6 @@ pub(crate) fn write_human_report(
         write_human_file(sink, file, opts, &palette)?;
     }
     write_human_test_findings(sink, report, blocking, &palette)
-}
-
-/// The (icon, accent, reset) triple a file's severity renders with. Gate
-/// mode stains red findings with the hard-fail icon; advisory modes keep
-/// them yellow.
-fn severity_marker(
-    severity: Severity,
-    palette: &HumanPalette,
-    blocking: bool,
-) -> (&'static str, &'static str, &'static str) {
-    let red_accent = if blocking {
-        palette.red
-    } else {
-        palette.yellow
-    };
-    match severity {
-        Severity::Green => ("✓", palette.green, palette.reset),
-        Severity::Yellow => ("⚠", palette.yellow, palette.reset),
-        Severity::Red => (palette.icon, red_accent, palette.reset),
-    }
 }
 
 fn write_human_file(
