@@ -106,4 +106,42 @@ extensions = [".x"]
 "#;
         assert!(PluginManifest::from_toml(toml).is_err());
     }
+
+    /// Every `@branch.*` capture an adapter's query declares must have a
+    /// matching `[branches]` manifest entry (pretender-1v8k.11): without
+    /// this guard, an uncaptured entry silently falls back to the 1/1
+    /// default and the manifest stops describing the adapter's branch
+    /// semantics. Fails loudly per language and capture.
+    #[test]
+    fn every_branch_capture_has_a_manifest_entry() {
+        for record in crate::registry::REGISTRY.iter() {
+            let manifest = record.manifest().expect("builtin manifest must parse");
+            for capture in branch_capture_names(record.query) {
+                assert!(
+                    manifest.branches.contains_key(&capture),
+                    "{:?}: query capture {capture} has no [branches] manifest entry",
+                    record.language
+                );
+            }
+        }
+    }
+
+    /// Distinct `@branch.<name>` capture names in query source, in
+    /// declaration order (deduplicated).
+    fn branch_capture_names(query: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut rest = query;
+        while let Some(pos) = rest.find("@branch.") {
+            let tail = &rest[pos + "@branch.".len()..];
+            let end = tail
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+                .unwrap_or(tail.len());
+            let name = format!("@branch.{}", &tail[..end]);
+            if !names.contains(&name) {
+                names.push(name);
+            }
+            rest = &tail[end..];
+        }
+        names
+    }
 }

@@ -143,7 +143,7 @@ fn unit_identity(
 }
 
 /// Query capture names mapped to the branch kinds they represent.
-const BRANCH_MAPPING: [(&str, BranchKind); 8] = [
+const BRANCH_MAPPING: [(&str, BranchKind); 10] = [
     ("branch.if", BranchKind::If),
     ("branch.elif", BranchKind::ElseIf),
     ("branch.switch_case", BranchKind::SwitchCase),
@@ -152,6 +152,8 @@ const BRANCH_MAPPING: [(&str, BranchKind); 8] = [
     ("branch.ternary", BranchKind::Ternary),
     ("branch.logical.and", BranchKind::LogicalAnd),
     ("branch.logical.or", BranchKind::LogicalOr),
+    ("branch.clause", BranchKind::CondClause),
+    ("branch.recur", BranchKind::Recur),
 ];
 
 /// Resolve adapter weight overrides into per-capture-index branch specs,
@@ -196,6 +198,14 @@ pub(crate) struct CaptureMap {
     pub(crate) calls: HashMap<usize, String>,
     pub(crate) assignments: std::collections::HashSet<usize>,
     pub(crate) assertions: std::collections::HashSet<usize>,
+    /// Forms claimed by the adapter that emit no model node (`@consumed`):
+    /// binding/sequence/error-scaffold forms which must not fall through
+    /// to the call capture (D3 capture precedence).
+    pub(crate) consumed: std::collections::HashSet<usize>,
+    /// Per-clause dispatch-head children (`@clause.dispatch`): their
+    /// count sets how many leading children a clause form skips before
+    /// test/result pairs start.
+    pub(crate) dispatch_heads: std::collections::HashSet<usize>,
 }
 
 #[derive(Default)]

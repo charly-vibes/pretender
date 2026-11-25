@@ -11,7 +11,9 @@
 //! directory so the pin rides the same bytes the production registry uses.
 
 use pretender::engine::QueryEngine;
-use pretender::model::Language;
+use pretender::metrics::{abc, cyclomatic};
+use pretender::model::{CodeUnit, Language, Module, Parser};
+use pretender::registry::{lookup, GenericParser};
 use std::path::Path;
 
 fn clojure_engine() -> QueryEngine {
@@ -51,4 +53,138 @@ fn clojure_defrecord_deftype_ship_zero_type_captures() {
         "pinned grammar has no distinct type nodes; captures must stay empty, got: {:?}",
         module.type_definitions
     );
+}
+
+fn find_unit<'a>(module: &'a Module, name: &str) -> &'a CodeUnit {
+    module
+        .units
+        .iter()
+        .find(|u| u.name == name)
+        .unwrap_or_else(|| panic!("{name} not captured"))
+}
+
+fn param_names(unit: &CodeUnit) -> Vec<&str> {
+    unit.parameters.iter().map(|p| p.name.as_str()).collect()
+}
+
+fn parse_clojure_source(source: &'static str) -> Module {
+    let (module, diags) = clojure_engine()
+        .parse(Path::new("clojure_params.clj"), source)
+        .unwrap_or_else(|e| panic!("clojure source must parse: {e:?}"));
+    assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    module
+}
+
+/// Red gate (1v8k.6): a 3-parameter defn reports params: 3.
+#[test]
+fn clojure_single_arity_defn_names_params() {
+    let module = parse_clojure_source(SAMPLE_SOURCE);
+    let unit = find_unit(&module, "complex-func");
+    assert_eq!(
+        param_names(unit),
+        vec!["a", "b", "items"],
+        "arity vector symbols become parameters in declaration order"
+    );
+}
+
+/// Variadic and destructuring shapes follow the documented rule:
+/// `&` marks the variadic boundary (not a parameter); each destructuring
+/// binding form counts as one parameter named by its source text.
+#[test]
+fn clojure_variadic_and_destructuring_bind_shapes() {
+    let module = parse_clojure_source(include_str!("fixtures/clojure_params_sample.clj"));
+    assert_eq!(
+        param_names(find_unit(&module, "variadic")),
+        vec!["a", "rest"],
+        "& rest counts as one parameter, matching Python's *rest"
+    );
+    assert_eq!(
+        param_names(find_unit(&module, "deep-bind")),
+        vec!["a", "[b c]"],
+        "one parameter per destructuring binding, not per inner symbol"
+    );
+    assert_eq!(
+        param_names(find_unit(&module, "destr-map")),
+        vec!["x", "{:keys [a b]}"],
+        "map bindings count as one parameter"
+    );
+}
+
+const CONTROL_SAMPLE: &str = include_str!("fixtures/clojure_control_sample.clj");
+const SAMPLE_SOURCE: &str = include_str!("fixtures/clojure_sample.clj");
+
+fn control_module() -> Module {
+    parse_clojure_source(CONTROL_SAMPLE)
+}
+
+/// Per-clause branches (proposal D7): cond/case/condp count one branch
+/// per test/result pair, not one per form.
+#[test]
+fn clojure_cond_case_count_per_clause() {
+    let module = control_module();
+    assert_eq!(cyclomatic(find_unit(&module, "condy")), 4, "3 clauses");
+    assert_eq!(
+        cyclomatic(find_unit(&module, "caser")),
+        3,
+        "2 pairs + default dangling"
+    );
+    assert_eq!(
+        cyclomatic(find_unit(&module, "condpr")),
+        3,
+        "pred+expr are dispatch head"
+    );
+}
+
+/// recur is a loop back-edge and counts as its own branch kind.
+#[test]
+fn clojure_recur_counts_as_branch() {
+    assert_eq!(
+        cyclomatic(find_unit(&control_module(), "looper")),
+        4,
+        "loop + if + recur"
+    );
+}
+
+/// try/finally no longer branch: one catch clause = one branch.
+#[test]
+fn clojure_try_counts_one_catch() {
+    assert_eq!(
+        cyclomatic(find_unit(&control_module(), "catcher")),
+        2,
+        "catch only"
+    );
+}
+
+/// Control forms leave the C-count (D3): `let` is consumed, so the
+/// calls are exactly pos?, inc, println. Pins abc = sqrt(1 + 9).
+#[test]
+fn clojure_control_forms_leave_call_count() {
+    let module = control_module();
+    let unit = find_unit(&module, "g");
+    assert!(
+        (abc(unit) - 10f64.sqrt()).abs() < 1e-9,
+        "abc was {}",
+        abc(unit)
+    );
+}
+
+/// D6 semantics pin (verified at HEAD), through the production registry
+/// parser: complex-func has A=0, B=4 (if, if, doseq, if), C = 6 calls
+/// (pos?, pos?, atom, swap!, even?, swap!) x 1.0 = 6.0. Production
+/// engines currently do NOT apply [smell_weights] to the C-count:
+/// `QueryEngine` never wires `WeightMaps.call` into `call_weights`
+/// (pre-existing dead plumbing, tracked under the smell-weights
+/// ticket). This pin freezes that truth; it must be revisited when the
+/// wiring lands.
+#[test]
+fn clojure_control_forms_abc_semantics_pin() {
+    let record = lookup("clj").unwrap_or_else(|| panic!("clj must be registered"));
+    let parser = GenericParser { record };
+    let (module, diags) = parser
+        .parse(Path::new("clojure_sample.clj"), SAMPLE_SOURCE)
+        .unwrap_or_else(|e| panic!("clojure sample must parse: {e:?}"));
+    assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    let expected = (4.0f64 * 4.0 + 6.0 * 6.0).sqrt();
+    let measured = abc(find_unit(&module, "complex-func"));
+    assert!((measured - expected).abs() < 1e-9, "abc was {measured}");
 }

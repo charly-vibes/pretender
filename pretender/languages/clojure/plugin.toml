@@ -7,6 +7,11 @@ query        = "metrics.scm"
 
 [branches]
 "@branch.if"           = { cyclomatic = 1, cognitive = 1 }
+"@branch.switch_case"  = { cyclomatic = 1, cognitive = 1 }
+"@branch.clause"       = { cyclomatic = 1, cognitive = 1 }
+"@branch.loop"         = { cyclomatic = 1, cognitive = 1 }
+"@branch.catch"        = { cyclomatic = 1, cognitive = 1 }
+"@branch.recur"        = { cyclomatic = 1, cognitive = 1 }
 "@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
 "@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
 

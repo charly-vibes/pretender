@@ -1,7 +1,8 @@
 //! Parameter extraction for `CodeUnit` assembly.
 //!
 //! Purpose: turn a captured function's parameter-list node into `Parameter`
-//! entries across grammars (named, typed, pattern, and splat forms).
+//! entries across grammars (named, typed, pattern, splat, and Clojure
+//! binding forms).
 //! Responsibilities: per-node-kind parameter naming, type extraction.
 //! Rationale: split out of `metric_application.rs` along the assembly /
 //! parameter-parsing seam; extraction order and naming stay identical.
@@ -37,7 +38,28 @@ fn param_name(child: &tree_sitter::Node, source: &[u8]) -> Option<String> {
         // Rust `self` parameters (`fn f(&self)` / `fn f(&mut self)`).
         "self_parameter" | "self" => Some("self".to_string()),
         "list_splat_pattern" | "dictionary_splat_pattern" => splat_param_name(*child, source),
+        // Clojure binding forms (tree-sitter-clojure): bare `sym_lit`
+        // parameters, the `&` variadic marker, and destructuring
+        // `vec_lit`/`map_lit` bindings. Scoped by kind: only adapters
+        // whose `@function.parameters` capture yields these kinds are
+        // affected (the pinned grammar emits them only in Clojure).
+        "sym_lit" | "vec_lit" | "map_lit" => clojure_param_name(child, source),
         _ => None,
+    }
+}
+
+/// Clojure binding names: a bare `sym_lit` is one parameter as written;
+/// `&` marks the variadic boundary and is itself not a parameter (the
+/// binding after it counts once, like Python's `*rest`); a destructuring
+/// `vec_lit`/`map_lit` binding counts as one parameter named by its
+/// source text — per-element granularity is declared unsupported
+/// (languages/clojure/README.md).
+fn clojure_param_name(child: &tree_sitter::Node, source: &[u8]) -> Option<String> {
+    let text = child.utf8_text(source).ok()?;
+    if text == "&" {
+        None
+    } else {
+        Some(text.to_string())
     }
 }
 
