@@ -1,8 +1,6 @@
 use crate::config::Thresholds;
 use std::path::Path;
 
-pub use crate::role_resolution::RoleDetector;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
     App,

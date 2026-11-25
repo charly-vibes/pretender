@@ -31,7 +31,7 @@ use crate::CheckArgs;
 use anyhow::{Context, Result};
 use pretender::config::{Config, Mode};
 use pretender::history;
-use pretender::roles::RoleDetector;
+use pretender::role_resolution::RoleDetector;
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::path::Path;

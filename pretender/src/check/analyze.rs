@@ -22,7 +22,8 @@ use crate::report::{FileReport, MockFindingReport, UnitReport, ViolationReport};
 use anyhow::{Context, Result};
 use pretender::config::Config;
 use pretender::model::{Diagnostic, Module};
-use pretender::roles::{EffectiveThresholds, Role, RoleDetector};
+use pretender::role_resolution::RoleDetector;
+use pretender::roles::{EffectiveThresholds, Role};
 use pretender::{
     cluster_detector, data_model, error_metrics, inheritance_depth, mock_detector,
     mutability_metrics, primitive_obsession,

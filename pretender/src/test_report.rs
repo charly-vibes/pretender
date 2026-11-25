@@ -7,7 +7,8 @@
 #![allow(dead_code)]
 
 use crate::config::{Config, TimeUnit};
-use crate::roles::{EffectiveThresholds, Role, RoleDetector};
+use crate::role_resolution::RoleDetector;
+use crate::roles::{EffectiveThresholds, Role};
 use anyhow::{Context, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;

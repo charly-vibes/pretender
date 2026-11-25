@@ -22,7 +22,7 @@ use crate::CheckArgs;
 use anyhow::{anyhow, Context, Result};
 use pretender::config::Config;
 use pretender::model::Module;
-use pretender::roles::RoleDetector;
+use pretender::role_resolution::RoleDetector;
 use pretender::{
     c, clojure, cpp, csharp, go, java, javascript, julia, model, python, r, ruby, rust, typescript,
 };
