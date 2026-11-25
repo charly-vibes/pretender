@@ -58,33 +58,102 @@ fn visit_child(
     child: tree_sitter::Node,
     out: &mut Vec<crate::model::Node>,
 ) -> bool {
-    let Some(node) = captured_node(ctx, parent, child) else {
+    let Some(nodes) = captured_node(ctx, parent, child) else {
         return false;
     };
-    out.push(node);
+    out.extend(nodes);
     collect_nested_blocks(ctx, child, out);
     true
 }
 
-/// The captured model node for `child`, if any capture claims it:
-/// a weighted branch, an assignment, or a call site, in that order.
+/// The captured model nodes for `child`, if any capture claims it:
+/// a neutral consumed form (claimed, emits nothing), clause branches
+/// (one per test/result pair), a weighted branch, an assignment, or a
+/// call site — in that order (D3 capture precedence).
 fn captured_node(
     ctx: &WalkCtx,
     parent: tree_sitter::Node,
     child: tree_sitter::Node,
-) -> Option<crate::model::Node> {
+) -> Option<Vec<crate::model::Node>> {
+    if ctx.captures.consumed.contains(&child.id()) {
+        return Some(Vec::new());
+    }
     if let Some(&spec) = ctx.captures.branches.get(&child.id()) {
-        return Some(crate::model::Node::Branch(branch_node(
-            ctx, parent, child, spec,
-        )));
+        return Some(clause_or_branch_nodes(ctx, parent, child, spec));
     }
     if ctx.captures.assignments.contains(&child.id()) {
-        return Some(crate::model::Node::Assignment(node_span(child)));
+        return Some(vec![crate::model::Node::Assignment(node_span(child))]);
     }
     ctx.captures
         .calls
         .get(&child.id())
-        .map(|callee| crate::model::Node::Call(call_site(ctx, child, callee)))
+        .map(|callee| vec![crate::model::Node::Call(call_site(ctx, child, callee))])
+}
+
+/// Clause kinds emit one branch per test/result pair; every other kind
+/// emits its single branch node.
+fn clause_or_branch_nodes(
+    ctx: &WalkCtx,
+    parent: tree_sitter::Node,
+    child: tree_sitter::Node,
+    spec: BranchCaptureSpec,
+) -> Vec<crate::model::Node> {
+    match spec.kind {
+        BranchKind::CondClause | BranchKind::SwitchCase => clause_branch_nodes(ctx, child, spec),
+        _ => vec![crate::model::Node::Branch(branch_node(
+            ctx, parent, child, spec,
+        ))],
+    }
+}
+
+/// One branch per test/result pair: pairs start after the form's head
+/// (leading symbol plus any captured dispatch heads) and the test sits
+/// at every second named form from there.
+fn clause_branch_nodes(
+    ctx: &WalkCtx,
+    form: tree_sitter::Node,
+    spec: BranchCaptureSpec,
+) -> Vec<crate::model::Node> {
+    let forms = named_forms(form);
+    let head = clause_head(ctx, &forms).min(forms.len());
+    // chunks drop a dangling trailing expression: a clause needs
+    // both a test and a result (D7 — `(case e a 1 b 2 3)` has 2 pairs).
+    forms[head..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| crate::model::Node::Branch(clause_branch(ctx, pair[0], spec)))
+        .collect()
+}
+
+/// Named forms of a clause form; comments are excluded because they
+/// never carry clause semantics in any grammar.
+fn named_forms(form: tree_sitter::Node) -> Vec<tree_sitter::Node> {
+    (0..form.named_child_count())
+        .filter_map(|i| form.named_child(i))
+        .filter(|c| c.kind() != "comment")
+        .collect()
+}
+
+/// Head length: the leading symbol plus the form's dispatch-head
+/// children (`@clause.dispatch`) — `case`'s dispatch expression, or
+/// `condp`'s predicate and value.
+fn clause_head(ctx: &WalkCtx, forms: &[tree_sitter::Node]) -> usize {
+    1 + forms
+        .iter()
+        .filter(|c| ctx.captures.dispatch_heads.contains(&c.id()))
+        .count()
+}
+
+fn clause_branch(ctx: &WalkCtx, test: tree_sitter::Node, spec: BranchCaptureSpec) -> Branch {
+    Branch {
+        kind: spec.kind,
+        span: node_span(test),
+        nesting_at: ctx.nesting,
+        sequence_id: None,
+        cyclomatic_weight: spec.cyclomatic_weight,
+        cognitive_weight: spec.cognitive_weight,
+    }
 }
 
 /// A weighted branch node; logical operators share the parent's sequence

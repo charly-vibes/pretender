@@ -56,6 +56,8 @@ pub(crate) struct OptionalCaptureSlots {
     pub(crate) call_callee_idx: Option<u32>,
     pub(crate) assign_idx: Option<u32>,
     pub(crate) import_idx: Option<u32>,
+    pub(crate) consumed_idx: Option<u32>,
+    pub(crate) clause_dispatch_idx: Option<u32>,
 }
 
 /// Optional type captures (D2): their absence leaves type_definitions
@@ -98,6 +100,8 @@ fn optional_capture_slots(query: &tree_sitter::Query) -> OptionalCaptureSlots {
         call_callee_idx: query.capture_index_for_name("call.callee"),
         assign_idx: query.capture_index_for_name("assign"),
         import_idx: query.capture_index_for_name("import"),
+        consumed_idx: query.capture_index_for_name("consumed"),
+        clause_dispatch_idx: query.capture_index_for_name("clause.dispatch"),
     }
 }
 

@@ -74,6 +74,24 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
         } else if Some(ix) == engine.slots.optionals.assign_idx {
             map.assignments.insert(capture.node.id());
         } else {
+            return Self::dispatch_neutral_capture(map, engine, ix, capture);
+        }
+        true
+    }
+
+    /// Neutral metric captures: forms claimed without emitting a model
+    /// node, and per-clause dispatch heads feeding clause counting.
+    fn dispatch_neutral_capture(
+        map: &mut CaptureMap,
+        engine: &QueryEngine,
+        ix: u32,
+        capture: &tree_sitter::QueryCapture<'a>,
+    ) -> bool {
+        if Some(ix) == engine.slots.optionals.consumed_idx {
+            map.consumed.insert(capture.node.id());
+        } else if Some(ix) == engine.slots.optionals.clause_dispatch_idx {
+            map.dispatch_heads.insert(capture.node.id());
+        } else {
             return false;
         }
         true

@@ -219,4 +219,6 @@ pub enum BranchKind {
     Ternary,
     LogicalAnd,
     LogicalOr,
+    CondClause,
+    Recur,
 }

@@ -63,6 +63,89 @@
       ]
     },
     {
+      "path": "corpus/clojure_control_sample.clj",
+      "units": [
+        {
+          "metrics": {
+            "abc": 2.0,
+            "assertions": 0,
+            "cognitive": 2,
+            "cyclomatic": 3,
+            "function_lines": 5,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "caser",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.4142135623730951,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 5,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "catcher",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 2.0,
+            "assertions": 0,
+            "cognitive": 2,
+            "cyclomatic": 3,
+            "function_lines": 5,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "condpr",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 3.605551275463989,
+            "assertions": 0,
+            "cognitive": 3,
+            "cyclomatic": 4,
+            "function_lines": 5,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "condy",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 3.1622776601683795,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 4,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "g",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 3.605551275463989,
+            "assertions": 0,
+            "cognitive": 3,
+            "cyclomatic": 4,
+            "function_lines": 5,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "looper",
+          "violations": []
+        }
+      ]
+    },
+    {
       "path": "corpus/clojure_params_sample.clj",
       "units": [
         {
@@ -111,7 +194,7 @@
       "units": [
         {
           "metrics": {
-            "abc": 8.06225774829855,
+            "abc": 7.211102550927978,
             "assertions": 0,
             "cognitive": 4,
             "cyclomatic": 5,

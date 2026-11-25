@@ -42,7 +42,7 @@ pub struct LangRecord {
 }
 
 impl LangRecord {
-    fn manifest(&self) -> Result<&PluginManifest> {
+    pub(crate) fn manifest(&self) -> Result<&PluginManifest> {
         let parsed = self.manifest_cache.get_or_init(|| {
             PluginManifest::from_toml(self.manifest).map_err(|err| err.to_string())
         });

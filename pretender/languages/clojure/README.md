@@ -11,10 +11,38 @@ the text of the first `sym_lit` child (e.g., `defn`, `if`, `cond`).
 ## Queries
 
 - `metrics.scm` — captures function definitions (`defn`/`defn-` with
-  `vec_lit` parameter vector), branches (if/when/cond/case/loop/doseq),
-  calls (any list with a symbol first), and assignments
+  `vec_lit` parameter vector), branches, calls (any list with a symbol
+  first), and assignments
 - `plugin.toml` — configuration with extensions `.clj`, `.cljs`, `.cljc`,
   `.edn`, branch weights, assertion patterns, and smell weights
+
+### Branch capture boundary
+
+- **Single-decision conditionals** (`if`, `when`, `when-not`, `if-not`,
+  `if-let`, `when-let`) capture one `@branch.if` per form.
+- **`cond` / `condp` / `case`** capture per clause (`@branch.clause` /
+  `@branch.switch_case`): one branch per test/result pair, pairs walking
+  every second form after the head. `case` skips its dispatch expression;
+  `condp` skips its predicate and value; a dangling trailing expression
+  (a `case` default with no test) is not a pair. Comments inside clause
+  forms are skipped.
+- **`recur`** captures one `@branch.recur` (a loop back-edge).
+- **`catch`** captures one `@branch.catch` per clause; `try`/`finally`
+  are scaffolding and capture nothing.
+- **Consumed forms** (`let`, `binding`, `do`, `try`, `finally`) claim the
+  form so it never falls through to the call capture — control structure
+  contributes no C-count (ABC de-inflation).
+- **Logical operators** (`and`, `or`) capture one branch each.
+
+### Smell weights
+
+`[smell_weights]` (e.g. `swap!` 1.5) currently do **not** scale the ABC
+C-count: `QueryEngine` never wires `WeightMaps.call` into per-call
+weights, so every call contributes 1.0. This is pre-existing engine
+behavior, pinned by
+`clojure_control_forms_abc_semantics_pin`; revisit when the wiring lands.
+Branch weights are uniform 1/1 and the manifest↔query consistency is
+guarded by `every_branch_capture_has_a_manifest_entry`.
 
 ## Parameters
 
