@@ -53,8 +53,9 @@ pub fn git_init(dir: &Path) {
         .unwrap_or_else(|e| panic!("git config name: {e:?}"));
 }
 
-// consumed by later split children (.4.2/.4.3); remove the allow then
-#[allow(dead_code)]
+// consumed by check_test (.4.1); the allow silences dead-code in the other
+// test targets until the wave-3 split completes
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn git_add(dir: &Path, path: &Path) {
     assert!(Command::new("git")
         .arg("add")
@@ -66,8 +67,9 @@ pub fn git_add(dir: &Path, path: &Path) {
         .success());
 }
 
-// consumed by later split children (.4.3); remove the allow then
-#[allow(dead_code)]
+// consumed by check_test (.4.1); the allow silences dead-code in the other
+// test targets until the wave-3 split completes
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn git_commit(dir: &Path, message: &str) {
     assert!(Command::new("git")
         .args(["commit", "-m", message])
@@ -209,21 +211,37 @@ pub fn ci_generate_in(dir: &Path, provider: &str) -> Command {
     with_args(subcommand_in("ci", dir), &["generate", provider])
 }
 
-// consumed by .4.3; remove the allow then
-#[allow(dead_code)]
+// consumed by init_test (.4.3); the allow silences dead-code in the other
+// test targets until the wave-3 split completes
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn hooks_in(dir: &Path, action: &str) -> Command {
     with_args(subcommand_in("hooks", dir), &[action])
 }
 
-// consumed by .4.3; remove the allow then
-#[allow(dead_code)]
+// consumed by init_test (.4.3); the allow silences dead-code in the other
+// test targets until the wave-3 split completes
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn hooks_in_named(dir: &Path, action_and_hook: (&str, &str)) -> Command {
     let (action, hook) = action_and_hook;
     with_args(hooks_in(dir, action), &[hook])
 }
 
-// consumed by .4.3; remove the allow then
-#[allow(dead_code)]
+// consumed by init_test (.4.3); the allow silences dead-code in the other
+// test targets until the wave-3 split completes
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn init_in(dir: &Path) -> Command {
     subcommand_in("init", dir)
+}
+
+/// Run the doctor subcommand from `dir` with color output suppressed and the
+/// neutral global git config, plus any extra CLI arguments.
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
+pub fn doctor_in(dir: &Path, extra_args: &[&str]) -> Command {
+    let mut cmd = pretender_cmd();
+    cmd.arg("doctor")
+        .args(extra_args)
+        .current_dir(dir)
+        .env("NO_COLOR", "1")
+        .env("GIT_CONFIG_GLOBAL", neutral_git_config_global());
+    cmd
 }
