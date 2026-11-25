@@ -198,7 +198,7 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
             .contains(&capture.index)
         {
             map.assertions.insert(capture.node.id());
-        } else if Some(capture.index) == self.engine.slots.assign_idx {
+        } else if Some(capture.index) == self.engine.slots.optionals.assign_idx {
             map.assignments.insert(capture.node.id());
         } else {
             return false;
@@ -208,13 +208,13 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
 
     /// Call and call.callee captures accumulate into the pending call site.
     fn dispatch_call(&mut self, capture: &tree_sitter::QueryCapture<'a>) -> bool {
-        if Some(capture.index) == self.engine.slots.call_idx {
+        if Some(capture.index) == self.engine.slots.optionals.call_idx {
             let id = capture.node.id();
             match &mut self.pending_call {
                 Some((existing_id, _)) if *existing_id == id => {}
                 _ => self.pending_call = Some((id, None)),
             }
-        } else if Some(capture.index) == self.engine.slots.call_callee_idx {
+        } else if Some(capture.index) == self.engine.slots.optionals.call_callee_idx {
             let callee = capture.node.utf8_text(self.source).ok().map(str::to_string);
             if let Some((_, slot)) = self.pending_call.as_mut() {
                 *slot = callee;
@@ -231,7 +231,7 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
         out: &mut CollectedCaptures<'a>,
         capture: &tree_sitter::QueryCapture<'a>,
     ) -> bool {
-        if Some(capture.index) == self.engine.slots.import_idx {
+        if Some(capture.index) == self.engine.slots.optionals.import_idx {
             if let Ok(text) = capture.node.utf8_text(self.source) {
                 out.imports.push(Import {
                     module: text.to_string(),
@@ -240,15 +240,15 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
                     span: node_span(capture.node),
                 });
             }
-        } else if Some(capture.index) == self.engine.slots.type_def_idx {
+        } else if Some(capture.index) == self.engine.slots.types.type_def_idx {
             self.type_def_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.slots.type_name_idx {
+        } else if Some(capture.index) == self.engine.slots.types.type_name_idx {
             self.type_name_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.slots.type_field_idx {
+        } else if Some(capture.index) == self.engine.slots.types.type_field_idx {
             self.type_field_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.slots.type_field_name_idx {
+        } else if Some(capture.index) == self.engine.slots.types.type_field_name_idx {
             self.type_field_name_node = Some(capture.node);
-        } else if Some(capture.index) == self.engine.slots.type_field_type_idx {
+        } else if Some(capture.index) == self.engine.slots.types.type_field_type_idx {
             self.type_field_type_node = Some(capture.node);
         } else {
             return false;
