@@ -1,0 +1,9 @@
+id = "let-does-not-nest"
+description = "let/binding/do/testing bodies add no nesting level; branch bodies inside still nest."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_nesting_levels_match_control_fixture"}]

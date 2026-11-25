@@ -29,5 +29,5 @@
 
 ## 5. Docs and ledger
 
-- [ ] 5.1 Language README pages for any shipped-but-undocumented languages (child .13 scope: reconcile shipped set).
-- [ ] 5.2 `bd close` each outcome-changing child (1v8k.2–.13) against its landed commit; epic closes when the audit table is fully green or declared-unsupported.
+- [x] 5.1 Language README pages for any shipped-but-undocumented languages (child .13 scope: reconcile shipped set).
+- [x] 5.2 `bd close` each outcome-changing child (1v8k.2–.13) against its landed commit; epic closes when the audit table is fully green or declared-unsupported.

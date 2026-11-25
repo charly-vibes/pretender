@@ -1,0 +1,9 @@
+id = "capture-without-weight-row-fails-the-guard-test"
+description = "Every query branch capture must have a [branches] manifest row; the guard fails naming the language and capture."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "every_branch_capture_has_a_manifest_entry"}]

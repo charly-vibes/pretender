@@ -1,0 +1,9 @@
+id = "clojure-cond-counts-per-clause"
+description = "cond/case/condp contribute one branch per test/result clause, not one per form."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_cond_case_count_per_clause"}]

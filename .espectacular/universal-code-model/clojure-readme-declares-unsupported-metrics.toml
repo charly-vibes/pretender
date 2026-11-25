@@ -1,0 +1,9 @@
+id = "clojure-readme-declares-unsupported-metrics"
+description = "The clojure adapter README carries a Known unsupported metrics section classifying gaps as not-implemented vs grammar-unsupported."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "test_clojure_readme_declares_unsupported_metrics"}]

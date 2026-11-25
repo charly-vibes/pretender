@@ -1,0 +1,9 @@
+id = "clojure-multi-arity-defn-produces-one-unit-per-arity"
+description = "A vector-of-vectors defn splits into one unit per arity with that arity parameter list, named name."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_multi_arity_defn_one_unit_per_arity"}]

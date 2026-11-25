@@ -1,0 +1,9 @@
+id = "clojure-deftest-is-a-test-unit"
+description = "A deftest form becomes a unit of kind Test with is-family assertion counts; testing stays consumed scaffolding."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "clojure_deftest_is_a_test_unit_with_assertions"},{flags = "clojure_is_family_assertions_count_inside_testing"}]
