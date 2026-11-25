@@ -16,13 +16,21 @@
 use std::path::Path;
 
 use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind, UnitKind};
-use pretender::typescript::TypeScriptParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for ts, through the public registry API.
+fn parser_for_ts() -> GenericParser {
+    match lookup("ts") {
+        Some(record) => GenericParser { record },
+        None => panic!("ts must be registered"),
+    }
+}
 
 /// Reusable harness pattern (tasks 6.4): the language's real metrics.scm
 /// parses the committed fixture; asserts a clean parse and returns the module.
 fn parse_ts_types_fixture() -> Module {
     let source = include_str!("fixtures/ts_types_sample.ts");
-    let (module, diags) = TypeScriptParser
+    let (module, diags) = parser_for_ts()
         .parse(Path::new("ts_types_sample.ts"), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
 
@@ -120,7 +128,7 @@ fn ts_function_valued_class_properties_are_units_not_fields() {
     // properties are CodeUnits (kind follows the existing TS
     // convention, where method_definition members are Function too)
     // and never data fields.
-    let parser = TypeScriptParser;
+    let parser = parser_for_ts();
     let source = "\
 class Widget {
   label: string = 'ok';

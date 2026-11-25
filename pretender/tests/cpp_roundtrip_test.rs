@@ -1,21 +1,28 @@
 //! Purpose: Integration test for the C++ parser's round-trip behavior on the
 //! cpp_types_sample fixture.
-//! Responsibilities: Parse the fixture via `CppParser`, assert captured type
+//! Responsibilities: Parse the fixture via the generic parser, assert captured type
 //! definitions, fields, kinds, language tagging, and method-as-unit handling.
 //! Rationale: Lives in tests/ to keep pretender/src/cpp.rs free of inline test
 //! modules (function_lines gate) while asserting identical behavior.
 
 use std::path::Path;
 
-use pretender::cpp::CppParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for cpp, through the public registry API.
+fn parser_for_cpp() -> GenericParser {
+    match lookup("cpp") {
+        Some(record) => GenericParser { record },
+        None => panic!("cpp must be registered"),
+    }
+}
 use pretender::model::{Language, Parser, TypeKind};
 
 const CPP_TYPES_SAMPLE: &str = include_str!("fixtures/cpp_types_sample.cpp");
 
 #[test]
 fn cpp_types_sample_round_trip() {
-    let parser = CppParser;
-    let (module, diagnostics) = parser
+    let (module, diagnostics) = parser_for_cpp()
         .parse(
             Path::new("tests/fixtures/cpp_types_sample.cpp"),
             CPP_TYPES_SAMPLE,

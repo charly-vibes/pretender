@@ -12,11 +12,19 @@
 
 use std::path::Path;
 
-use pretender::java::JavaParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for java, through the public registry API.
+fn parser_for_java() -> GenericParser {
+    match lookup("java") {
+        Some(record) => GenericParser { record },
+        None => panic!("java must be registered"),
+    }
+}
 use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind};
 
-fn engine() -> JavaParser {
-    JavaParser
+fn engine() -> GenericParser {
+    parser_for_java()
 }
 
 /// Reusable harness pattern (tasks 6.3): the language's real metrics.scm

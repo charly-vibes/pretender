@@ -13,13 +13,21 @@
 use std::path::Path;
 
 use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind, UnitKind};
-use pretender::python::PythonParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for py, through the public registry API.
+fn parser_for_py() -> GenericParser {
+    match lookup("py") {
+        Some(record) => GenericParser { record },
+        None => panic!("py must be registered"),
+    }
+}
 
 /// Reusable harness pattern (tasks 6.2): the language's real metrics.scm
 /// parses the committed fixture; asserts a clean parse and returns the module.
 fn parse_python_types_fixture() -> Module {
     let source = include_str!("fixtures/python_types_sample.py");
-    let (module, diags) = PythonParser
+    let (module, diags) = parser_for_py()
         .parse(Path::new("python_types_sample.py"), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
 

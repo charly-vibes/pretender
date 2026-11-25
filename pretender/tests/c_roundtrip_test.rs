@@ -9,7 +9,15 @@
 //! capture behavior, not adapter wiring, and this is their matching
 //! integration target.
 
-use pretender::c::CParser;
+use pretender::registry::{lookup, GenericParser};
+
+/// The production record for c, through the public registry API.
+fn parser_for_c() -> GenericParser {
+    match lookup("c") {
+        Some(record) => GenericParser { record },
+        None => panic!("c must be registered"),
+    }
+}
 use pretender::model::{Module, Parser, TypeDefinition, TypeKind};
 use std::path::Path;
 
@@ -33,7 +41,7 @@ fn assert_person_shape(module: &Module, def: &TypeDefinition) {
 
 #[test]
 fn c_types_sample_round_trip() {
-    let parser = CParser;
+    let parser = parser_for_c();
     let (module, diagnostics) = parser
         .parse(Path::new("tests/fixtures/c_types_sample.c"), C_TYPES_SAMPLE)
         .unwrap_or_else(|e| panic!("c_types_sample.c must parse: {e:?}"));
