@@ -27,7 +27,7 @@
 
 Pretender is a Rust CLI for teams that gate structural code quality in CI —
 cyclomatic/cognitive/abc complexity, clones, and test-assertion floors over
-exactly the code that changed, across nine languages, from one `pretender.toml`.
+exactly the code that changed, across thirteen languages, from one `pretender.toml`.
 
 ## When to use
 
@@ -201,7 +201,10 @@ Run `pretender explain <metric>` for full definition and citation.
 
 ## Languages
 
-Python, Rust, Go, JavaScript, TypeScript, Java, Ruby, C, C++
+C, C#, C++, Clojure, Go, Java, JavaScript, Julia, Python, R, Ruby, Rust, TypeScript
+
+Language-specific node coverage and known gaps are documented per adapter in
+[`pretender/languages/<name>/README.md`](pretender/languages/).
 
 ## Configuration
 
