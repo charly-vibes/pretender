@@ -11,7 +11,7 @@
 //! directory so the pin rides the same bytes the production registry uses.
 
 use pretender::engine::QueryEngine;
-use pretender::metrics::{abc, cognitive, cyclomatic, nesting_max};
+use pretender::metrics::{abc, cognitive, cyclomatic, function_lines, nesting_max};
 use pretender::model::{CodeUnit, Language, Module, Parser, UnitKind};
 use pretender::registry::{lookup, GenericParser};
 use std::path::Path;
@@ -165,6 +165,7 @@ fn clojure_variadic_and_destructuring_bind_shapes() {
 
 const CONTROL_SAMPLE: &str = include_str!("fixtures/clojure_control_sample.clj");
 const SAMPLE_SOURCE: &str = include_str!("fixtures/clojure_sample.clj");
+const MULTI_ARITY_SAMPLE: &str = include_str!("fixtures/clojure_multi_arity_sample.clj");
 
 fn control_module() -> Module {
     parse_clojure_source(CONTROL_SAMPLE)
@@ -221,41 +222,31 @@ fn clojure_control_forms_leave_call_count() {
     );
 }
 
-/// D4 nesting: each branch-bearing body wraps one level deeper.
-/// doseq -> when -> if reaches depth 3, matching the audit's Python-deep
-/// row (cyclomatic 4, cognitive 6, nesting_max 3).
+/// D4 nesting pins per control-fixture annotations: each branch-bearing
+/// body wraps one level deeper; a single conditional nests exactly once
+/// (like a Python if-block); doseq -> when -> if reaches depth 3
+/// (cyclomatic 4, cognitive 6). complex-func's wrapping `let` adds no
+/// level (its roots sit at depth 0 while bodies nest) — same shape in
+/// Python reports nesting_max 2, cognitive 6. `g` (control fixture):
+/// the if wraps once; the let inside its body adds no level.
 #[test]
-fn clojure_deeply_nested_branches_nest_three_levels() {
-    let module = control_module();
-    let unit = find_unit(&module, "deeply-nested");
-    assert_eq!(cyclomatic(unit), 4);
-    assert_eq!(nesting_max(unit), 3);
-    assert_eq!(cognitive(unit), 6);
-}
-
-/// A single conditional body nests exactly once, like a Python if-block.
-#[test]
-fn clojure_single_conditional_nests_once() {
-    let module = control_module();
-    let unit = find_unit(&module, "branchy");
-    assert_eq!(nesting_max(unit), 1);
-}
-
-/// D4: consumed forms never add a level. complex-func's root branches
-/// sit at depth 0 (the wrapping `let` adds nothing) while their bodies
-/// nest — the same shape in Python also reports nesting_max 2,
-/// cognitive 6 (if1@0 + if2@1 + doseq@0 + if3@1).
-#[test]
-fn clojure_let_bodies_stay_flat() {
-    let module = parse_clojure_source(SAMPLE_SOURCE);
-    let unit = find_unit(&module, "complex-func");
-    assert_eq!(nesting_max(unit), 2);
-    assert_eq!(cognitive(unit), 6);
-    // `g` (control fixture): the if wraps once; the let inside its body
-    // adds no level.
+fn clojure_nesting_levels_match_control_fixture() {
+    for (source, name, nest) in [
+        (parse_clojure_source(SAMPLE_SOURCE), "complex-func", 2),
+        (control_module(), "g", 1),
+        (control_module(), "branchy", 1),
+    ] {
+        let unit = find_unit(&source, name);
+        assert_eq!(nesting_max(unit), nest, "{name}");
+    }
     let control = control_module();
-    let g = find_unit(&control, "g");
-    assert_eq!(nesting_max(g), 1);
+    let deeply = find_unit(&control, "deeply-nested");
+    assert_eq!(nesting_max(deeply), 3);
+    assert_eq!(cyclomatic(deeply), 4);
+    assert_eq!(cognitive(deeply), 6);
+    let sample = parse_clojure_source(SAMPLE_SOURCE);
+    let unit = find_unit(&sample, "complex-func");
+    assert_eq!(cognitive(unit), 6);
 }
 
 /// D6 semantics pin (verified at HEAD), through the production registry
@@ -277,4 +268,32 @@ fn clojure_control_forms_abc_semantics_pin() {
     let expected = (4.0f64 * 4.0 + 6.0 * 6.0).sqrt();
     let measured = abc(find_unit(&module, "complex-func"));
     assert!((measured - expected).abs() < 1e-9, "abc was {measured}");
+}
+
+/// 1v8k.5 (D2): one unit per arity clause, bare names, per-clause metrics.
+#[test]
+fn clojure_multi_arity_defn_one_unit_per_arity() {
+    let module = parse_clojure_source(MULTI_ARITY_SAMPLE);
+    let units = &module.units;
+    let arities = |name: &str, want: &[&[&str]]| {
+        let got: Vec<_> = units.iter().filter(|u| u.name == name).collect();
+        assert_eq!(got.len(), want.len(), "{name} arity count");
+        for (u, params) in got.iter().zip(want) {
+            assert_eq!(param_names(u), *params, "{name} params");
+        }
+    };
+    arities("multi-arity", &[&["x"], &["x", "y"]]);
+    arities("private-multi", &[&["a"], &["a", "b"]]);
+    arities("single-arity", &[&["n"]]);
+    let multi: Vec<_> = units.iter().filter(|u| u.name == "multi-arity").collect();
+    assert_eq!(
+        (cyclomatic(multi[0]), cyclomatic(multi[1])),
+        (1, 2),
+        "if counts only in its own clause"
+    );
+    assert_eq!(
+        (function_lines(multi[0]), function_lines(multi[1])),
+        (2, 3),
+        "per-clause spans"
+    );
 }

@@ -198,6 +198,76 @@
       ]
     },
     {
+      "path": "corpus/clojure_multi_arity_sample.clj",
+      "units": [
+        {
+          "metrics": {
+            "abc": 0.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "multi-arity",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.4142135623730951,
+            "assertions": 0,
+            "cognitive": 1,
+            "cyclomatic": 2,
+            "function_lines": 3,
+            "nesting_max": 1,
+            "params": 2
+          },
+          "name": "multi-arity",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 1,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "private-multi",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 1,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "private-multi",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 1
+          },
+          "name": "single-arity",
+          "violations": []
+        }
+      ]
+    },
+    {
       "path": "corpus/clojure_params_sample.clj",
       "units": [
         {

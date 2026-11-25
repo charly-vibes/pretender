@@ -100,7 +100,7 @@ impl QueryEngine {
         Ok(CodeUnit {
             name,
             kind,
-            span: node_span(def_node),
+            span: node_span(fc.span_node.unwrap_or(def_node)),
             parameters: unit_parameters(fc, source),
             body: self.unit_body(body_node, captures),
             parent_class: None,
@@ -215,15 +215,14 @@ pub(crate) struct CaptureMap {
     pub(crate) dispatch_heads: std::collections::HashSet<usize>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(crate) struct FunctionCapture<'a> {
     pub(crate) def_node: Option<tree_sitter::Node<'a>>,
     pub(crate) name_node: Option<tree_sitter::Node<'a>>,
     pub(crate) params_node: Option<tree_sitter::Node<'a>>,
     pub(crate) body_node: Option<tree_sitter::Node<'a>>,
-    /// The query pattern that produced this capture, so predicate
-    /// re-validation can look up its `general_predicates` (krou).
-    pub(crate) pattern_index: usize,
+    // Span scope; defaults to `def_node` (split arities use the clause).
+    pub(crate) span_node: Option<tree_sitter::Node<'a>>,
 }
 
 /// The unit kind for a captured definition: `Test` for a Clojure
