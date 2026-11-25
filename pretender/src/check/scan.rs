@@ -51,12 +51,16 @@ pub(super) fn scan_for_check(
 /// allowed files — the caller short-circuits with a format-aware empty
 /// report.
 fn select_check_files(args: &CheckArgs, config: &Config) -> Result<Option<Vec<PathBuf>>> {
-    let files = if args.staged || args.diff_only || args.diff_base.is_some() {
+    let files = if args.scan.staged || args.scan.diff_only || args.scan.diff_base.is_some() {
         let cwd = std::env::current_dir().context("failed to get current directory")?;
-        let allowed = if args.staged {
+        let allowed = if args.scan.staged {
             git::staged_files(&cwd)?
         } else {
-            let base = args.diff_base.as_deref().unwrap_or(&config.scope.diff_base);
+            let base = args
+                .scan
+                .diff_base
+                .as_deref()
+                .unwrap_or(&config.scope.diff_base);
             git::diff_base_files(&cwd, base)?
         };
         // Short-circuit: skip the full directory walk when nothing is staged/changed.
@@ -66,10 +70,11 @@ fn select_check_files(args: &CheckArgs, config: &Config) -> Result<Option<Vec<Pa
         if allowed.is_empty() {
             return Ok(None);
         }
-        let all = collect_input_files_with_override(&args.paths, config, args.scan_ignored)?;
+        let all =
+            collect_input_files_with_override(&args.scan.paths, config, args.scan.scan_ignored)?;
         apply_file_filter(all, Some(&allowed), &cwd)
     } else {
-        collect_input_files_with_override(&args.paths, config, args.scan_ignored)?
+        collect_input_files_with_override(&args.scan.paths, config, args.scan.scan_ignored)?
     };
     Ok(Some(files))
 }
@@ -79,9 +84,14 @@ fn select_check_files(args: &CheckArgs, config: &Config) -> Result<Option<Vec<Pa
 /// pretender can't parse them, preventing false confidence from an empty
 /// green check.
 fn warn_unsupported_paths(args: &CheckArgs, files: &[PathBuf]) {
-    let explicit_paths = !args.staged && !args.diff_only && args.diff_base.is_none();
+    let explicit_paths = !args.scan.staged && !args.scan.diff_only && args.scan.diff_base.is_none();
     if explicit_paths && !files.iter().any(|f| get_parser(f).is_ok()) {
-        let unsupported: Vec<String> = args.paths.iter().map(|p| p.display().to_string()).collect();
+        let unsupported: Vec<String> = args
+            .scan
+            .paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
         eprintln!(
             "warning: no files matched a supported grammar in: {}",
             unsupported.join(", ")

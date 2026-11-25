@@ -12,12 +12,47 @@
 //! Extracted verbatim from `main.rs` (pretender-5zo.2.5) so the bin root
 //! shrinks to dispatch; items are `pub(crate)` so sibling CLI modules and
 //! the check/events pipelines can name the shared formats. `CheckArgs`
-//! stays at the crate root (13 fields keep its baselined
-//! `excessive_fields` row).
-use clap::{Parser, Subcommand, ValueEnum};
+//! stays at the crate root, flattened from `CheckScanArgs` (what to look
+//! at) and `CheckReportArgs` (how to write results) so no struct exceeds
+//! the field cap (pretender-5zo.15.7).
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use genesis::git_hooks::HookName;
 use pretender::config::Mode;
 use std::path::PathBuf;
+
+/// `check` scan-selection flags: which files the pipeline looks at.
+#[derive(Args)]
+pub(crate) struct CheckScanArgs {
+    /// Paths to files or directories to check for complexity metrics
+    #[arg(default_values = ["."])]
+    pub(crate) paths: Vec<PathBuf>,
+    /// Only check git-staged files (mutually exclusive with --diff-only)
+    #[arg(long, conflicts_with = "diff_only")]
+    pub(crate) staged: bool,
+    /// Only check files changed relative to `diff_base`
+    #[arg(long)]
+    pub(crate) diff_only: bool,
+    /// Override `diff_base` from config
+    #[arg(long)]
+    pub(crate) diff_base: Option<String>,
+    /// Scan git-ignored files too (overrides the default .gitignore-aware
+    /// walk; same as setting `pretender.respect_gitignore = false`)
+    #[arg(long)]
+    pub(crate) scan_ignored: bool,
+}
+
+/// `check` report-shaping flags: how results are rendered and written.
+#[derive(Args)]
+pub(crate) struct CheckReportArgs {
+    #[arg(long, value_enum, default_value_t = ReportFormat::Human)]
+    pub(crate) format: ReportFormat,
+    /// Write report to this path instead of stdout
+    #[arg(long)]
+    pub(crate) output: Option<PathBuf>,
+    /// Show all functions with metrics, not just violating ones
+    #[arg(long)]
+    pub(crate) show_all: bool,
+}
 
 #[derive(Parser)]
 pub(crate) struct ComplexityArgs {

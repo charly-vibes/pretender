@@ -41,14 +41,14 @@ impl Executable for CheckArgs {
     fn run(&self) -> Result<ExitCode> {
         warn_if_no_config();
         let (config, lease_warning) = prepare_check_config(self)?;
-        let format = resolve_check_format(self.format);
+        let format = resolve_check_format(self.report.format);
         let detector = RoleDetector::new(&config).context("failed to initialize role detector")?;
 
         let Some(mut report) = scan_for_check(self, &detector, &config)? else {
             return no_changes_exit(self, &config, format, lease_warning);
         };
         let current_ids = violation_finding_ids(&report);
-        let writing_to_stdout = self.output.is_none();
+        let writing_to_stdout = self.report.output.is_none();
         let mut sink = attach_history_open_sink(self, &mut report, &config, format)?;
 
         if self.adopt {
@@ -58,7 +58,7 @@ impl Executable for CheckArgs {
         let ctx = OutputCtx {
             config: &config,
             format,
-            verbose: self.show_all,
+            verbose: self.report.show_all,
             color: writing_to_stdout && color_enabled(),
         };
         write_check_report(sink.as_mut(), &report, &ctx, lease_warning)?;
@@ -138,10 +138,10 @@ fn no_changes_exit(
 ) -> Result<ExitCode> {
     let report = empty_check_report();
     match format {
-        ReportFormat::Human if args.staged => println!("No staged files to check."),
+        ReportFormat::Human if args.scan.staged => println!("No staged files to check."),
         ReportFormat::Human => println!("No changed files to check."),
         ReportFormat::Json | ReportFormat::Sarif => {
-            let mut sink = open_report_sink(args.output.as_deref())?;
+            let mut sink = open_report_sink(args.report.output.as_deref())?;
             match format {
                 ReportFormat::Json => write_json_report(sink.as_mut(), &report, lease_warning)?,
                 ReportFormat::Sarif => write_sarif_report(sink.as_mut(), &report)?,
@@ -166,13 +166,13 @@ fn attach_history_open_sink(
     config: &Config,
     format: ReportFormat,
 ) -> Result<Box<dyn Write>> {
-    let mut sink = open_report_sink(args.output.as_deref())?;
+    let mut sink = open_report_sink(args.report.output.as_deref())?;
     emit_history_events(
         report,
         config,
         &EmitOpts {
             format,
-            stdout: args.output.is_none(),
+            stdout: args.report.output.is_none(),
         },
         sink.as_mut(),
     );

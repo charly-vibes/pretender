@@ -8,15 +8,16 @@
 //! # Responsibilities
 //! Parse-and-dispatch entry point: version fast path, guide setup, typo
 //! suggestions, command execution, error-sink reporting, and the error
-//! scratch record. `CheckArgs` stays here — its 13 fields carry the
-//! baselined `excessive_fields` row, and both check modules read them.
+//! scratch record. `CheckArgs` stays here — flattened from the
+//! `cli::args` group structs (`CheckScanArgs`, `CheckReportArgs`) so it
+//! stays within the field cap, and both check modules read them.
 mod check;
 mod cli;
 mod events;
 mod init;
 mod report;
 
-use crate::cli::args::{ModeArg, ReportFormat};
+use crate::cli::args::{CheckReportArgs, CheckScanArgs, ModeArg};
 use crate::cli::{Cli, Commands, Executable, PRETENDER_COMMANDS};
 use clap::Parser;
 use genesis::feedback::scratch::{self, ErrorRecord};
@@ -29,23 +30,10 @@ use std::process::ExitCode;
 
 #[derive(Parser)]
 struct CheckArgs {
-    /// Paths to files or directories to check for complexity metrics
-    #[arg(default_values = ["."])]
-    paths: Vec<PathBuf>,
-    #[arg(long, value_enum, default_value_t = ReportFormat::Human)]
-    format: ReportFormat,
-    /// Write report to this path instead of stdout
-    #[arg(long)]
-    output: Option<PathBuf>,
-    /// Only check git-staged files (mutually exclusive with --diff-only)
-    #[arg(long, conflicts_with = "diff_only")]
-    staged: bool,
-    /// Only check files changed relative to `diff_base`
-    #[arg(long)]
-    diff_only: bool,
-    /// Override `diff_base` from config
-    #[arg(long)]
-    diff_base: Option<String>,
+    #[command(flatten)]
+    scan: CheckScanArgs,
+    #[command(flatten)]
+    report: CheckReportArgs,
     /// Override config `pretender.mode`
     #[arg(long, value_enum)]
     mode: Option<ModeArg>,
@@ -54,16 +42,9 @@ struct CheckArgs {
     /// renew by pushing the date forward (a visible, reviewable diff).
     #[arg(long, value_name = "DATE")]
     advisory_until: Option<String>,
-    /// Show all functions with metrics, not just violating ones
-    #[arg(long)]
-    show_all: bool,
     /// Path to a JUnit XML report for test-duration analysis
     #[arg(long)]
     test_report: Option<PathBuf>,
-    /// Scan git-ignored files too (overrides the default .gitignore-aware
-    /// walk; same as setting `pretender.respect_gitignore = false`)
-    #[arg(long)]
-    scan_ignored: bool,
     /// Execute the configured test_cmd before analyzing test durations
     #[arg(long)]
     execute: bool,
