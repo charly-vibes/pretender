@@ -203,7 +203,7 @@ mod baseline_gate_tests {
     use super::*;
     use crate::{
         CouplingViolationReport, FileReport, MetricValues, ModuleReport, UnitReport,
-        ViolationReport, violation_finding_ids,
+        ViolationReport,
     };
 
     fn metric_values() -> MetricValues {

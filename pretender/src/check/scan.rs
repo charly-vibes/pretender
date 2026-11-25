@@ -105,13 +105,20 @@ fn scan_files(files: &[PathBuf], detector: &RoleDetector, config: &Config) -> Re
     Ok(report)
 }
 
+/// A module's import graph paired with its source path, kept together for
+/// the coupling pass.
+struct PathModule {
+    path: PathBuf,
+    module: Module,
+}
+
 /// Parse and analyze files in parallel, sorted by path, split into reports
 /// and modules for coupling analysis.
 fn analyze_files(
     files: &[PathBuf],
     detector: &RoleDetector,
     config: &Config,
-) -> Result<(Vec<FileReport>, Vec<(PathBuf, Module)>)> {
+) -> Result<(Vec<FileReport>, Vec<PathModule>)> {
     let mut reports_and_modules: Vec<(FileReport, Module)> = files
         .par_iter()
         .filter_map(|path| analyze_path(path, detector, config).transpose())
@@ -120,11 +127,11 @@ fn analyze_files(
 
     // Extract reports and modules for coupling analysis
     let mut reports: Vec<FileReport> = Vec::with_capacity(reports_and_modules.len());
-    let mut modules: Vec<(PathBuf, Module)> = Vec::with_capacity(reports_and_modules.len());
+    let mut modules: Vec<PathModule> = Vec::with_capacity(reports_and_modules.len());
     for (report, module) in reports_and_modules {
         let path = PathBuf::from(&report.path);
         reports.push(report);
-        modules.push((path, module));
+        modules.push(PathModule { path, module });
     }
     Ok((reports, modules))
 }
@@ -144,11 +151,11 @@ fn attach_external_findings(report: &mut CheckReport, files: &[PathBuf]) {
 
 /// Run coupling analysis if thresholds are configured and attach module
 /// violations and cycles to the report.
-fn attach_coupling(report: &mut CheckReport, modules: &[(PathBuf, Module)], config: &Config) {
+fn attach_coupling(report: &mut CheckReport, modules: &[PathModule], config: &Config) {
     let coupling_result = coupling::analyze(
         &modules
             .iter()
-            .map(|(p, m)| (p.clone(), m))
+            .map(|pm| (pm.path.clone(), &pm.module))
             .collect::<Vec<_>>(),
         &config.thresholds.coupling,
     );
