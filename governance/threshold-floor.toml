@@ -19,6 +19,18 @@
 # Any change to this file is itself a governance decision and must be
 # reviewed; the gate rejects values that drift from the reviewed minimums.
 
+# governance/assertions.count — static-assertion floor (governance_gates_test
+# ::test_assertions_total_meets_governance_floor). It pins the number of
+# assert!-family macro sites across test-role code. Consolidating repeated
+# assertions into shared helpers or parameterized loop bodies lowers the
+# static count while preserving runtime coverage (the helper/loop re-checks
+# every moved site); such reviewed consolidations re-pin the count in the
+# same commit, with a moved-not-deleted mapping. The floor still blocks
+# genuine assertion deletions: any drop without a documented consolidation
+# fails the governance test. (Pinned 1191 at pretender-5zo.15.16: 34 sites
+# moved into helpers/loop bodies across check_test, tooling_test, roundtrip
+# and governance_thresholds_test consolidations.)
+
 [ceilings.app]
 cyclomatic_max = 10
 cognitive_max = 15

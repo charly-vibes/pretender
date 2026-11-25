@@ -5,25 +5,40 @@
 //                   that CodeUnits stay separate from type members.
 // Rationale: Moved verbatim from pretender/src/python.rs unit tests (slice
 //            5zo.40) so the source file passes pretender's own structural
-//            gate; assertions are unchanged.
+//            gate; assertions are unchanged. The fixture round trip is
+//            split into focused tests (person fields, account fields, units
+//            separation) sharing the parse helper; every assertion is
+//            unchanged.
 
 use std::path::Path;
 
-use pretender::model::{Language, Parser, Span, TypeKind, UnitKind};
+use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind, UnitKind};
 use pretender::python::PythonParser;
 
-#[test]
-fn python_types_fixture_round_trip() {
-    // Reusable harness pattern (tasks 6.2): the language's real
-    // metrics.scm parses a fixture file; assert TypeDefinition
-    // count/kind/ordered fields and that CodeUnits stay separate.
-    let parser = PythonParser;
+/// Reusable harness pattern (tasks 6.2): the language's real metrics.scm
+/// parses the committed fixture; asserts a clean parse and returns the module.
+fn parse_python_types_fixture() -> Module {
     let source = include_str!("fixtures/python_types_sample.py");
-    let (module, diags) = parser
+    let (module, diags) = PythonParser
         .parse(Path::new("python_types_sample.py"), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
 
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    module
+}
+
+/// Finds the type definition named `name` or panics naming it.
+fn find_type<'a>(module: &'a Module, name: &str) -> &'a TypeDefinition {
+    module
+        .type_definitions
+        .iter()
+        .find(|t| t.name == name)
+        .unwrap_or_else(|| panic!("{name} captured"))
+}
+
+#[test]
+fn python_types_fixture_round_trip() {
+    let module = parse_python_types_fixture();
 
     assert_eq!(
         module.type_definitions.len(),
@@ -31,11 +46,7 @@ fn python_types_fixture_round_trip() {
         "both classes captured; methods are not type definitions"
     );
 
-    let person = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Person")
-        .unwrap_or_else(|| panic!("Person captured"));
+    let person = find_type(&module, "Person");
     // Design D3: @dataclass ships as Class — no decorator refinement.
     assert_eq!(person.kind, TypeKind::Class);
     assert_eq!(person.language, Language::Python);
@@ -72,22 +83,12 @@ fn python_types_fixture_round_trip() {
 }
 
 #[test]
-fn python_account_and_code_units_round_trip() {
-    // Second half of the fixture round trip: the Account class (own span,
-    // __init__ self.x assignments not duplicated as fields) and the
-    // CodeUnits-vs-type-members separation.
-    let parser = PythonParser;
-    let source = include_str!("fixtures/python_types_sample.py");
-    let (module, diags) = parser
-        .parse(Path::new("python_types_sample.py"), source)
-        .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
-    assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+fn python_account_class_round_trip() {
+    let module = parse_python_types_fixture();
 
-    let account = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Account")
-        .unwrap_or_else(|| panic!("Account captured"));
+    // Second half of the fixture round trip: the Account class has its own
+    // span, and __init__ self.x assignments are not duplicated as fields.
+    let account = find_type(&module, "Account");
     assert_eq!(account.kind, TypeKind::Class);
     assert_eq!(
         account.span,
@@ -106,6 +107,11 @@ fn python_account_and_code_units_round_trip() {
         vec![("balance", Some("float")), ("owner", Some("str"))],
         "__init__ self.x assignments must not be duplicated as fields"
     );
+}
+
+#[test]
+fn python_units_separate_from_type_members() {
+    let module = parse_python_types_fixture();
 
     // CodeUnits remain separate from type members.
     let mut unit_names: Vec<&str> = module.units.iter().map(|u| u.name.as_str()).collect();

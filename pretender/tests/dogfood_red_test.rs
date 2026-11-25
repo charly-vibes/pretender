@@ -75,6 +75,27 @@ fn count_matching(baseline: &serde_json::Value, selector: (&str, &str)) -> usize
         .count()
 }
 
+/// Writes a temp copy of the ledger `bytes` into `dir` and returns its path.
+fn write_baseline_copy(dir: &tempfile::TempDir, bytes: &[u8]) -> PathBuf {
+    let baseline = dir.path().join(BASELINE_NAME);
+    std::fs::write(&baseline, bytes).unwrap_or_else(|e| panic!("write temp baseline copy: {e}"));
+    baseline
+}
+
+/// Runs `just dogfood-red <path> <rule>` on `baseline` from the repo root.
+fn run_dogfood_red(baseline: &Path, selector: (&str, &str)) -> std::process::Output {
+    let (test_path, test_rule) = selector;
+    let root = repo_root();
+    Command::new("just")
+        .arg("--justfile")
+        .arg(root.join("justfile"))
+        .args(["dogfood-red", test_path, test_rule])
+        .arg(baseline)
+        .current_dir(&root)
+        .output()
+        .unwrap_or_else(|e| panic!("run just dogfood-red: {e}"))
+}
+
 /// Runs the recipe on a temp copy of the committed baseline and returns
 /// (original, filtered, matched count, the (path, rule) selector used).
 fn run_dogfood_red_on_temp_copy() -> (
@@ -83,7 +104,6 @@ fn run_dogfood_red_on_temp_copy() -> (
     usize,
     (String, String),
 ) {
-    let root = repo_root();
     let original_bytes = committed_baseline_bytes();
     let original: serde_json::Value = serde_json::from_slice(&original_bytes)
         .unwrap_or_else(|e| panic!("committed baseline parses: {e}"));
@@ -93,19 +113,9 @@ fn run_dogfood_red_on_temp_copy() -> (
     assert!(matched > 0, "fixture must contain matching IDs to remove");
 
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let baseline = dir.path().join(BASELINE_NAME);
-    std::fs::write(&baseline, &original_bytes)
-        .unwrap_or_else(|e| panic!("write temp baseline copy: {e}"));
+    let baseline = write_baseline_copy(&dir, &original_bytes);
 
-    let output = Command::new("just")
-        .arg("--justfile")
-        .arg(root.join("justfile"))
-        .args(["dogfood-red", &test_path, &test_rule])
-        .arg(&baseline)
-        .current_dir(&root)
-        .output()
-        .unwrap_or_else(|e| panic!("run just dogfood-red: {e}"));
-
+    let output = run_dogfood_red(&baseline, (&test_path, &test_rule));
     assert!(
         output.status.success(),
         "recipe must succeed with an explicit baseline argument; stderr: {}",
@@ -176,7 +186,6 @@ fn dogfood_red_removes_exactly_matching_ids_from_temp_copy() {
 
 #[test]
 fn dogfood_red_fails_cleanly_on_missing_baseline() {
-    let root = repo_root();
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
     let missing = dir.path().join("does-not-exist.json");
 
@@ -185,14 +194,7 @@ fn dogfood_red_fails_cleanly_on_missing_baseline() {
             .unwrap_or_else(|e| panic!("committed baseline parses: {e}")),
     );
 
-    let output = Command::new("just")
-        .arg("--justfile")
-        .arg(root.join("justfile"))
-        .args(["dogfood-red", &test_path, &test_rule])
-        .arg(&missing)
-        .current_dir(&root)
-        .output()
-        .unwrap_or_else(|e| panic!("run just dogfood-red: {e}"));
+    let output = run_dogfood_red(&missing, (&test_path, &test_rule));
 
     assert!(
         !output.status.success(),

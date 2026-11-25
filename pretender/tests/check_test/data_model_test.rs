@@ -40,6 +40,28 @@ fn data_model_fixture_dir(fixture: &str) -> (PathBuf, PathBuf) {
     (dir, staged)
 }
 
+/// Runs `check --format json` on `staged` from `dir`, asserting success and
+/// a valid envelope; returns the first file's `file_violations` array.
+fn check_json_violations(dir: &Path, staged: &Path) -> Vec<serde_json::Value> {
+    let output = check_in(dir, staged)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
+    json["data"]["files"][0]["file_violations"]
+        .as_array()
+        .unwrap_or_else(|| panic!("file_violations array"))
+        .clone()
+}
+
 #[test]
 fn test_check_data_model_violations_json() {
     // §7.1: a 10-field struct with an `email: String` field emits both
@@ -99,16 +121,7 @@ fn test_check_test_role_threshold_disables_excessive_fields() {
 
     std::fs::write(dir.join("pretender.toml"), "[pretender]\n")
         .unwrap_or_else(|e| panic!("write default config: {e:?}"));
-    let baseline = check_in(&dir, &staged)
-        .arg("--format")
-        .arg("json")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
-    let baseline_json: serde_json::Value = serde_json::from_slice(&baseline.stdout)
-        .unwrap_or_else(|e| panic!("baseline stdout should be valid json: {e:?}"));
-    let baseline_violations = baseline_json["data"]["files"][0]["file_violations"]
-        .as_array()
-        .unwrap_or_else(|| panic!("file_violations array"));
+    let baseline_violations = check_json_violations(&dir, &staged);
     assert!(
         baseline_violations
             .iter()
@@ -121,16 +134,7 @@ fn test_check_test_role_threshold_disables_excessive_fields() {
         "[thresholds.test]\nexcessive_fields_max = 0\n",
     )
     .unwrap_or_else(|e| panic!("write override config: {e:?}"));
-    let output = check_in(&dir, &staged)
-        .arg("--format")
-        .arg("json")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
-    let violations = json["data"]["files"][0]["file_violations"]
-        .as_array()
-        .unwrap_or_else(|| panic!("file_violations array"));
+    let violations = check_json_violations(&dir, &staged);
     assert!(
         violations.iter().all(|v| v["metric"] != "excessive_fields"),
         "test-role excessive_fields_max = 0 must disable the check; violations: {violations:?}"

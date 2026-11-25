@@ -11,6 +11,23 @@
 //! version tests kept with the other CLI-surface behavior.
 
 use crate::common::*;
+use std::path::Path;
+
+/// Reads the CORR-001 error scratch written under `cache` and returns the
+/// argv list it recorded.
+fn scratch_argv(cache: &Path) -> Vec<String> {
+    let scratch = cache.join("pretender").join("errors.jsonl");
+    let content = std::fs::read_to_string(&scratch)
+        .unwrap_or_else(|e| panic!("scratch file should exist at {}: {e}", scratch.display()));
+    let parsed: serde_json::Value = serde_json::from_str(content.trim_end_matches('\n'))
+        .unwrap_or_else(|e| panic!("scratch should be one JSON object: {e}\n{content}"));
+    parsed["argv"]
+        .as_array()
+        .unwrap_or_else(|| panic!("scratch should have argv array"))
+        .iter()
+        .map(|v| v.as_str().unwrap_or("").to_string())
+        .collect()
+}
 
 #[test]
 fn test_stub_subcommands_exit_two() {
@@ -109,17 +126,7 @@ fn test_error_scratch_records_full_argv() {
         .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
     assert!(!output.status.success(), "should exit non-zero");
 
-    let scratch = cache.join("pretender").join("errors.jsonl");
-    let content = std::fs::read_to_string(&scratch)
-        .unwrap_or_else(|e| panic!("scratch file should exist at {}: {e}", scratch.display()));
-    let parsed: serde_json::Value = serde_json::from_str(content.trim_end_matches('\n'))
-        .unwrap_or_else(|e| panic!("scratch should be one JSON object: {e}\n{content}"));
-    let argv = parsed["argv"]
-        .as_array()
-        .unwrap_or_else(|| panic!("scratch should have argv array"))
-        .iter()
-        .map(|v| v.as_str().unwrap_or("").to_string())
-        .collect::<Vec<_>>();
+    let argv = scratch_argv(&cache);
     assert!(
         argv.iter().any(|a| a == "explain"),
         "scratch argv should include the subcommand; got: {argv:?}"

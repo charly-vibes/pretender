@@ -6,12 +6,15 @@
 //                   CodeUnits rather than data fields.
 // Rationale: Moved verbatim from pretender/src/javascript.rs unit tests (slice
 //            5zo.28) so the source file passes pretender's own structural
-//            gate; assertions are unchanged.
+//            gate; assertions are unchanged. The fixture round trip is
+//            split into focused tests (person fields, pair fields, units
+//            separation) sharing the parse helper; every assertion is
+//            unchanged.
 
 use std::path::Path;
 
 use pretender::engine::QueryEngine;
-use pretender::model::{Language, Span, TypeKind, UnitKind};
+use pretender::model::{Language, Module, Span, TypeDefinition, TypeKind, UnitKind};
 
 const JS_QUERY: &str = include_str!("../languages/javascript/metrics.scm");
 
@@ -24,18 +27,30 @@ fn engine() -> QueryEngine {
     .unwrap_or_else(|e| panic!("QueryEngine::new should succeed: {e:?}"))
 }
 
-#[test]
-fn js_types_fixture_round_trip() {
-    // Reusable harness pattern (tasks 6.4): the language's real
-    // metrics.scm parses a fixture file; assert TypeDefinition
-    // count/kind/ordered fields and that CodeUnits stay separate.
-    let e = engine();
+/// Reusable harness pattern (tasks 6.4): the language's real metrics.scm
+/// parses the committed fixture; asserts a clean parse and returns the module.
+fn parse_js_types_fixture() -> Module {
     let source = include_str!("fixtures/js_types_sample.js");
-    let (module, diags) = e
+    let (module, diags) = engine()
         .parse(Path::new("js_types_sample.js"), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
 
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    module
+}
+
+/// Finds the type definition named `name` or panics naming it.
+fn find_type<'a>(module: &'a Module, name: &str) -> &'a TypeDefinition {
+    module
+        .type_definitions
+        .iter()
+        .find(|t| t.name == name)
+        .unwrap_or_else(|| panic!("{name} captured"))
+}
+
+#[test]
+fn js_person_class_fields_round_trip() {
+    let module = parse_js_types_fixture();
 
     assert_eq!(
         module.type_definitions.len(),
@@ -43,11 +58,7 @@ fn js_types_fixture_round_trip() {
         "both classes captured; standalone fn is not a type definition"
     );
 
-    let person = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Person")
-        .unwrap_or_else(|| panic!("Person captured"));
+    let person = find_type(&module, "Person");
     assert_eq!(person.kind, TypeKind::Class);
     assert_eq!(person.language, Language::JavaScript);
     assert_eq!(
@@ -67,12 +78,13 @@ fn js_types_fixture_round_trip() {
         vec![("name", None), ("age", None), ("email", None)],
         "class fields only, in declaration order; JS has no type annotations"
     );
+}
 
-    let pair = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Pair")
-        .unwrap_or_else(|| panic!("Pair captured"));
+#[test]
+fn js_pair_generic_fields_round_trip() {
+    let module = parse_js_types_fixture();
+
+    let pair = find_type(&module, "Pair");
     assert_eq!(pair.kind, TypeKind::Class);
     assert!(
         pair.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
@@ -81,6 +93,12 @@ fn js_types_fixture_round_trip() {
     );
     let pair_fields: Vec<&str> = pair.fields.iter().map(|f| f.name.as_str()).collect();
     assert_eq!(pair_fields, vec!["first", "second"]);
+}
+
+#[test]
+fn js_units_separate_from_type_members() {
+    let module = parse_js_types_fixture();
+    let person = find_type(&module, "Person");
 
     // CodeUnits remain separate from type members.
     assert_eq!(module.units.len(), 3);
