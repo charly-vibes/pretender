@@ -114,7 +114,7 @@ fn cross_file_parent_depth_one() {
 }
 
 #[test]
-fn unsupported_language_empty() {
+fn inheritance_depth_unsupported_language_empty() {
     let analysis = analyze("nothing", &Language::Julia);
     assert!(analysis.classes.is_empty());
 }
