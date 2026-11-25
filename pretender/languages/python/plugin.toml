@@ -13,6 +13,8 @@ query        = "metrics.scm"
 "@branch.ternary"      = { cyclomatic = 1, cognitive = 1 }
 "@branch.logical.and"  = { cyclomatic = 1, cognitive = 1 }
 "@branch.logical.or"   = { cyclomatic = 1, cognitive = 1 }
+"@branch.match_case"   = { cyclomatic = 1, cognitive = 1 }
+"@branch.comprehension_filter" = { cyclomatic = 1, cognitive = 1 }
 
 [assertions]
 patterns = [

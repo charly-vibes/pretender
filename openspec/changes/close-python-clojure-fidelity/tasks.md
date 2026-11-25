@@ -16,8 +16,8 @@
 
 ## 3. Python capture coverage
 
-- [ ] 3.1 `match_statement` arms: one `@branch.case` per `case_clause`, `match` itself branchless.
-- [ ] 3.2 Comprehension clauses: `for` clause as `@branch.loop`, each `if` filter as `@branch.comprehension-filter`.
+- [x] 3.1 `match_statement` arms: one `@branch.case` per `case_clause`, `match` itself branchless.
+- [x] 3.2 Comprehension clauses: `for` clause as `@branch.loop`, each `if` filter as `@branch.comprehension-filter`.
 
 ## 4. Guardrails and tests
 
