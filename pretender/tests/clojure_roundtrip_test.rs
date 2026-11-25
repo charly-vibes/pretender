@@ -25,8 +25,7 @@ fn clojure_engine() -> QueryEngine {
     .unwrap_or_else(|e| panic!("clojure query engine: {e:?}"))
 }
 
-const DEFRECORD_DEFTYPE_SOURCE: &str =
-    include_str!("fixtures/clojure_types_sample.clj");
+const DEFRECORD_DEFTYPE_SOURCE: &str = include_str!("fixtures/clojure_types_sample.clj");
 
 /// The zero-capture contract: a clean parse with an empty
 /// `type_definitions` list.
