@@ -114,9 +114,8 @@ fn build_mutmut_report_correct_score() {
 
 // ── stryker report parser ────────────────────────────────────────────────
 
-#[test]
-fn parse_stryker_survived_and_killed() {
-    let json = r#"{
+/// Stryker report with one survived and one killed mutant (verbatim fixture).
+const STRYKER_SURVIVED_KILLED_JSON: &str = r#"{
             "files": {
                 "src/foo.js": {
                     "mutants": [
@@ -130,7 +129,11 @@ fn parse_stryker_survived_and_killed() {
                 }
             }
         }"#;
-    let report = parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
+
+#[test]
+fn parse_stryker_survived_and_killed() {
+    let report = parse_stryker_report(STRYKER_SURVIVED_KILLED_JSON)
+        .unwrap_or_else(|e| panic!("valid stryker report: {e}"));
     assert_eq!(report.tool, "stryker");
     assert_eq!(report.total, 2);
     assert_eq!(report.survived, 1);
@@ -141,9 +144,9 @@ fn parse_stryker_survived_and_killed() {
     assert!(report.survivors[0].description.contains("BinaryOperator"));
 }
 
-#[test]
-fn parse_stryker_skips_no_coverage_and_compile_error() {
-    let json = r#"{
+/// Stryker report whose NoCoverage and CompileError mutants are skipped
+/// (verbatim fixture).
+const STRYKER_SKIPPED_STATUSES_JSON: &str = r#"{
             "files": {
                 "src/bar.js": {
                     "mutants": [
@@ -160,7 +163,11 @@ fn parse_stryker_skips_no_coverage_and_compile_error() {
                 }
             }
         }"#;
-    let report = parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
+
+#[test]
+fn parse_stryker_skips_no_coverage_and_compile_error() {
+    let report = parse_stryker_report(STRYKER_SKIPPED_STATUSES_JSON)
+        .unwrap_or_else(|e| panic!("valid stryker report: {e}"));
     assert_eq!(report.total, 1);
     assert_eq!(report.survived, 0);
     assert_eq!(report.killed, 1);

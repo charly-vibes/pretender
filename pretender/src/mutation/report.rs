@@ -65,31 +65,37 @@ struct CargoMutantsListEntry {
 
 /// Parse `cargo mutants --list --json` output (JSON array or JSONL).
 pub fn parse_cargo_mutants_list(output: &str) -> Vec<PlannedMutant> {
-    // Try JSON array first, then fall back to JSONL
-    let entries: Vec<CargoMutantsListEntry> =
-        if let Ok(arr) = serde_json::from_str::<Vec<CargoMutantsListEntry>>(output) {
-            arr
-        } else {
-            output
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .filter_map(|l| serde_json::from_str(l).ok())
-                .collect()
-        };
-
-    entries
+    parse_list_entries(output)
         .into_iter()
-        .map(|e| {
-            let description = if e.function_name.is_empty() {
-                e.text.clone()
-            } else {
-                format!("{}: {}", e.function_name, e.text)
-            };
-            PlannedMutant {
-                file: e.file,
-                line: e.line,
-                description,
-            }
-        })
+        .map(entry_to_planned_mutant)
         .collect()
+}
+
+/// Read the list entries: a whole-output JSON array when it parses,
+/// otherwise JSONL (one entry per non-empty line, unparsable lines dropped).
+fn parse_list_entries(output: &str) -> Vec<CargoMutantsListEntry> {
+    // Try JSON array first, then fall back to JSONL
+    if let Ok(arr) = serde_json::from_str::<Vec<CargoMutantsListEntry>>(output) {
+        return arr;
+    }
+    output
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+/// Convert a raw list entry to a planned mutant, preferring the
+/// `function: text` description when a function name is present.
+fn entry_to_planned_mutant(e: CargoMutantsListEntry) -> PlannedMutant {
+    let description = if e.function_name.is_empty() {
+        e.text.clone()
+    } else {
+        format!("{}: {}", e.function_name, e.text)
+    };
+    PlannedMutant {
+        file: e.file,
+        line: e.line,
+        description,
+    }
 }

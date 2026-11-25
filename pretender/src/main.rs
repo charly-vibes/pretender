@@ -197,22 +197,33 @@ fn status_items(repo_root: &std::path::Path, config_exists: bool) -> Vec<StatusI
     let hook_installed = has_git && git_dir.join("hooks/pre-commit").exists();
 
     let mut items = Vec::new();
-
-    if config_exists {
-        items.push(StatusItem::healthy("config", "pretender.toml found"));
-    } else {
-        items.push(StatusItem::error("config", "pretender.toml not found"));
+    items.push(config_status_item(config_exists));
+    items.push(git_status_item(has_git));
+    if let Some(item) = hook_status_item(hook_installed) {
+        items.push(item);
     }
-
-    if has_git {
-        items.push(StatusItem::healthy("git", "git repository detected"));
-    } else {
-        items.push(StatusItem::warning("git", "not in a git repository"));
-    }
-
-    if hook_installed {
-        items.push(StatusItem::healthy("hook", "pre-commit hook installed"));
-    }
-
     items
+}
+
+/// The config item: healthy when pretender.toml exists, an error otherwise.
+fn config_status_item(config_exists: bool) -> StatusItem {
+    if config_exists {
+        StatusItem::healthy("config", "pretender.toml found")
+    } else {
+        StatusItem::error("config", "pretender.toml not found")
+    }
+}
+
+/// The git item: healthy inside a repository, a warning otherwise.
+fn git_status_item(has_git: bool) -> StatusItem {
+    if has_git {
+        StatusItem::healthy("git", "git repository detected")
+    } else {
+        StatusItem::warning("git", "not in a git repository")
+    }
+}
+
+/// The hook item, present only when the pre-commit hook is installed.
+fn hook_status_item(hook_installed: bool) -> Option<StatusItem> {
+    hook_installed.then(|| StatusItem::healthy("hook", "pre-commit hook installed"))
 }

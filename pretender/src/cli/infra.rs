@@ -32,31 +32,34 @@ impl Executable for ReportArgs {
     fn run(&self) -> Result<ExitCode> {
         let report = load_last_check_report()?;
         let config = load_config().unwrap_or_default();
-        let writing_to_stdout = self.output.is_none();
         let mut sink = open_report_sink(self.output.as_deref())?;
 
-        match self.format {
-            LongReportFormat::Human => {
-                let color = writing_to_stdout && color_enabled();
-                write_human_report(
-                    sink.as_mut(),
-                    &report,
-                    &HumanOpts {
-                        color,
-                        bands: &config.bands,
-                        mode: config.pretender.mode,
-                        verbose: true,
-                    },
-                )?;
-            }
-            LongReportFormat::Markdown => {
-                write_markdown_report(sink.as_mut(), &report, &config.bands)?
-            }
-            LongReportFormat::Html => write_html_report(sink.as_mut(), &report, &config.bands)?,
-        }
+        write_long_report(sink.as_mut(), &report, self, &config)?;
 
         sink.flush().context("failed to flush report output")?;
         Ok(ExitCode::SUCCESS)
+    }
+}
+
+/// Write the long-form report in the requested format to the sink.
+///
+/// Color is only enabled when the human report goes to a TTY-bound stdout.
+fn write_long_report(
+    sink: &mut dyn Write,
+    report: &CheckReport,
+    args: &ReportArgs,
+    config: &Config,
+) -> Result<()> {
+    let human_opts = HumanOpts {
+        color: args.output.is_none() && color_enabled(),
+        bands: &config.bands,
+        mode: config.pretender.mode,
+        verbose: true,
+    };
+    match args.format {
+        LongReportFormat::Human => write_human_report(sink, report, &human_opts),
+        LongReportFormat::Markdown => write_markdown_report(sink, report, &config.bands),
+        LongReportFormat::Html => write_html_report(sink, report, &config.bands),
     }
 }
 
@@ -79,11 +82,15 @@ pub(crate) fn load_config() -> Result<Config> {
     // Delegate read/parse to genesis::config, then validate the parsed
     // instance directly (single read, no TOCTOU between get and validate).
     let cwd = std::env::current_dir().context("failed to get current directory")?;
+    validate_config(parse_config_file(&cwd)?)
+}
+
+/// Read and parse `pretender.toml` via the genesis config store.
+fn parse_config_file(cwd: &Path) -> Result<Config> {
     let store = ConfigStore::new(config::build_registry());
-    let parsed: Config = store
-        .get("pretender", &cwd)
-        .map_err(|e| anyhow!("failed to read pretender.toml: {e}"))?;
-    validate_config(parsed)
+    store
+        .get("pretender", cwd)
+        .map_err(|e| anyhow!("failed to read pretender.toml: {e}"))
 }
 
 /// Validate a parsed config, failing on the first error-severity entry.

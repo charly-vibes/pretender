@@ -44,14 +44,7 @@ impl Thresholds {
         );
         self.coupling
             .collect_validations("thresholds.coupling", out);
-        if self.app.checks.mut_ratio_max > 0.0
-            && (self.app.checks.mut_ratio_max < 0.0 || self.app.checks.mut_ratio_max > 1.0)
-        {
-            out.push(ConfigValidation::error(
-                "thresholds.mut_ratio_max",
-                "expected value between 0.0 and 1.0",
-            ));
-        }
+        validate_mut_ratio(out, self.app.checks.mut_ratio_max);
     }
 }
 
@@ -237,6 +230,17 @@ fn validate_percent(out: &mut Vec<ConfigValidation>, field: &'static str, value:
         out.push(ConfigValidation::error(
             field,
             "expected percentage value <= 100",
+        ));
+    }
+}
+
+/// Reject an out-of-range `mut_ratio_max`: 0 disables the check, otherwise
+/// the value must sit between 0.0 and 1.0.
+fn validate_mut_ratio(out: &mut Vec<ConfigValidation>, value: f64) {
+    if value > 0.0 && (value < 0.0 || value > 1.0) {
+        out.push(ConfigValidation::error(
+            "thresholds.mut_ratio_max",
+            "expected value between 0.0 and 1.0",
         ));
     }
 }
