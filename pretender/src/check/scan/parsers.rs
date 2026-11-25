@@ -27,6 +27,5 @@ pub(crate) fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
 
 /// Parser lookup, backed by the declarative language registry.
 fn parser_for_extension(ext: &str) -> Option<Box<dyn model::Parser>> {
-    registry::lookup(ext)
-        .map(|record| Box::new(GenericParser { record }) as Box<dyn model::Parser>)
+    registry::lookup(ext).map(|record| Box::new(GenericParser { record }) as Box<dyn model::Parser>)
 }
