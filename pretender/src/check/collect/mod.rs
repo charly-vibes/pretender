@@ -85,15 +85,10 @@ fn is_supported_source(path: &Path) -> bool {
         .is_some_and(is_supported_extension)
 }
 
-/// Parser-backed extensions, in one flat lookup; the accepted set is the
-/// same the parser registry (scan/parsers.rs) honors.
+/// Parser-backed extensions, derived from the declarative registry — the
+/// single source of truth shared with scan/parsers.rs dispatch.
 fn is_supported_extension(ext: &str) -> bool {
-    const EXTENSIONS: &[&str] = &[
-        "cs", "clj", "cljs", "cljc", "edn", "c", "h", "cpp", "cc", "cxx", "hpp", "hxx", "go",
-        "java", "jl", "js", "jsx", "mjs", "cjs", "py", "r", "R", "rb", "rs", "ts", "mts", "tsx",
-        "cts",
-    ];
-    EXTENSIONS.contains(&ext)
+    pretender::registry::supports_extension(ext)
 }
 
 /// Walk configuration shared by `collect_path` and its recursion.
