@@ -53,6 +53,23 @@ and `rescue` each count as branches alongside the more common `if` and `while`.
 - **`case/in`** pattern matching (Ruby 3.0+) may not be fully parsed by the
   current grammar revision.
 
+## Known unsupported metrics
+
+- **Type definitions and fields** — *Not implemented yet* (deliberate): the
+  archived data-model design (D2/D3) ships Ruby with zero `@type.*` captures
+  — `attr_*` are method calls in the grammar and classes were left
+  uncaptured — but tree-sitter-ruby 0.23 exposes `class` nodes, so captures
+  could exist. No ticket filed yet.
+- **`min_assertions`** — *Not implemented yet*: `metrics.scm` has no
+  `@assert.*` capture, so unit assertion totals are always 0 (the
+  `[assertions]` patterns serve rule scopes only). No ticket filed yet.
+- **Nesting depth for `if`/`while` bodies** — *Not supported by the grammar*:
+  tree-sitter-ruby 0.23 wraps them in `then`/`do` nodes and the engine nests
+  only `block`-kind containers (iterator blocks do nest).
+- **Unwrap density** — *Not implemented yet*: the engine's risky
+  error-handling detector covers Rust, Python, JavaScript/TypeScript, Java,
+  and Go only; Ruby has no matcher. No ticket filed yet.
+
 ## Example output
 
 ```

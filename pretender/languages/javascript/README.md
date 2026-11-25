@@ -55,6 +55,15 @@ methods. `switch_case` nodes each count as a branch.
 - **Shebangs** (`#!/usr/bin/env node`) are stripped by the grammar and do not
   affect parsing.
 
+## Known unsupported metrics
+
+- **`min_assertions`** — *Not implemented yet*: `metrics.scm` has no
+  `@assert.*` capture, so unit assertion totals are always 0 (the
+  `[assertions]` patterns serve rule scopes only). No ticket filed yet.
+- **Nesting depth** — *Not implemented yet*: the engine increments nesting
+  only inside `block`-kind nodes, but tree-sitter-javascript wraps bodies in
+  `statement_block`, so `nesting_max` stays 0. No ticket filed yet.
+
 ## Example output
 
 ```

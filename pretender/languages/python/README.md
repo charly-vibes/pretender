@@ -55,6 +55,14 @@ metric (test role):
 - **`except*`** (`except_group_clause`) is captured and contributes the same as
   a plain `except`.
 
+## Known unsupported metrics
+
+None known. Every metric the page describes — cyclomatic (including
+`match`/`case` arms and comprehension filters), cognitive, `function_lines`,
+parameters, unit-level assertions, `nesting_max` via grammar-level `block`
+nodes, ABC counts, and type definitions and fields — has a capture today;
+unwrap density ships a Python detector too.
+
 ## Example output
 
 ```

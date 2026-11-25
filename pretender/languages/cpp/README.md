@@ -56,6 +56,18 @@ count as branches.
 - **Preprocessor conditionals** (`#ifdef`, `#if`) are not parsed by the
   tree-sitter grammar and do not contribute branch counts.
 
+## Known unsupported metrics
+
+- **`min_assertions`** — *Not implemented yet*: `metrics.scm` has no
+  `@assert.*` capture, so unit assertion totals are always 0 (the
+  `[assertions]` patterns serve rule scopes only). No ticket filed yet.
+- **Nesting depth** — *Not implemented yet*: the engine increments nesting
+  only inside `block`-kind nodes, but tree-sitter-cpp wraps bodies in
+  `compound_statement`, so `nesting_max` stays 0. No ticket filed yet.
+- **Unwrap density** — *Not implemented yet*: the engine's risky
+  error-handling detector covers Rust, Python, JavaScript/TypeScript, Java,
+  and Go only; C++ has no matcher. No ticket filed yet.
+
 ## Example output
 
 ```
