@@ -26,7 +26,7 @@ fn clojure_engine() -> QueryEngine {
 }
 
 const DEFRECORD_DEFTYPE_SOURCE: &str =
-    "(defrecord Point [x y])\n\n(deftype Cell [held]\n  (proto)\n  (area [this] 1))\n";
+    include_str!("fixtures/clojure_types_sample.clj");
 
 /// The zero-capture contract: a clean parse with an empty
 /// `type_definitions` list.
