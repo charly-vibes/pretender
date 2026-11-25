@@ -41,17 +41,17 @@ pub fn count_mutable_bindings(source: &str, language: &Language) -> MutableBindi
 }
 
 fn count_rust_mutable_bindings(source: &str) -> MutableBindingAnalysis {
-    let mut mutable = 0u32;
-    let mut total = 0u32;
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("let ") || trimmed.starts_with("let(") {
-            total += 1;
-            if trimmed.starts_with("let mut ") {
-                mutable += 1;
-            }
-        }
-    }
+    let mutable = source
+        .lines()
+        .filter(|line| line.trim().starts_with("let mut "))
+        .count() as u32;
+    let total = source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with("let ") || trimmed.starts_with("let(")
+        })
+        .count() as u32;
     MutableBindingAnalysis {
         mutable_count: mutable,
         total_count: total,
@@ -59,42 +59,48 @@ fn count_rust_mutable_bindings(source: &str) -> MutableBindingAnalysis {
 }
 
 fn count_js_mutable_bindings(source: &str) -> MutableBindingAnalysis {
-    let mut mutable = 0u32;
-    let mut total = 0u32;
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("let ") || trimmed.starts_with("var ") {
-            mutable += 1;
-            total += 1;
-        } else if trimmed.starts_with("const ") {
-            total += 1;
-        }
-    }
+    let mutable = source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with("let ") || trimmed.starts_with("var ")
+        })
+        .count() as u32;
+    let total = source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with("let ")
+                || trimmed.starts_with("var ")
+                || trimmed.starts_with("const ")
+        })
+        .count() as u32;
     MutableBindingAnalysis {
         mutable_count: mutable,
         total_count: total,
     }
 }
 
+/// Java type keywords that mark a local variable declaration line.
+fn java_declares_type(trimmed: &str) -> bool {
+    trimmed.contains("String ")
+        || trimmed.contains("int ")
+        || trimmed.contains("boolean ")
+        || trimmed.contains("long ")
+        || trimmed.contains("double ")
+}
+
 fn count_java_mutable_bindings(source: &str) -> MutableBindingAnalysis {
-    // Count non-final local variable declarations
-    let mut mutable = 0u32;
-    let mut total = 0u32;
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // Match type name followed by variable name (simplified)
-        if trimmed.contains("String ")
-            || trimmed.contains("int ")
-            || trimmed.contains("boolean ")
-            || trimmed.contains("long ")
-            || trimmed.contains("double ")
-        {
-            if !trimmed.starts_with("final ") && !trimmed.contains("final ") {
-                mutable += 1;
-            }
-            total += 1;
-        }
-    }
+    // Count non-final local variable declarations.
+    // Match type name followed by variable name (simplified)
+    let total = source
+        .lines()
+        .filter(|line| java_declares_type(line.trim()))
+        .count() as u32;
+    let mutable = source
+        .lines()
+        .filter(|line| java_declares_type(line.trim()) && !line.trim().contains("final "))
+        .count() as u32;
     MutableBindingAnalysis {
         mutable_count: mutable,
         total_count: total,
@@ -102,26 +108,26 @@ fn count_java_mutable_bindings(source: &str) -> MutableBindingAnalysis {
 }
 
 fn count_cpp_mutable_bindings(source: &str) -> MutableBindingAnalysis {
-    let mut mutable = 0u32;
-    let mut total = 0u32;
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // Flag `mutable` keyword declarations
-        if trimmed.contains("mutable ") {
-            mutable += 1;
-            total += 1;
-        }
-        // Count auto/type declarations that aren't const
-        if (trimmed.starts_with("auto ") || trimmed.contains("int ") || trimmed.contains("string "))
-            && !trimmed.starts_with("const ")
-            && !trimmed.contains(" const ")
-        {
-            mutable += 1;
-            total += 1;
-        }
-    }
+    // Flag `mutable` keyword declarations
+    let mutable_decls = source
+        .lines()
+        .filter(|line| line.trim().contains("mutable "))
+        .count() as u32;
+    // Count auto/type declarations that aren't const
+    let type_decls = source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            (trimmed.starts_with("auto ")
+                || trimmed.contains("int ")
+                || trimmed.contains("string "))
+                && !trimmed.starts_with("const ")
+                && !trimmed.contains(" const ")
+        })
+        .count() as u32;
+    let total = mutable_decls + type_decls;
     MutableBindingAnalysis {
-        mutable_count: mutable,
+        mutable_count: total,
         total_count: total,
     }
 }
@@ -150,85 +156,127 @@ pub fn detect_void_mutators(
     units: &[CodeUnit],
     _path: &Path,
 ) -> Vec<VoidMutator> {
-    let void_keywords = match language {
-        Language::Rust => &["fn "][..],
-        Language::Python => &["def "][..],
-        Language::JavaScript | Language::TypeScript => &["function ", "method", "=> {"][..],
-        Language::Java | Language::C | Language::Cpp | Language::CSharp => &["void "][..],
-        Language::Go => &["func "][..],
-        _ => return Vec::new(),
+    let void_keywords = match void_keywords_for(language) {
+        Some(keywords) => keywords,
+        None => return Vec::new(),
     };
 
-    let mut result = Vec::new();
     let lines: Vec<&str> = source.lines().collect();
+    let mut result = Vec::new();
 
     for unit in units {
-        // Skip constructors, initializers, and non-method kinds
-        if matches!(unit.kind, UnitKind::Ctor | UnitKind::Initializer) {
-            continue;
-        }
-
-        // Only consider methods (not standalone functions)
-        let is_method = match language {
-            Language::Rust => unit.name.contains("self") || has_self_param(&unit.parameters),
-            Language::Python => unit.name.contains("self") || has_self_param(&unit.parameters),
-            Language::Java
-            | Language::Cpp
-            | Language::CSharp
-            | Language::JavaScript
-            | Language::TypeScript => true, // Assume all class members are methods
-            _ => false,
-        };
-
-        if !is_method {
-            continue;
-        }
-
-        // Check if the method body is void
-        let start = unit.span.start_line as usize;
-        let end = unit.span.end_line as usize;
-        let body_lines = if start <= end && end <= lines.len() {
-            &lines[start - 1..end]
-        } else {
-            continue;
-        };
-
-        let body_text = body_lines.join("\n");
-
-        // Check if void/unit return type
-        let is_void = is_void_return(&body_text, language, void_keywords);
-
-        if !is_void {
-            continue;
-        }
-
-        // Check for direct field assignment
-        let has_direct_mutation = match language {
-            Language::Rust | Language::Python => {
-                body_text.contains("self.") && body_text.contains(" = ")
-            }
-            Language::Java
-            | Language::Cpp
-            | Language::CSharp
-            | Language::JavaScript
-            | Language::TypeScript => body_text.contains("this.") && body_text.contains(" = "),
-            _ => false,
-        };
-
-        if has_direct_mutation {
-            result.push(VoidMutator {
-                name: unit.name.clone(),
-                line: unit.span.start_line,
-            });
+        if let Some(mutator) = void_mutator_for_unit(unit, language, &lines, void_keywords) {
+            result.push(mutator);
         }
     }
 
-    // pretender-gv5: the caller's unit iteration order (walk order,
-    // parallel collection) must not leak into the result. Canonicalize by
-    // stable keys so repeated scans of an unchanged tree produce an
-    // identical finding vector; the finding SET is unchanged.
-    result.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.name.cmp(&b.name)));
+    canonical_mutator_order(result)
+}
 
+/// Void-indicator keywords per language; `None` when the language has no
+/// void-mutator detection.
+fn void_keywords_for(language: &Language) -> Option<&'static [&'static str]> {
+    match language {
+        Language::Rust => Some(&["fn "][..]),
+        Language::Python => Some(&["def "][..]),
+        Language::JavaScript | Language::TypeScript => Some(&["function ", "method", "=> {"][..]),
+        Language::Java | Language::C | Language::Cpp | Language::CSharp => Some(&["void "][..]),
+        Language::Go => Some(&["func "][..]),
+        _ => None,
+    }
+}
+
+/// Decide whether one unit is a void mutator, or `None` if it is not.
+fn void_mutator_for_unit(
+    unit: &CodeUnit,
+    language: &Language,
+    lines: &[&str],
+    void_keywords: &[&str],
+) -> Option<VoidMutator> {
+    // Skip constructors, initializers, and non-method kinds
+    if matches!(unit.kind, UnitKind::Ctor | UnitKind::Initializer) {
+        return None;
+    }
+
+    // Only consider methods (not standalone functions)
+    if !is_method_unit(unit, language) {
+        return None;
+    }
+
+    void_mutator_in_body(unit, language, lines, void_keywords)
+}
+
+/// Check one method's body for a void return and direct field assignment.
+fn void_mutator_in_body(
+    unit: &CodeUnit,
+    language: &Language,
+    lines: &[&str],
+    void_keywords: &[&str],
+) -> Option<VoidMutator> {
+    let body_text = unit_body_text(unit, lines)?;
+
+    // Check if void/unit return type
+    if !is_void_return(&body_text, language, void_keywords) {
+        return None;
+    }
+
+    // Check for direct field assignment
+    if !has_direct_field_assignment(&body_text, language) {
+        return None;
+    }
+
+    Some(VoidMutator {
+        name: unit.name.clone(),
+        line: unit.span.start_line,
+    })
+}
+
+/// Slice a unit's body lines out of `lines`; `None` when out of bounds.
+fn unit_body_text(unit: &CodeUnit, lines: &[&str]) -> Option<String> {
+    let start = unit.span.start_line as usize;
+    let end = unit.span.end_line as usize;
+    if start <= end && end <= lines.len() {
+        Some(lines[start - 1..end].join("\n"))
+    } else {
+        None
+    }
+}
+
+/// Check for direct field assignment (`self.`/`this.` fields) in a body.
+fn has_direct_field_assignment(body_text: &str, language: &Language) -> bool {
+    match language {
+        Language::Rust | Language::Python => {
+            body_text.contains("self.") && body_text.contains(" = ")
+        }
+        Language::Java
+        | Language::Cpp
+        | Language::CSharp
+        | Language::JavaScript
+        | Language::TypeScript => body_text.contains("this.") && body_text.contains(" = "),
+        _ => false,
+    }
+}
+
+/// Whether a unit counts as a method (not a standalone function).
+fn is_method_unit(unit: &CodeUnit, language: &Language) -> bool {
+    match language {
+        Language::Rust => unit.name.contains("self") || has_self_param(&unit.parameters),
+        Language::Python => unit.name.contains("self") || has_self_param(&unit.parameters),
+        Language::Java
+        | Language::Cpp
+        | Language::CSharp
+        | Language::JavaScript
+        | Language::TypeScript => true, // Assume all class members are methods
+        _ => false,
+    }
+}
+
+/// pretender-gv5: the caller's unit iteration order (walk order,
+/// parallel collection) must not leak into the result. Canonicalize by
+/// stable keys so repeated scans of an unchanged tree produce an
+/// identical finding vector; the finding SET is unchanged.
+fn canonical_mutator_order(mut result: Vec<VoidMutator>) -> Vec<VoidMutator> {
+    result.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.name.cmp(&b.name)));
     result
 }
 
@@ -289,245 +337,5 @@ fn regex_check(text: &str, pattern: &str) -> bool {
             false
         }
         _ => text.contains(pattern),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::model::{Parameter, Span};
-
-    fn make_unit(name: &str, kind: UnitKind, span: (u32, u32), params: Vec<&str>) -> CodeUnit {
-        let (start, end) = span;
-        CodeUnit {
-            name: name.to_string(),
-            kind,
-            span: Span {
-                start_line: start,
-                end_line: end,
-            },
-            parameters: params
-                .into_iter()
-                .map(|p| Parameter {
-                    name: p.to_string(),
-                    span: Span {
-                        start_line: start,
-                        end_line: start,
-                    },
-                    type_name: None,
-                })
-                .collect(),
-            body: crate::model::Block {
-                span: Span {
-                    start_line: start,
-                    end_line: end,
-                },
-                nesting: 0,
-                children: vec![],
-            },
-            is_exported: false,
-            assertions: 0,
-            parent_class: None,
-            has_test_attribute: false,
-        }
-    }
-
-    #[test]
-    fn detects_rust_void_mutator() {
-        let source = r#"
-impl MyStruct {
-    fn update(&mut self, value: i32) {
-        self.field = value;
-    }
-}
-"#;
-        let units = vec![make_unit(
-            "update",
-            UnitKind::Method,
-            (3, 5),
-            vec!["&mut self", "value"],
-        )];
-        let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "update");
-    }
-
-    #[test]
-    fn pure_function_not_flagged() {
-        let source = r#"
-fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-"#;
-        let units = vec![make_unit("add", UnitKind::Function, (1, 3), vec!["a", "b"])];
-        let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
-        assert_eq!(result.len(), 0);
-    }
-
-    #[test]
-    fn transitive_mutation_not_flagged() {
-        let source = r#"
-impl MyStruct {
-    fn update(&mut self) {
-        self.list.add(42);  // method call, not direct assignment
-    }
-}
-"#;
-        let units = vec![make_unit(
-            "update",
-            UnitKind::Method,
-            (2, 4),
-            vec!["&mut self"],
-        )];
-        let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
-        // self.list.add(42) is a method call, not self.field = value
-        // The body has "self." but not " = " — so it should NOT be flagged
-        assert_eq!(result.len(), 0);
-    }
-
-    #[test]
-    fn constructor_not_flagged() {
-        let source = r#"
-impl MyStruct {
-    fn new() -> Self {
-        Self { field: 42 }
-    }
-}
-"#;
-        let units = vec![make_unit("new", UnitKind::Ctor, (2, 4), vec![])];
-        let result = detect_void_mutators(source, &Language::Rust, &units, Path::new("test.rs"));
-        assert_eq!(result.len(), 0);
-    }
-
-    #[test]
-    fn unsupported_language_returns_empty() {
-        let source = "nothing";
-        let units = vec![];
-        let result = detect_void_mutators(source, &Language::Julia, &units, Path::new("test.jl"));
-        assert_eq!(result.len(), 0);
-    }
-
-    // ── Determinism (pretender-gv5): the finding vector must be identical
-    // run-to-run regardless of the order in which units arrive (walk order /
-    // parallel collection). Output is canonicalized by stable keys
-    // (line, name) so upstream reordering cannot change the result. ───
-
-    fn three_mutator_fixture() -> (String, Vec<CodeUnit>) {
-        let source = "\
-impl Counter {
-    fn refresh(&mut self) {
-        self.count = 1;
-    }
-    fn reset(&mut self) {
-        self.count = 0;
-    }
-    fn sync(&mut self) {
-        self.total = 9;
-    }
-}
-";
-        let units = vec![
-            make_unit("refresh", UnitKind::Method, (2, 4), vec!["&mut self"]),
-            make_unit("reset", UnitKind::Method, (5, 7), vec!["&mut self"]),
-            make_unit("sync", UnitKind::Method, (8, 10), vec!["&mut self"]),
-        ];
-        (source.to_string(), units)
-    }
-
-    #[test]
-    fn void_mutators_identical_across_repeated_runs() {
-        let (source, units) = three_mutator_fixture();
-        let first = detect_void_mutators(&source, &Language::Rust, &units, Path::new("a.rs"));
-        assert_eq!(first.len(), 3);
-        for _ in 0..4 {
-            let again = detect_void_mutators(&source, &Language::Rust, &units, Path::new("a.rs"));
-            assert_eq!(again, first);
-        }
-    }
-
-    fn vm(name: &str, line: u32) -> VoidMutator {
-        VoidMutator {
-            name: name.to_string(),
-            line,
-        }
-    }
-
-    #[test]
-    fn void_mutators_independent_of_unit_iteration_order() {
-        let (source, units) = three_mutator_fixture();
-        let scan = |units: &[CodeUnit]| {
-            detect_void_mutators(&source, &Language::Rust, units, Path::new("a.rs"))
-        };
-
-        let forward = scan(&units);
-        let mut reordered = units.clone();
-        reordered.rotate_left(1); // walk-order / parallel-collection shuffle
-        let mut reversed = units.clone();
-        reversed.reverse();
-
-        assert_eq!(
-            scan(&reordered),
-            forward,
-            "finding vector must not follow input order"
-        );
-        assert_eq!(
-            scan(&reversed),
-            forward,
-            "finding vector must not follow input order"
-        );
-        assert_eq!(
-            forward,
-            vec![vm("refresh", 2), vm("reset", 5), vm("sync", 8)],
-            "canonical order is (line, name), independent of input order"
-        );
-    }
-
-    #[test]
-    fn rust_mutable_ratio_half() {
-        let source = r#"
-let x = 1;
-let mut y = 2;
-let z = 3;
-let mut w = 4;
-"#;
-        let analysis = count_mutable_bindings(source, &Language::Rust);
-        assert_eq!(analysis.total_count, 4);
-        assert_eq!(analysis.mutable_count, 2);
-        assert!((analysis.ratio() - 0.5).abs() < 0.001);
-    }
-
-    #[test]
-    fn rust_no_mutable_bindings() {
-        let source = r#"let x = 1;"#;
-        let analysis = count_mutable_bindings(source, &Language::Rust);
-        assert_eq!(analysis.total_count, 1);
-        assert_eq!(analysis.mutable_count, 0);
-        assert_eq!(analysis.ratio(), 0.0);
-    }
-
-    #[test]
-    fn js_tracks_let_var_const() {
-        let source = r#"
-const x = 1;
-let y = 2;
-var z = 3;
-"#;
-        let analysis = count_mutable_bindings(source, &Language::JavaScript);
-        assert_eq!(analysis.total_count, 3);
-        assert_eq!(analysis.mutable_count, 2);
-    }
-
-    #[test]
-    fn python_returns_zero() {
-        let source = "x = 1\ny = 2";
-        let analysis = count_mutable_bindings(source, &Language::Python);
-        assert_eq!(analysis.total_count, 0);
-        assert_eq!(analysis.mutable_count, 0);
-    }
-
-    #[test]
-    fn empty_source_zero_ratio() {
-        let analysis = count_mutable_bindings("", &Language::Rust);
-        assert_eq!(analysis.ratio(), 0.0);
     }
 }

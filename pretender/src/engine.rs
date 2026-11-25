@@ -1,41 +1,85 @@
 use anyhow::{Context, Result};
-use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
-use streaming_iterator::StreamingIterator;
+use std::collections::BTreeMap;
 
-use crate::model::{
-    Block, Branch, BranchKind, CallSite, CodeUnit, Diagnostic, DiagnosticSeverity, Field, Import,
-    Language, Module, Parameter, Span, TypeDefinition, TypeKind, UnitKind,
-};
+use crate::metric_application::{BranchCaptureSpec, CaptureMap};
+use crate::model::{Block, Branch, BranchKind, CallSite, Language, Span};
 use crate::plugin::BranchWeights;
 
 pub struct QueryEngine {
-    language: tree_sitter::Language,
-    lang_kind: Language,
-    query: tree_sitter::Query,
-    fn_def_idx: u32,
-    fn_name_idx: u32,
-    fn_params_idx: u32,
-    fn_body_idx: u32,
-    branch_captures: Vec<(u32, BranchCaptureSpec)>,
-    assert_capture_indices: Vec<u32>,
-    call_idx: Option<u32>,
-    call_callee_idx: Option<u32>,
-    assign_idx: Option<u32>,
-    import_idx: Option<u32>,
-    type_def_idx: Option<u32>,
-    type_name_idx: Option<u32>,
-    type_field_idx: Option<u32>,
-    type_field_name_idx: Option<u32>,
-    type_field_type_idx: Option<u32>,
-    call_weights: BTreeMap<String, f64>,
+    pub(crate) language: tree_sitter::Language,
+    pub(crate) lang_kind: Language,
+    pub(crate) query: tree_sitter::Query,
+    pub(crate) slots: CaptureSlots,
+    pub(crate) call_weights: BTreeMap<String, f64>,
 }
 
-#[derive(Clone, Copy)]
-struct BranchCaptureSpec {
-    kind: BranchKind,
-    cyclomatic_weight: u32,
-    cognitive_weight: u32,
+/// Every capture index one compiled query provides: the four required
+/// function captures, the weighted branch captures, the assertion capture
+/// ids, and the optional call/import/type captures (D2).
+pub(crate) struct CaptureSlots {
+    pub(crate) fn_def_idx: u32,
+    pub(crate) fn_name_idx: u32,
+    pub(crate) fn_params_idx: u32,
+    pub(crate) fn_body_idx: u32,
+    pub(crate) branch_captures: Vec<(u32, BranchCaptureSpec)>,
+    pub(crate) assert_capture_indices: Vec<u32>,
+    pub(crate) call_idx: Option<u32>,
+    pub(crate) call_callee_idx: Option<u32>,
+    pub(crate) assign_idx: Option<u32>,
+    pub(crate) import_idx: Option<u32>,
+    pub(crate) type_def_idx: Option<u32>,
+    pub(crate) type_name_idx: Option<u32>,
+    pub(crate) type_field_idx: Option<u32>,
+    pub(crate) type_field_name_idx: Option<u32>,
+    pub(crate) type_field_type_idx: Option<u32>,
+}
+
+/// Compile `query_source` for `language`.
+pub(crate) fn compile_query(
+    language: &tree_sitter::Language,
+    query_source: &str,
+) -> Result<tree_sitter::Query> {
+    tree_sitter::Query::new(language, query_source)
+        .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))
+}
+
+fn require_capture_idx(query: &tree_sitter::Query, name: &str) -> Result<u32> {
+    query
+        .capture_index_for_name(name)
+        .with_context(|| format!("query missing @{name} capture"))
+}
+
+/// Resolve every capture index of `query`, carrying `branch_captures`
+/// (already weight-resolved by the metric layer) into the slots.
+pub(crate) fn index_capture_slots(
+    query: &tree_sitter::Query,
+    branch_captures: Vec<(u32, BranchCaptureSpec)>,
+) -> Result<CaptureSlots> {
+    Ok(CaptureSlots {
+        fn_def_idx: require_capture_idx(query, "function.definition")?,
+        fn_name_idx: require_capture_idx(query, "function.name")?,
+        fn_params_idx: require_capture_idx(query, "function.parameters")?,
+        fn_body_idx: require_capture_idx(query, "function.body")?,
+        branch_captures,
+        assert_capture_indices: query
+            .capture_names()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, name)| name.starts_with("assert.").then_some(idx as u32))
+            .collect(),
+        call_idx: query.capture_index_for_name("call"),
+        call_callee_idx: query.capture_index_for_name("call.callee"),
+        assign_idx: query.capture_index_for_name("assign"),
+        import_idx: query.capture_index_for_name("import"),
+        // Type captures are optional (D2): their absence leaves
+        // type_definitions empty instead of failing the query,
+        // mirroring how @import is handled.
+        type_def_idx: query.capture_index_for_name("type.definition"),
+        type_name_idx: query.capture_index_for_name("type.name"),
+        type_field_idx: query.capture_index_for_name("type.field"),
+        type_field_name_idx: query.capture_index_for_name("type.field.name"),
+        type_field_type_idx: query.capture_index_for_name("type.field.type"),
+    })
 }
 
 /// Weight overrides supplied by a language adapter, passed to
@@ -47,683 +91,23 @@ pub struct WeightMaps<'a> {
     pub call: &'a BTreeMap<String, f64>,
 }
 
-impl QueryEngine {
-    #[allow(dead_code)]
-    pub fn new(
-        language: tree_sitter::Language,
-        lang_kind: Language,
-        query_source: &str,
-    ) -> Result<Self> {
-        let empty_branches = BTreeMap::new();
-        let empty_calls = BTreeMap::new();
-        Self::new_with_branch_weights(
-            language,
-            lang_kind,
-            query_source,
-            &WeightMaps {
-                branch: &empty_branches,
-                call: &empty_calls,
-            },
-        )
+pub(crate) fn node_span(node: tree_sitter::Node) -> Span {
+    Span {
+        start_line: node.start_position().row as u32 + 1,
+        end_line: node.end_position().row as u32 + 1,
     }
-
-    pub fn new_with_branch_weights(
-        language: tree_sitter::Language,
-        lang_kind: Language,
-        query_source: &str,
-        weights: &WeightMaps<'_>,
-    ) -> Result<Self> {
-        let query = tree_sitter::Query::new(&language, query_source)
-            .map_err(|e| anyhow::anyhow!("failed to compile query: {e}"))?;
-
-        let fn_def_idx = query
-            .capture_index_for_name("function.definition")
-            .context("query missing @function.definition capture")?;
-        let fn_name_idx = query
-            .capture_index_for_name("function.name")
-            .context("query missing @function.name capture")?;
-        let fn_params_idx = query
-            .capture_index_for_name("function.parameters")
-            .context("query missing @function.parameters capture")?;
-        let fn_body_idx = query
-            .capture_index_for_name("function.body")
-            .context("query missing @function.body capture")?;
-
-        let branch_mapping = [
-            ("branch.if", BranchKind::If),
-            ("branch.elif", BranchKind::ElseIf),
-            ("branch.switch_case", BranchKind::SwitchCase),
-            ("branch.loop", BranchKind::Loop),
-            ("branch.catch", BranchKind::Catch),
-            ("branch.ternary", BranchKind::Ternary),
-            ("branch.logical.and", BranchKind::LogicalAnd),
-            ("branch.logical.or", BranchKind::LogicalOr),
-        ];
-
-        let branch_captures: Vec<(u32, BranchCaptureSpec)> = branch_mapping
-            .iter()
-            .filter_map(|(name, kind)| {
-                query.capture_index_for_name(name).map(|idx| {
-                    let capture_name = format!("@{name}");
-                    let defaults = BranchWeights {
-                        cyclomatic: 1,
-                        cognitive: 1,
-                    };
-                    let w = weights
-                        .branch
-                        .get(&capture_name)
-                        .copied()
-                        .unwrap_or(defaults);
-                    (
-                        idx,
-                        BranchCaptureSpec {
-                            kind: *kind,
-                            cyclomatic_weight: w.cyclomatic,
-                            cognitive_weight: w.cognitive,
-                        },
-                    )
-                })
-            })
-            .collect();
-
-        let assert_capture_indices = query
-            .capture_names()
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, name)| name.starts_with("assert.").then_some(idx as u32))
-            .collect();
-
-        let call_idx = query.capture_index_for_name("call");
-        let call_callee_idx = query.capture_index_for_name("call.callee");
-        let assign_idx = query.capture_index_for_name("assign");
-        let import_idx = query.capture_index_for_name("import");
-
-        // Type captures are optional (D2): their absence leaves
-        // type_definitions empty instead of failing the query,
-        // mirroring how @import is handled.
-        let type_def_idx = query.capture_index_for_name("type.definition");
-        let type_name_idx = query.capture_index_for_name("type.name");
-        let type_field_idx = query.capture_index_for_name("type.field");
-        let type_field_name_idx = query.capture_index_for_name("type.field.name");
-        let type_field_type_idx = query.capture_index_for_name("type.field.type");
-
-        Ok(Self {
-            language,
-            lang_kind,
-            query,
-            fn_def_idx,
-            fn_name_idx,
-            fn_params_idx,
-            fn_body_idx,
-            branch_captures,
-            assert_capture_indices,
-            call_idx,
-            call_callee_idx,
-            assign_idx,
-            import_idx,
-            type_def_idx,
-            type_name_idx,
-            type_field_idx,
-            type_field_name_idx,
-            type_field_type_idx,
-            call_weights: weights.call.clone(),
-        })
-    }
-
-    pub fn parse(&self, path: &Path, source: &str) -> Result<(Module, Vec<Diagnostic>)> {
-        let source_bytes = source.as_bytes();
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&self.language)
-            .context("failed to set language")?;
-
-        let tree = parser
-            .parse(source_bytes, None)
-            .context("tree-sitter returned no tree")?;
-
-        let root = tree.root_node();
-        let mut diagnostics = Vec::new();
-        let lines_total = source.lines().count() as u32;
-
-        let (lines_code, lines_comment) = classify_lines(root, lines_total);
-
-        if root.has_error() {
-            diagnostics.push(Diagnostic {
-                message: format!("Parse errors detected in {}", path.display()),
-                span: Some(node_span(root)),
-                severity: DiagnosticSeverity::Warning,
-            });
-            return Ok((
-                Module {
-                    path: path.to_path_buf(),
-                    language: self.lang_kind.clone(),
-                    span: Span {
-                        start_line: 1,
-                        end_line: lines_total,
-                    },
-                    lines_total,
-                    lines_code,
-                    lines_comment,
-                    units: Vec::new(),
-                    imports: Vec::new(),
-                    ..Default::default()
-                },
-                diagnostics,
-            ));
-        }
-
-        let mut query_cursor = tree_sitter::QueryCursor::new();
-        let mut functions: Vec<FunctionCapture> = Vec::new();
-        let mut captures = CaptureMap::default();
-        let mut imports: Vec<Import> = Vec::new();
-        let mut type_defs: Vec<TypeDefCapture> = Vec::new();
-        let mut type_names: Vec<tree_sitter::Node> = Vec::new();
-        let mut type_fields: Vec<TypeFieldCapture> = Vec::new();
-
-        let mut query_matches = query_cursor.matches(&self.query, root, source_bytes);
-        while let Some(m) = query_matches.next() {
-            let has_fn_def = m.captures.iter().any(|c| c.index == self.fn_def_idx);
-
-            if has_fn_def {
-                let mut fc = FunctionCapture::default();
-                for capture in m.captures {
-                    if capture.index == self.fn_def_idx {
-                        fc.def_node = Some(capture.node);
-                    } else if capture.index == self.fn_name_idx {
-                        fc.name_node = Some(capture.node);
-                    } else if capture.index == self.fn_params_idx {
-                        fc.params_node = Some(capture.node);
-                    } else if capture.index == self.fn_body_idx {
-                        fc.body_node = Some(capture.node);
-                    }
-                }
-                functions.push(fc);
-            } else {
-                let mut pending_call: Option<(usize, Option<String>)> = None;
-                let mut type_def_node: Option<tree_sitter::Node> = None;
-                let mut type_name_node: Option<tree_sitter::Node> = None;
-                let mut type_field_node: Option<tree_sitter::Node> = None;
-                let mut type_field_name_node: Option<tree_sitter::Node> = None;
-                let mut type_field_type_node: Option<tree_sitter::Node> = None;
-                for capture in m.captures {
-                    if let Some(spec) = self.branch_capture_for_index(capture.index) {
-                        captures.branches.insert(capture.node.id(), spec);
-                    } else if self.assert_capture_indices.contains(&capture.index) {
-                        captures.assertions.insert(capture.node.id());
-                    } else if Some(capture.index) == self.assign_idx {
-                        captures.assignments.insert(capture.node.id());
-                    } else if Some(capture.index) == self.call_idx {
-                        let id = capture.node.id();
-                        match &mut pending_call {
-                            Some((existing_id, _)) if *existing_id == id => {}
-                            _ => pending_call = Some((id, None)),
-                        }
-                    } else if Some(capture.index) == self.call_callee_idx {
-                        let callee = capture
-                            .node
-                            .utf8_text(source_bytes)
-                            .ok()
-                            .map(str::to_string);
-                        if let Some((_, slot)) = pending_call.as_mut() {
-                            *slot = callee;
-                        }
-                    } else if Some(capture.index) == self.import_idx {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            imports.push(Import {
-                                module: text.to_string(),
-                                name: None,
-                                alias: None,
-                                span: node_span(capture.node),
-                            });
-                        }
-                    } else if Some(capture.index) == self.type_def_idx {
-                        type_def_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_name_idx {
-                        type_name_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_field_idx {
-                        type_field_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_field_name_idx {
-                        type_field_name_node = Some(capture.node);
-                    } else if Some(capture.index) == self.type_field_type_idx {
-                        type_field_type_node = Some(capture.node);
-                    }
-                }
-                if let Some((id, callee)) = pending_call {
-                    captures.calls.insert(id, callee.unwrap_or_default());
-                }
-
-                match type_def_node {
-                    Some(def_node) => type_defs.push(TypeDefCapture {
-                        node: def_node,
-                        name_node: type_name_node,
-                    }),
-                    // A @type.name capture in a match of its own binds
-                    // positionally to the innermost enclosing definition
-                    // in build_type_definitions.
-                    None => {
-                        if let Some(name_node) = type_name_node {
-                            type_names.push(name_node);
-                        }
-                    }
-                }
-                if type_field_node.is_some() || type_field_name_node.is_some() {
-                    type_fields.push(TypeFieldCapture {
-                        node: type_field_node
-                            .or(type_field_name_node)
-                            .or(type_field_type_node)
-                            .unwrap(),
-                        name_node: type_field_name_node,
-                        type_node: type_field_type_node,
-                        // Definition id when the same match carried
-                        // @type.definition; otherwise resolved by position.
-                        owner: type_def_node.map(|n| n.id()),
-                    });
-                }
-            }
-        }
-
-        let units: Vec<CodeUnit> = functions
-            .iter()
-            .filter_map(|fc| {
-                self.build_code_unit(fc, source_bytes, &captures)
-                    .map_err(|e| {
-                        diagnostics.push(Diagnostic {
-                            message: format!("Failed to build CodeUnit: {e}"),
-                            span: fc.def_node.map(node_span),
-                            severity: DiagnosticSeverity::Error,
-                        });
-                    })
-                    .ok()
-            })
-            .collect();
-
-        let type_definitions = self.build_type_definitions(
-            TypeCaptures {
-                defs: type_defs,
-                names: type_names,
-                fields: type_fields,
-            },
-            source_bytes,
-        );
-
-        Ok((
-            Module {
-                path: path.to_path_buf(),
-                language: self.lang_kind.clone(),
-                span: Span {
-                    start_line: 1,
-                    end_line: lines_total,
-                },
-                lines_total,
-                lines_code,
-                lines_comment,
-                units,
-                imports,
-                type_definitions,
-            },
-            diagnostics,
-        ))
-    }
-
-    fn branch_capture_for_index(&self, idx: u32) -> Option<BranchCaptureSpec> {
-        self.branch_captures
-            .iter()
-            .find(|(capture_idx, _)| *capture_idx == idx)
-            .map(|(_, spec)| *spec)
-    }
-
-    fn build_code_unit(
-        &self,
-        fc: &FunctionCapture,
-        source: &[u8],
-        captures: &CaptureMap,
-    ) -> Result<CodeUnit, String> {
-        let def_node = fc.def_node.ok_or("missing definition node")?;
-        let name_node = fc.name_node.ok_or("missing name node")?;
-        let body_node = fc.body_node.ok_or("missing body node")?;
-
-        let name = name_node
-            .utf8_text(source)
-            .map_err(|_| "name contains invalid UTF-8")?
-            .to_string();
-
-        let kind = determine_unit_kind(def_node, &name);
-        let is_exported = !name.starts_with('_');
-
-        let parameters = fc
-            .params_node
-            .map(|p| extract_params(p, source))
-            .unwrap_or_default();
-
-        let walk_ctx = WalkCtx {
-            captures,
-            call_weights: &self.call_weights,
-            nesting: 0,
-        };
-        let body = build_block(&walk_ctx, body_node);
-
-        Ok(CodeUnit {
-            name,
-            kind,
-            span: node_span(def_node),
-            parameters,
-            body,
-            is_exported,
-            assertions: count_captured_nodes(body_node, &captures.assertions),
-            parent_class: None,
-            has_test_attribute: has_test_marker(def_node, source),
-        })
-    }
-
-    /// Assemble `TypeDefinition`s from raw type captures. Fields whose
-    /// match carried no `@type.definition` bind to the innermost enclosing
-    /// definition; captures with no enclosing definition are dropped.
-    /// Fields keep source order.
-    fn build_type_definitions<'a>(
-        &self,
-        captures: TypeCaptures<'a>,
-        source: &[u8],
-    ) -> Vec<TypeDefinition> {
-        let TypeCaptures {
-            defs,
-            names,
-            fields,
-        } = captures;
-        // The same definition node can be captured by several patterns;
-        // keep the first capture per node id.
-        let mut seen = std::collections::HashSet::new();
-        let defs: Vec<TypeDefCapture> = defs
-            .into_iter()
-            .filter(|def| seen.insert(def.node.id()))
-            .collect();
-
-        let mut built: Vec<TypeDefinition> = defs
-            .iter()
-            .map(|def| TypeDefinition {
-                name: def
-                    .name_node
-                    .and_then(|n| n.utf8_text(source).ok())
-                    .unwrap_or_default()
-                    .to_string(),
-                kind: determine_type_kind(def.node.kind()),
-                span: node_span(def.node),
-                fields: Vec::new(),
-                language: self.lang_kind.clone(),
-            })
-            .collect();
-
-        // Split-pattern queries capture @type.name without the definition
-        // in the same match; bind those positionally, but only fill defs
-        // whose in-match name capture was absent.
-        for name_node in names {
-            if let Some(idx) = innermost_enclosing_type(&defs, name_node) {
-                if built[idx].name.is_empty() {
-                    if let Ok(text) = name_node.utf8_text(source) {
-                        built[idx].name = text.to_string();
-                    }
-                }
-            }
-        }
-
-        let mut owned: Vec<(usize, usize, Field)> = Vec::new();
-        for field in fields {
-            // The model contract requires each captured field to carry a
-            // name; entries without a name capture are not fields.
-            let Some(name_node) = field.name_node else {
-                continue;
-            };
-            let Ok(name) = name_node.utf8_text(source) else {
-                continue;
-            };
-            let owner = field
-                .owner
-                .and_then(|id| defs.iter().position(|def| def.node.id() == id))
-                .or_else(|| innermost_enclosing_type(&defs, field.node));
-            let Some(owner) = owner else {
-                continue;
-            };
-            // Members of a deliberately uncaptured nested type must not
-            // be attributed to the enclosing captured definition.
-            if field_inside_uncaptured_type(field.node, defs[owner].node, &seen) {
-                continue;
-            }
-            owned.push((
-                owner,
-                field.node.start_byte(),
-                Field {
-                    name: name.to_string(),
-                    type_name: field
-                        .type_node
-                        .and_then(|t| t.utf8_text(source).ok())
-                        .map(str::to_string),
-                    span: node_span(field.node),
-                },
-            ));
-        }
-        owned.sort_by_key(|(owner, start, _)| (*owner, *start));
-        for (owner, _, field) in owned {
-            built[owner].fields.push(field);
-        }
-
-        built
-    }
-}
-
-#[derive(Default)]
-struct CaptureMap {
-    branches: HashMap<usize, BranchCaptureSpec>,
-    calls: HashMap<usize, String>,
-    assignments: std::collections::HashSet<usize>,
-    assertions: std::collections::HashSet<usize>,
-}
-
-#[derive(Default)]
-struct FunctionCapture<'a> {
-    def_node: Option<tree_sitter::Node<'a>>,
-    name_node: Option<tree_sitter::Node<'a>>,
-    params_node: Option<tree_sitter::Node<'a>>,
-    body_node: Option<tree_sitter::Node<'a>>,
-}
-
-struct TypeDefCapture<'a> {
-    node: tree_sitter::Node<'a>,
-    name_node: Option<tree_sitter::Node<'a>>,
-}
-
-struct TypeFieldCapture<'a> {
-    node: tree_sitter::Node<'a>,
-    name_node: Option<tree_sitter::Node<'a>>,
-    type_node: Option<tree_sitter::Node<'a>>,
-    /// Definition node id when the same match carried @type.definition.
-    owner: Option<usize>,
-}
-
-/// Raw type captures gathered during a parse, passed as one bundle to
-/// `build_type_definitions`.
-struct TypeCaptures<'a> {
-    defs: Vec<TypeDefCapture<'a>>,
-    names: Vec<tree_sitter::Node<'a>>,
-    fields: Vec<TypeFieldCapture<'a>>,
-}
-
-/// Best-effort kind mapping (D3): struct declarations → Struct, record
-/// declarations → Record, any other captured type node → Class.
-fn determine_type_kind(node_kind: &str) -> TypeKind {
-    match node_kind {
-        "struct_item" | "struct_declaration" | "struct_specifier" | "struct_definition" => {
-            TypeKind::Struct
-        }
-        "record_declaration" | "record_definition" | "defrecord" => TypeKind::Record,
-        other => {
-            if other.contains("record") {
-                TypeKind::Record
-            } else if other.contains("struct") {
-                TypeKind::Struct
-            } else {
-                TypeKind::Class
-            }
-        }
-    }
-}
-
-/// Index of the smallest captured definition whose byte range encloses
-/// `node` — the innermost enclosing @type.definition.
-fn innermost_enclosing_type<'a>(
-    defs: &[TypeDefCapture<'a>],
-    node: tree_sitter::Node<'a>,
-) -> Option<usize> {
-    defs.iter()
-        .enumerate()
-        .filter(|(_, def)| {
-            def.node.start_byte() <= node.start_byte() && node.end_byte() <= def.node.end_byte()
-        })
-        .max_by_key(|(_, def)| {
-            (
-                def.node.start_byte(),
-                std::cmp::Reverse(def.node.end_byte()),
-            )
-        })
-        .map(|(idx, _)| idx)
-}
-
-/// True when the node kind introduces a type-definition body.
-/// Grammar-agnostic name matching, mirroring `determine_type_kind`;
-/// bare body/list wrappers are skipped because a definition capture
-/// anchors on the definition node itself, not on its body child.
-fn is_type_body_kind(kind: &str) -> bool {
-    if kind.ends_with("_body") || kind.ends_with("_list") {
-        return false;
-    }
-    [
-        "struct",
-        "union",
-        "enum",
-        "class",
-        "interface",
-        "record",
-        "trait",
-    ]
-    .iter()
-    .any(|word| kind.contains(word))
-}
-
-/// True when `field_node` sits inside a type body that is neither the
-/// bound definition nor a captured definition itself — the member
-/// belongs to that deliberately uncaptured inner type (design D3),
-/// e.g. C/C++ anonymous unions/structs or Go inline struct types.
-fn field_inside_uncaptured_type(
-    field_node: tree_sitter::Node,
-    owner: tree_sitter::Node,
-    captured_def_ids: &std::collections::HashSet<usize>,
-) -> bool {
-    let mut current = field_node.parent();
-    while let Some(node) = current {
-        if node.id() == owner.id() {
-            return false;
-        }
-        if is_type_body_kind(node.kind()) && !captured_def_ids.contains(&node.id()) {
-            return true;
-        }
-        current = node.parent();
-    }
-    false
-}
-
-fn determine_unit_kind(node: tree_sitter::Node, name: &str) -> UnitKind {
-    let mut current = node.parent();
-    while let Some(parent) = current {
-        match parent.kind() {
-            "class_definition" => {
-                if name == "__init__" || name == "__new__" {
-                    return UnitKind::Ctor;
-                }
-                return UnitKind::Method;
-            }
-            "function_definition" => return UnitKind::Function,
-            "module" => break,
-            _ => {
-                current = parent.parent();
-            }
-        }
-    }
-    UnitKind::Function
-}
-
-fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Parameter> {
-    let mut params = Vec::new();
-    let mut cursor = params_node.walk();
-    for child in params_node.children(&mut cursor) {
-        let param_name = match child.kind() {
-            "identifier" => child.utf8_text(source).ok().map(str::to_string),
-            "typed_parameter" | "default_parameter" | "typed_default_parameter" => child
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(str::to_string),
-            "parameter" => {
-                // Python/Go-style parameters expose a `name` field; Rust
-                // (tree-sitter-rust) exposes a `pattern` field instead.
-                child
-                    .child_by_field_name("name")
-                    .or_else(|| child.child_by_field_name("pattern"))
-                    .and_then(|pattern| {
-                        if pattern.kind() == "self" {
-                            return Some("self".to_string());
-                        }
-                        let mut name = None;
-                        let mut c = pattern.walk();
-                        for n in pattern.children(&mut c) {
-                            if n.kind() == "identifier" {
-                                name = n.utf8_text(source).ok().map(str::to_string);
-                                break;
-                            }
-                        }
-                        name.or_else(|| pattern.utf8_text(source).ok().map(str::to_string))
-                    })
-            }
-            // Rust `self` parameters (`fn f(&self)` / `fn f(&mut self)`).
-            "self_parameter" | "self" => Some("self".to_string()),
-            "list_splat_pattern" | "dictionary_splat_pattern" => {
-                let prefix = if child.kind() == "list_splat_pattern" {
-                    "*"
-                } else {
-                    "**"
-                };
-                let mut c = child.walk();
-                let ident = child
-                    .children(&mut c)
-                    .find(|n| n.kind() == "identifier")
-                    .and_then(|n| n.utf8_text(source).ok())
-                    .map(|s| format!("{prefix}{s}"));
-                ident
-            }
-            _ => None,
-        };
-        if let Some(name) = param_name {
-            let type_name = child
-                .child_by_field_name("type")
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(str::to_string);
-
-            params.push(Parameter {
-                span: node_span(child),
-                name,
-                type_name,
-            });
-        }
-    }
-    params
 }
 
 /// Shared immutable context threaded through the block walk below:
 /// everything the recursive visitors need except the mutable output list.
 #[derive(Clone, Copy)]
-struct WalkCtx<'a> {
-    captures: &'a CaptureMap,
-    call_weights: &'a BTreeMap<String, f64>,
-    nesting: u32,
+pub(crate) struct WalkCtx<'a> {
+    pub(crate) captures: &'a CaptureMap,
+    pub(crate) call_weights: &'a BTreeMap<String, f64>,
+    pub(crate) nesting: u32,
 }
 
-fn build_block(ctx: &WalkCtx, block_node: tree_sitter::Node) -> Block {
+pub(crate) fn build_block(ctx: &WalkCtx, block_node: tree_sitter::Node) -> Block {
     let mut children = Vec::new();
     // Check the block_node itself against captures first.
     // This handles languages where the function body IS a branch node
@@ -746,39 +130,55 @@ fn visit_child(
     out: &mut Vec<crate::model::Node>,
 ) -> bool {
     if let Some(&spec) = ctx.captures.branches.get(&child.id()) {
-        let sequence_id = match spec.kind {
-            BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
-            _ => None,
-        };
-        out.push(crate::model::Node::Branch(Branch {
-            kind: spec.kind,
-            span: node_span(child),
-            nesting_at: ctx.nesting,
-            sequence_id,
-            cyclomatic_weight: spec.cyclomatic_weight,
-            cognitive_weight: spec.cognitive_weight,
-        }));
+        out.push(crate::model::Node::Branch(branch_node(
+            ctx, parent, child, spec,
+        )));
         collect_nested_blocks(ctx, child, out);
-        true
-    } else if ctx.captures.assignments.contains(&child.id()) {
+        return true;
+    }
+    if ctx.captures.assignments.contains(&child.id()) {
         out.push(crate::model::Node::Assignment(node_span(child)));
         collect_nested_blocks(ctx, child, out);
-        true
-    } else if let Some(callee) = ctx.captures.calls.get(&child.id()) {
-        let smell_weight = ctx
-            .call_weights
-            .get(callee.as_str())
-            .copied()
-            .unwrap_or(1.0);
-        out.push(crate::model::Node::Call(CallSite {
-            callee: callee.clone(),
-            span: node_span(child),
-            smell_weight,
-        }));
+        return true;
+    }
+    if let Some(callee) = ctx.captures.calls.get(&child.id()) {
+        out.push(crate::model::Node::Call(call_site(ctx, child, callee)));
         collect_nested_blocks(ctx, child, out);
         true
     } else {
         false
+    }
+}
+
+/// A weighted branch node; logical operators share the parent's sequence
+/// id so `a and b and c` reports as one sequence.
+fn branch_node(
+    ctx: &WalkCtx,
+    parent: tree_sitter::Node,
+    child: tree_sitter::Node,
+    spec: BranchCaptureSpec,
+) -> Branch {
+    let sequence_id = match spec.kind {
+        BranchKind::LogicalAnd | BranchKind::LogicalOr => Some(parent.id() as u32),
+        _ => None,
+    };
+    Branch {
+        kind: spec.kind,
+        span: node_span(child),
+        nesting_at: ctx.nesting,
+        sequence_id,
+        cyclomatic_weight: spec.cyclomatic_weight,
+        cognitive_weight: spec.cognitive_weight,
+    }
+}
+
+/// A call site with the adapter's smell weight for the callee, or 1.0.
+fn call_site(ctx: &WalkCtx, child: tree_sitter::Node, callee: &str) -> CallSite {
+    let smell_weight = ctx.call_weights.get(callee).copied().unwrap_or(1.0);
+    CallSite {
+        callee: callee.to_owned(),
+        span: node_span(child),
+        smell_weight,
     }
 }
 
@@ -818,54 +218,7 @@ fn collect_nested_blocks(
     }
 }
 
-/// Classify each line in the file using tree-sitter node types.
-/// Returns (lines_code, lines_comment).
-/// A line is a comment line if every leaf node on that line is a comment.
-/// Otherwise if any named non-comment leaf touches the line, it is a code line.
-fn classify_lines(root: tree_sitter::Node, lines_total: u32) -> (u32, u32) {
-    use std::collections::HashSet;
-
-    let mut comment_lines: HashSet<u32> = HashSet::new();
-    let mut code_lines: HashSet<u32> = HashSet::new();
-
-    let mut cursor = root.walk();
-    loop {
-        let node = cursor.node();
-        if node.child_count() == 0 {
-            // leaf node
-            let start = node.start_position().row as u32 + 1;
-            let end = node.end_position().row as u32 + 1;
-            let is_comment = node.kind().contains("comment");
-            for line in start..=end {
-                if is_comment {
-                    if !code_lines.contains(&line) {
-                        comment_lines.insert(line);
-                    }
-                } else if !node.kind().trim().is_empty() {
-                    code_lines.insert(line);
-                    comment_lines.remove(&line);
-                }
-            }
-        }
-
-        if cursor.goto_first_child() {
-            continue;
-        }
-        loop {
-            if cursor.goto_next_sibling() {
-                break;
-            }
-            if !cursor.goto_parent() {
-                return (
-                    code_lines.len() as u32,
-                    comment_lines.iter().filter(|&&l| l <= lines_total).count() as u32,
-                );
-            }
-        }
-    }
-}
-
-fn count_captured_nodes(
+pub(crate) fn count_captured_nodes(
     node: tree_sitter::Node,
     captured_ids: &std::collections::HashSet<usize>,
 ) -> u32 {
@@ -884,7 +237,7 @@ fn count_captured_nodes(
 /// (e.g. Rust `#[test]`). Attributes precede the definition as siblings;
 /// scanning stops at the first non-attribute sibling so an outer unit
 /// never claims another unit's marker.
-fn has_test_marker(def_node: tree_sitter::Node, source: &[u8]) -> bool {
+pub(crate) fn has_test_marker(def_node: tree_sitter::Node, source: &[u8]) -> bool {
     let mut sibling = def_node.prev_sibling();
     while let Some(node) = sibling {
         if node.kind() != "attribute_item" {
@@ -923,19 +276,13 @@ fn is_nested_definition(node: tree_sitter::Node) -> bool {
     )
 }
 
-fn node_span(node: tree_sitter::Node) -> Span {
-    Span {
-        start_line: node.start_position().row as u32 + 1,
-        end_line: node.end_position().row as u32 + 1,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::*;
     use crate::plugin::BranchWeights;
     use std::collections::BTreeMap;
+    use std::path::Path;
 
     fn python_language() -> tree_sitter::Language {
         tree_sitter_python::LANGUAGE.into()

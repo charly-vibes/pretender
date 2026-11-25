@@ -156,3 +156,39 @@ preflight: ci
 status:
     wai status
     bd ready
+
+# Per-ticket review independence (pretender-5zo.22).
+#
+#   just wire-reviewer <ticket> <reviewer-bead-id>
+#
+# Creates the reviewer bead <reviewer-bead-id> (reused if it already exists)
+# with assignee "wave-reviewer" — asserted different from the ticket's
+# implementer — then installs a bead-type gate so <ticket> cannot close while
+# the reviewer bead is open: `bd close <ticket>` is refused and <ticket> is
+# hidden from `bd ready` until the gate resolves. Closing the reviewer bead
+# does NOT auto-resolve the gate; run `bd gate check --type=bead` afterwards,
+# then close <ticket>. `bd close <ticket> --force` bypasses the gate and is
+# reserved for genuine emergencies.
+# Example: just wire-reviewer pretender-5zo.29 pretender-5zo.29.rev
+wire-reviewer ticket reviewer_id:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    reviewer_assignee="wave-reviewer"
+    bd show "{{ticket}}" >/dev/null 2>&1 || { echo "wire-reviewer: ticket {{ticket}} not found" >&2; exit 1; }
+    implementer="$(bd show "{{ticket}}" --json | jq -r '.[0].assignee // empty')"
+    if [[ -n "$implementer" && "$implementer" == "$reviewer_assignee" ]]; then
+        echo "wire-reviewer: refusing: '$reviewer_assignee' is also the implementer of {{ticket}}; review must be independent" >&2
+        exit 1
+    fi
+    if bd show "{{reviewer_id}}" >/dev/null 2>&1; then
+        echo "wire-reviewer: reviewer bead {{reviewer_id}} already exists; reusing"
+    else
+        bd create --id "{{reviewer_id}}" --silent --assignee "$reviewer_assignee" --title "Wave review: {{ticket}}" --description "Review-independence guard for {{ticket}}: to be closed by a reviewer (assignee: $reviewer_assignee) distinct from the implementer${implementer:+ ($implementer)}. {{ticket}} is gated on this bead and cannot close while it is open."
+        echo "wire-reviewer: created reviewer bead {{reviewer_id}} (assignee: $reviewer_assignee)"
+    fi
+    if bd gate list --json | jq -e --arg r "{{reviewer_id}}" '(. // [])[] | select(.await_type == "bead" and .await_id == $r)' >/dev/null; then
+        echo "wire-reviewer: bead gate on {{reviewer_id}} is already open; nothing to do"
+        exit 0
+    fi
+    bd gate create --type=bead --blocks "{{ticket}}" --await-id "{{reviewer_id}}" --title "Gate: wave review of {{ticket}}" --reason "review independence: {{ticket}} cannot close while reviewer bead {{reviewer_id}} is open"
+    echo "wire-reviewer: {{ticket}} is gated on {{reviewer_id}}; bd close {{ticket}} now refuses until the reviewer bead is closed and 'bd gate check --type=bead' resolves the gate"

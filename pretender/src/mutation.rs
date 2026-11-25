@@ -4,6 +4,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::mutation_entry::{
+    build_mutmut_report, enumerate_mutation_sites, parse_cargo_mutants_outcomes,
+    parse_stryker_report,
+};
+
 // ── language detection ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -134,382 +139,6 @@ pub fn parse_cargo_mutants_list(output: &str) -> Vec<PlannedMutant> {
         .collect()
 }
 
-#[derive(Deserialize)]
-struct CargoMutantsOutcomeEntry {
-    #[serde(default)]
-    mutant: CargoMutantInfo,
-    #[serde(default)]
-    outcome: String,
-}
-
-#[derive(Deserialize, Default)]
-struct CargoMutantInfo {
-    #[serde(default)]
-    file: String,
-    #[serde(default)]
-    line: u32,
-    #[serde(default)]
-    function_name: String,
-    #[serde(default)]
-    text: String,
-}
-
-/// Parse `mutants.out/outcomes.json` from a cargo-mutants run.
-pub fn parse_cargo_mutants_outcomes(json: &str) -> Result<MutationReport> {
-    let entries: Vec<CargoMutantsOutcomeEntry> =
-        serde_json::from_str(json).context("failed to parse cargo-mutants outcomes.json")?;
-
-    let mut total = 0u32;
-    let mut killed = 0u32;
-    let mut survivors = Vec::new();
-
-    for e in &entries {
-        total += 1;
-        match e.outcome.as_str() {
-            "missed" => {
-                let description = if e.mutant.function_name.is_empty() {
-                    e.mutant.text.clone()
-                } else {
-                    format!("{}: {}", e.mutant.function_name, e.mutant.text)
-                };
-                survivors.push(SurvivingMutant {
-                    file: e.mutant.file.clone(),
-                    line: e.mutant.line,
-                    description,
-                    missed_tests: vec![],
-                });
-            }
-            _ => {
-                killed += 1;
-            }
-        }
-    }
-
-    let survived = survivors.len() as u32;
-    let score_pct = compute_score(total, survived);
-    survivors.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
-
-    Ok(MutationReport {
-        tool: "cargo-mutants".to_string(),
-        total,
-        killed,
-        survived,
-        score_pct,
-        survivors,
-    })
-}
-
-// ── mutmut parser ─────────────────────────────────────────────────────────────
-
-/// Parse the final progress line from `mutmut run` output.
-/// Returns (total, survived).
-/// Line format: "N/M  🎉 K  ⏰ T  🤔 U  🙁 S"
-pub fn parse_mutmut_summary(text: &str) -> (u32, u32) {
-    for line in text.lines() {
-        if let Some((total, survived)) = try_parse_mutmut_line(line) {
-            return (total, survived);
-        }
-    }
-    (0, 0)
-}
-
-fn try_parse_mutmut_line(line: &str) -> Option<(u32, u32)> {
-    // Find "N/M" token
-    let fraction = line.split_whitespace().find(|t| t.contains('/'))?;
-    let mut parts = fraction.split('/');
-    let _current: u32 = parts.next()?.parse().ok()?;
-    let total: u32 = parts.next()?.parse().ok()?;
-    if total == 0 {
-        return None;
-    }
-    // Find 🙁 count
-    let survived = survived_after_skull(line).unwrap_or(0);
-    Some((total, survived))
-}
-
-fn survived_after_skull(line: &str) -> Option<u32> {
-    // "🙁 N" where 🙁 is U+1F641 (3 bytes in UTF-8: 0xF0 0x9F 0x99 0x81, actually 4 bytes)
-    // We'll search for the emoji and take the next numeric token.
-    let skull = "\u{1F641}";
-    let pos = line.find(skull)?;
-    let after = &line[pos + skull.len()..];
-    after.split_whitespace().next()?.parse().ok()
-}
-
-/// Build a MutationReport from mutmut outputs.
-/// `summary_text`: stdout from `mutmut run` (contains progress line).
-/// `results_text`: stdout from `mutmut results` (contains surviving test names).
-pub fn build_mutmut_report(summary_text: &str, results_text: &str) -> MutationReport {
-    let (total, survived_count) = parse_mutmut_summary(summary_text);
-    let killed = total.saturating_sub(survived_count);
-    let score_pct = compute_score(total, survived_count);
-
-    // Parse surviving mutants from `mutmut results` output.
-    // Format: blocks separated by "---- N ----" headers.
-    let survivors = parse_mutmut_surviving_tests(results_text, survived_count);
-
-    MutationReport {
-        tool: "mutmut".to_string(),
-        total,
-        killed,
-        survived: survived_count,
-        score_pct,
-        survivors,
-    }
-}
-
-fn parse_mutmut_surviving_tests(text: &str, survived_count: u32) -> Vec<SurvivingMutant> {
-    // mutmut results output groups tests by mutant id:
-    //   ---- 1 ----
-    //   tests/test_foo.py::test_bar
-    //   ---- 2 ----
-    //   tests/test_foo.py::test_baz
-    let mut survivors = Vec::new();
-    let mut current_tests: Vec<String> = Vec::new();
-    let mut in_block = false;
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("----") && trimmed.ends_with("----") && trimmed.len() > 8 {
-            if in_block && !current_tests.is_empty() {
-                survivors.push(SurvivingMutant {
-                    file: String::new(),
-                    line: 0,
-                    description: format!("mutant {} survived", survivors.len() + 1),
-                    missed_tests: std::mem::take(&mut current_tests),
-                });
-            }
-            in_block = true;
-            current_tests.clear();
-        } else if in_block
-            && !trimmed.is_empty()
-            && !trimmed.starts_with("To ")
-            && !trimmed.starts_with("mutmut")
-        {
-            current_tests.push(trimmed.to_string());
-        }
-    }
-    if in_block && !current_tests.is_empty() {
-        survivors.push(SurvivingMutant {
-            file: String::new(),
-            line: 0,
-            description: format!("mutant {} survived", survivors.len() + 1),
-            missed_tests: current_tests,
-        });
-    }
-
-    // If we parsed fewer blocks than the survived count, fill with unknowns
-    while survivors.len() < survived_count as usize {
-        survivors.push(SurvivingMutant {
-            file: String::new(),
-            line: 0,
-            description: format!("mutant {} survived", survivors.len() + 1),
-            missed_tests: vec![],
-        });
-    }
-
-    survivors
-}
-
-// ── stryker parser ────────────────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct StrykerReport {
-    #[serde(default)]
-    files: HashMap<String, StrykerFile>,
-}
-
-#[derive(Deserialize)]
-struct StrykerFile {
-    #[serde(default)]
-    mutants: Vec<StrykerMutant>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StrykerMutant {
-    #[serde(default)]
-    mutator_name: String,
-    #[serde(default)]
-    replacement: String,
-    #[serde(default)]
-    location: StrykerLocation,
-    #[serde(default)]
-    status: String,
-}
-
-#[derive(Deserialize, Default)]
-struct StrykerLocation {
-    #[serde(default)]
-    start: StrykerPos,
-}
-
-#[derive(Deserialize, Default)]
-struct StrykerPos {
-    #[serde(default)]
-    line: u32,
-}
-
-/// Parse a Stryker `mutation.json` report file.
-pub fn parse_stryker_report(json: &str) -> Result<MutationReport> {
-    let report: StrykerReport =
-        serde_json::from_str(json).context("failed to parse stryker mutation.json")?;
-
-    let mut total = 0u32;
-    let mut killed = 0u32;
-    let mut survivors = Vec::new();
-
-    for (file_path, file) in &report.files {
-        for mutant in &file.mutants {
-            match mutant.status.as_str() {
-                "CompileError" | "Ignored" | "NoCoverage" => continue,
-                _ => {}
-            }
-            total += 1;
-            if mutant.status == "Survived" {
-                survivors.push(SurvivingMutant {
-                    file: file_path.clone(),
-                    line: mutant.location.start.line,
-                    description: format!(
-                        "{}: replace with {}",
-                        mutant.mutator_name, mutant.replacement
-                    ),
-                    missed_tests: vec![],
-                });
-            } else {
-                killed += 1;
-            }
-        }
-    }
-
-    let survived = survivors.len() as u32;
-    let score_pct = compute_score(total, survived);
-    survivors.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
-
-    Ok(MutationReport {
-        tool: "stryker".to_string(),
-        total,
-        killed,
-        survived,
-        score_pct,
-        survivors,
-    })
-}
-
-// ── tree-sitter dry-run enumeration ──────────────────────────────────────────
-
-fn ts_lang_for_mutation(path: &Path) -> Option<tree_sitter::Language> {
-    match path.extension()?.to_str()? {
-        "py" => Some(tree_sitter_python::LANGUAGE.into()),
-        "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
-        "js" | "jsx" | "mjs" | "cjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
-        "ts" | "mts" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
-        "tsx" | "cts" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
-        "java" => Some(tree_sitter_java::LANGUAGE.into()),
-        _ => None,
-    }
-}
-
-/// Enumerate likely mutation sites in a source file using tree-sitter.
-/// Finds binary operators, comparison operators, boolean operators, and return
-/// statements — the same sites that mutation tools typically target.
-pub fn enumerate_mutation_sites(path: &Path, source: &str) -> Vec<PlannedMutant> {
-    let Some(ts_lang) = ts_lang_for_mutation(path) else {
-        return vec![];
-    };
-    let mut parser = tree_sitter::Parser::new();
-    if parser.set_language(&ts_lang).is_err() {
-        return vec![];
-    }
-    let Some(tree) = parser.parse(source.as_bytes(), None) else {
-        return vec![];
-    };
-    let file_str = path.to_string_lossy().into_owned();
-    let mut sites = Vec::new();
-    collect_mutation_sites(tree.root_node(), source.as_bytes(), &file_str, &mut sites);
-    sites.sort_by_key(|s| s.line);
-    sites
-}
-
-fn collect_mutation_sites(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file: &str,
-    out: &mut Vec<PlannedMutant>,
-) {
-    let kind = node.kind();
-    let line = node.start_position().row as u32 + 1;
-
-    match kind {
-        // Binary arithmetic / comparison / boolean operators
-        "binary_operator"
-        | "comparison_operator"
-        | "boolean_operator"
-        | "binary_expression"
-        | "augmented_assignment" => {
-            // Find the operator child (usually a single-char or keyword node)
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                let op = child.kind();
-                if is_mutation_operator(op) {
-                    if let Ok(op_text) = child.utf8_text(source) {
-                        out.push(PlannedMutant {
-                            file: file.to_string(),
-                            line,
-                            description: format!("replace operator `{op_text}`"),
-                        });
-                        break;
-                    }
-                }
-            }
-        }
-        "return_statement" | "return" => {
-            out.push(PlannedMutant {
-                file: file.to_string(),
-                line,
-                description: "replace return value".to_string(),
-            });
-        }
-        _ => {}
-    }
-
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_mutation_sites(child, source, file, out);
-    }
-}
-
-fn is_mutation_operator(kind: &str) -> bool {
-    matches!(
-        kind,
-        "+" | "-"
-            | "*"
-            | "/"
-            | "%"
-            | "**"
-            | "=="
-            | "!="
-            | "<"
-            | ">"
-            | "<="
-            | ">="
-            | "and"
-            | "or"
-            | "&&"
-            | "||"
-            | "not"
-            | "<<"
-            | ">>"
-            | "&"
-            | "|"
-            | "^"
-            | "+="
-            | "-="
-            | "*="
-            | "/="
-    )
-}
-
 // ── public API (invokes real tools) ──────────────────────────────────────────
 
 /// List planned mutants for dry-run.
@@ -618,6 +247,7 @@ fn run_stryker(paths: &[PathBuf]) -> Result<MutationReport> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mutation_entry::parse_mutmut_summary;
     use std::path::PathBuf;
 
     // ── language detection ──────────────────────────────────────────────────
@@ -780,7 +410,8 @@ mod tests {
             {"mutant": {"file": "src/lib.rs", "line": 10, "function_name": "bar", "text": "negate"}, "outcome": "missed"},
             {"mutant": {"file": "src/lib.rs", "line": 15, "function_name": "baz", "text": "remove"}, "outcome": "timeout"}
         ]"#;
-        let report = parse_cargo_mutants_outcomes(json).unwrap();
+        let report = parse_cargo_mutants_outcomes(json)
+            .unwrap_or_else(|e| panic!("valid outcomes json: {e}"));
         assert_eq!(report.tool, "cargo-mutants");
         assert_eq!(report.total, 3);
         assert_eq!(report.survived, 1);
@@ -797,7 +428,8 @@ mod tests {
             {"mutant": {"file": "src/lib.rs", "line": 1, "text": "a"}, "outcome": "caught"},
             {"mutant": {"file": "src/lib.rs", "line": 2, "text": "b"}, "outcome": "caught"}
         ]"#;
-        let report = parse_cargo_mutants_outcomes(json).unwrap();
+        let report = parse_cargo_mutants_outcomes(json)
+            .unwrap_or_else(|e| panic!("valid outcomes json: {e}"));
         assert_eq!(report.survived, 0);
         assert!((report.score_pct - 100.0).abs() < 0.01);
     }
@@ -809,7 +441,8 @@ mod tests {
             {"mutant": {"file": "src/a.rs", "line": 99, "text": "y"}, "outcome": "missed"},
             {"mutant": {"file": "src/a.rs", "line": 5, "text": "z"}, "outcome": "missed"}
         ]"#;
-        let report = parse_cargo_mutants_outcomes(json).unwrap();
+        let report = parse_cargo_mutants_outcomes(json)
+            .unwrap_or_else(|e| panic!("valid outcomes json: {e}"));
         assert_eq!(report.survivors[0].file, "src/a.rs");
         assert_eq!(report.survivors[0].line, 5);
         assert_eq!(report.survivors[1].file, "src/a.rs");
@@ -886,7 +519,8 @@ mod tests {
                 }
             }
         }"#;
-        let report = parse_stryker_report(json).unwrap();
+        let report =
+            parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
         assert_eq!(report.tool, "stryker");
         assert_eq!(report.total, 2);
         assert_eq!(report.survived, 1);
@@ -916,7 +550,8 @@ mod tests {
                 }
             }
         }"#;
-        let report = parse_stryker_report(json).unwrap();
+        let report =
+            parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
         assert_eq!(report.total, 1);
         assert_eq!(report.survived, 0);
         assert_eq!(report.killed, 1);
@@ -936,7 +571,8 @@ mod tests {
                 ]}
             }
         }"#;
-        let report = parse_stryker_report(json).unwrap();
+        let report =
+            parse_stryker_report(json).unwrap_or_else(|e| panic!("valid stryker report: {e}"));
         assert_eq!(report.survivors[0].file, "src/a.js");
         assert_eq!(report.survivors[1].file, "src/b.js");
     }
@@ -951,7 +587,7 @@ mod tests {
     fn fixture_path(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .unwrap()
+            .unwrap_or_else(|| panic!("manifest dir has no parent"))
             .join("tests/fixtures")
             .join(name)
     }
