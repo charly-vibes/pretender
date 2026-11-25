@@ -63,6 +63,50 @@
       ]
     },
     {
+      "path": "corpus/clojure_params_sample.clj",
+      "units": [
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "deep-bind",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "destr-map",
+          "violations": []
+        },
+        {
+          "metrics": {
+            "abc": 1.0,
+            "assertions": 0,
+            "cognitive": 0,
+            "cyclomatic": 1,
+            "function_lines": 2,
+            "nesting_max": 0,
+            "params": 2
+          },
+          "name": "variadic",
+          "violations": []
+        }
+      ]
+    },
+    {
       "path": "corpus/clojure_sample.clj",
       "units": [
         {
@@ -73,7 +117,7 @@
             "cyclomatic": 5,
             "function_lines": 9,
             "nesting_max": 0,
-            "params": 0
+            "params": 3
           },
           "name": "complex-func",
           "violations": []
@@ -86,7 +130,7 @@
             "cyclomatic": 1,
             "function_lines": 2,
             "nesting_max": 0,
-            "params": 0
+            "params": 1
           },
           "name": "simple",
           "violations": []
@@ -99,7 +143,7 @@
             "cyclomatic": 2,
             "function_lines": 4,
             "nesting_max": 0,
-            "params": 0
+            "params": 1
           },
           "name": "with-branch",
           "violations": []

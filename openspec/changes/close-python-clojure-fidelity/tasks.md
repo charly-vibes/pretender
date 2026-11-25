@@ -8,7 +8,7 @@
 ## 2. Clojure capture coverage
 
 - [ ] 2.1 Multi-arity `defn`: split into one unit per arity (engine support for vector-of-vectors parameter split); single-arity unchanged.
-- [ ] 2.2 Parameter extraction from arity vectors, one parameter per destructuring binding; names into the universal model.
+- [x] 2.2 Parameter extraction from arity vectors, one parameter per destructuring binding; names into the universal model.
 - [ ] 2.3 Per-clause `cond`/`case`/`condp` captures (`@branch.clause` per test/result pair); `recur` as `@branch.recur`.
 - [ ] 2.4 Nesting model: branch/loop/recur bodies wrap as nested blocks; `let`/`binding`/`do`/`testing` do not nest.
 - [ ] 2.5 `deftest` units (kind `Test`) + is-family `@assert.*` captures inside units; Method kind inside `defrecord`/`deftype`/`defprotocol` bodies.
