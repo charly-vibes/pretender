@@ -18,10 +18,11 @@ use super::gate::{
     violation_findings,
 };
 use super::scan::scan_for_check;
+use crate::events::{EmitOpts, emit_history_events};
 use crate::report::{HumanOpts, write_human_report, write_json_report, write_sarif_report};
 use crate::{
-    CheckArgs, CheckReport, EmitOpts, ReportFormat, color_enabled, emit_history_events,
-    load_config, open_report_sink, persist_last_check_report, warn_if_no_config, Executable,
+    CheckArgs, CheckReport, ReportFormat, color_enabled, load_config, open_report_sink,
+    persist_last_check_report, warn_if_no_config, Executable,
 };
 use anyhow::{Context, Result};
 use pretender::config::{Config, Mode};

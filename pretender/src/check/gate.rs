@@ -16,11 +16,13 @@
 //! Extracted verbatim from main.rs (pretender-5zo.2.2); the two long
 //! functions were split into verbatim-behaving helpers while moving so
 //! every function lands within the structural limits unchanged.
-use crate::{CheckReport, FileReport, metric_to_rule_key};
+use crate::{CheckReport, FileReport};
 use pretender::config::{Mode, is_lease_expired};
 use pretender::history;
 use std::collections::HashSet;
 use std::process::ExitCode;
+
+use super::unit::metric_to_rule_key;
 
 /// Gate baseline location: next to pretender.toml (repo root), so it can be
 /// committed and gate mode behaves identically in CI.

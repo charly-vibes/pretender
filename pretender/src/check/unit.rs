@@ -20,6 +20,22 @@ use pretender::metrics;
 use pretender::model::CodeUnit;
 use pretender::roles::EffectiveThresholds;
 
+/// Ledger/rule-key name for a raw violation metric (`_max` suffix except
+/// where the metric is already a key) — the stable finding-ID vocabulary.
+pub(super) fn metric_to_rule_key(metric: &str) -> &str {
+    match metric {
+        "cognitive" => "cognitive_max",
+        "cyclomatic" => "cyclomatic_max",
+        "params" => "params_max",
+        "nesting" => "nesting_max",
+        "function_lines" => "function_lines_max",
+        "abc" => "abc_max",
+        "duplication_pct" => "duplication_pct_max",
+        "min_assertions" => "min_assertions",
+        other => other,
+    }
+}
+
 /// Compute and score one code unit against role-merged thresholds.
 pub(super) fn build_unit_report(
     unit: &CodeUnit,
