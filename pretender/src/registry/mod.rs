@@ -217,9 +217,9 @@ mod tests {
     #[test]
     fn every_manifest_parses_via_the_contract() {
         for record in REGISTRY.iter() {
-            let manifest = record.manifest().unwrap_or_else(|e| {
-                panic!("manifest for {:?} must parse: {e:?}", record.language)
-            });
+            let manifest = record
+                .manifest()
+                .unwrap_or_else(|e| panic!("manifest for {:?} must parse: {e:?}", record.language));
             assert!(!manifest.extensions.is_empty());
             assert_eq!(manifest.query, "metrics.scm");
         }
@@ -239,7 +239,10 @@ mod tests {
     #[test]
     fn lookup_misses_unknown_extensions() {
         assert!(lookup("zip").is_none());
-        assert!(lookup("PY").is_none(), "case-insensitive lookup would change behavior");
+        assert!(
+            lookup("PY").is_none(),
+            "case-insensitive lookup would change behavior"
+        );
     }
 
     #[test]
@@ -255,7 +258,11 @@ mod tests {
                     call: &manifest.smell_weights,
                 },
             );
-            assert!(engine.is_ok(), "{:?} engine must construct", record.language);
+            assert!(
+                engine.is_ok(),
+                "{:?} engine must construct",
+                record.language
+            );
         }
     }
 
