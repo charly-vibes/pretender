@@ -29,6 +29,7 @@ fn build(configure: impl FnOnce(&mut Command)) -> Command {
     cmd
 }
 
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn git_init(dir: &Path) {
     let output = Command::new("git")
         .args(["init"])
@@ -121,6 +122,7 @@ fn subcommand_in(name: &str, dir: &Path) -> Command {
     })
 }
 
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn pretender_cmd() -> Command {
     build(|_cmd| {})
 }
@@ -134,6 +136,7 @@ pub fn source_fixture(name: &str) -> PathBuf {
 // Copy a fixture into a fresh temp dir so role detection treats the file
 // as the default `app` role rather than `test` (which would trip the
 // stricter test thresholds against simple fixtures).
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn stage_fixture(name: &str) -> (PathBuf, PathBuf) {
     let dir = tempdir();
     let dest = dir.join(name);
@@ -141,6 +144,7 @@ pub fn stage_fixture(name: &str) -> (PathBuf, PathBuf) {
     (dir, dest)
 }
 
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn write_temp_file(relative: &str, source: &str) -> (PathBuf, PathBuf) {
     let dir = tempdir();
     let dest = dir.join(relative);
@@ -177,6 +181,7 @@ pub fn check(path: &Path) -> Command {
     }))
 }
 
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn check_default(dir: &Path) -> Command {
     tiered(build(|cmd| {
         cmd.arg("check");
@@ -184,14 +189,16 @@ pub fn check_default(dir: &Path) -> Command {
     }))
 }
 
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn check_in(dir: &Path, path: &Path) -> Command {
     let mut cmd = check(path);
     cmd.current_dir(dir);
     cmd
 }
 
-// consumed by later split children (.4.2/.4.3); remove the allow then
-#[allow(dead_code)]
+// consumed by report_format_test (.4.2); the allow silences dead-code in the
+// other test targets, which stop consuming it once the wave-3 split completes
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
 pub fn report_in(dir: &Path) -> Command {
     subcommand_in("report", dir)
 }
