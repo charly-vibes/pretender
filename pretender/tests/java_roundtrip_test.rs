@@ -9,14 +9,11 @@
 
 use std::path::Path;
 
-use pretender::engine::QueryEngine;
 use pretender::java::JavaParser;
-use pretender::model::{Language, Span, TypeKind};
+use pretender::model::{Language, Parser, Span, TypeKind};
 
-fn engine() -> QueryEngine {
+fn engine() -> JavaParser {
     JavaParser
-        .engine()
-        .unwrap_or_else(|e| panic!("engine: {e:?}"))
 }
 
 // Reusable harness pattern (tasks 6.3): the language's real metrics.scm

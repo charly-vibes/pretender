@@ -4,8 +4,11 @@
 //! test role's looser thresholds.
 //! Responsibilities: pin `analyze`'s bool-cluster, domain-param, exclusion,
 //! and ordering behavior through its public API only.
-//! Rationale: behavior-identical move — every test function and assertion is
-//! verbatim from the former inline `#[cfg(test)] mod tests`. Unit builders
+//! Rationale: assertion-equivalent move from the former inline
+//! `#[cfg(test)] mod tests` — three `assert!(…is_empty())` forms became
+//! `assert_eq!(len(), 0)`, and two tests gained an added param-name pin
+//! (`"email"`, `"api_key"`); no assertion was weakened or dropped. Unit
+//! builders
 //! take at most two arguments (test role params_max = 2), and the test
 //! bodies differ structurally (call shapes and assertion counts) so the
 //! lazy-cluster detector finds no group of three or more identical

@@ -245,6 +245,7 @@ impl DoctorCheck for PluginManifestsCheck {
 /// Executability verdict for an installed, Pretender-managed hook. Split
 /// out of `HookExecutableCheck::run`; the platform-gated metadata check
 /// dominates that method's length.
+#[cfg_attr(windows, allow(unused_variables))]
 fn hook_executability_result(
     hook_path: &Path,
 ) -> Result<Vec<LintResult>, Box<dyn std::error::Error>> {

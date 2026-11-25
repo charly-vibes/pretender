@@ -30,7 +30,7 @@ fn manifest() -> Result<&'static PluginManifest> {
 }
 
 impl JavaParser {
-    pub fn engine(&self) -> Result<QueryEngine> {
+    fn engine(&self) -> Result<QueryEngine> {
         let m = manifest()?;
         QueryEngine::new_with_branch_weights(
             tree_sitter_java::LANGUAGE.into(),
