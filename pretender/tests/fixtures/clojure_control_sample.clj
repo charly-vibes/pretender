@@ -52,3 +52,15 @@
   (if (pos? a)
     (swap! acc inc)
     (reset! acc 0)))
+
+;; Deftest fixture (pretender-1v8k.8, task 2.5): deftest forms are Test
+;; units even though they carry no parameter vector; is-family forms are
+;; assertions and `testing` stays consumed scaffolding.
+(deftest arith-test
+  (is (= 4 (+ 2 2))))
+
+(deftest throws-test
+  (testing "context"
+    (is (= 1 1))
+    (are [x y] (= x y) 1 1)
+    (thrown-with-msg? Exception #"boom" (throw (ex-info "boom" {})))))

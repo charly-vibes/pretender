@@ -29,10 +29,32 @@ the text of the first `sym_lit` child (e.g., `defn`, `if`, `cond`).
 - **`recur`** captures one `@branch.recur` (a loop back-edge).
 - **`catch`** captures one `@branch.catch` per clause; `try`/`finally`
   are scaffolding and capture nothing.
-- **Consumed forms** (`let`, `binding`, `do`, `try`, `finally`) claim the
-  form so it never falls through to the call capture — control structure
-  contributes no C-count (ABC de-inflation).
+- **Consumed forms** (`let`, `binding`, `do`, `try`, `finally`, `testing`)
+  claim the form so it never falls through to the call capture — control
+  structure contributes no C-count (ABC de-inflation). `testing` inside
+  `deftest` bodies is scaffolding too: it adds no call and no branch,
+  while assertions nested inside it still count.
 - **Logical operators** (`and`, `or`) capture one branch each.
+
+### Unit kinds
+
+- **Function**: `defn`/`defn-` (single arity, per the parameters section).
+- **Test**: `deftest` forms are units of kind `Test` (pretender-1v8k.8).
+  A deftest has no parameter vector, so it has its own definition query.
+  A `defn` nested inside a `deftest` body stays `Function` — `deftest`
+  is not a type scope.
+- **Method**: a `defn` inside a `defrecord`/`deftype`/`defprotocol`
+  body resolves to `Method` — the enclosing head symbol decides the
+  kind, mirroring Python's `class_definition` scoping. The
+  `defrecord`/`deftype` form itself is not a unit (zero type captures,
+  see the grammar notes).
+
+### Assertions
+
+`is`, `is-not`, `are`, `assert`, `thrown?`, `thrown-with-msg?`, and
+`with-test` forms capture `@assert.statement` and count toward a unit's
+assertion total; the `[assertions]` patterns in `plugin.toml` mirror the
+same is-family set for rule scopes.
 
 ### Nesting
 

@@ -535,6 +535,7 @@ dependencies = [
  "ignore",
  "quick-xml",
  "rayon",
+ "regex",
  "serde",
  "serde-sarif",
  "serde_json",

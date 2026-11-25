@@ -12,7 +12,7 @@
 
 use pretender::engine::QueryEngine;
 use pretender::metrics::{abc, cognitive, cyclomatic, nesting_max};
-use pretender::model::{CodeUnit, Language, Module, Parser};
+use pretender::model::{CodeUnit, Language, Module, Parser, UnitKind};
 use pretender::registry::{lookup, GenericParser};
 use std::path::Path;
 
@@ -55,6 +55,22 @@ fn clojure_defrecord_deftype_ship_zero_type_captures() {
     );
 }
 
+/// Red gate (pretender-krou): the engine must not surface phantom
+/// function units from query matches whose `#match?` predicate fails.
+/// The shipped clojure query structurally matches `(foo x [y] z)` against
+/// the `defn` pattern (head + name + vector + body); the failing
+/// predicate used to leak a phantom unit named `x`.
+#[test]
+fn clojure_call_shaped_like_defn_is_not_a_unit() {
+    let module = parse_clojure_source("(defn f [x] (inc x))\n\n(foo x [y] z)\n");
+    let names = module
+        .units
+        .iter()
+        .map(|u| u.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec!["f"], "phantom units present");
+}
+
 fn find_unit<'a>(module: &'a Module, name: &str) -> &'a CodeUnit {
     module
         .units
@@ -65,6 +81,41 @@ fn find_unit<'a>(module: &'a Module, name: &str) -> &'a CodeUnit {
 
 fn param_names(unit: &CodeUnit) -> Vec<&str> {
     unit.parameters.iter().map(|p| p.name.as_str()).collect()
+}
+
+/// Red gate (1v8k.8, task 2.5): a deftest form is a Test unit and its
+/// direct `is` form counts as one assertion.
+#[test]
+fn clojure_deftest_is_a_test_unit_with_assertions() {
+    let module = control_module();
+    let unit = find_unit(&module, "arith-test");
+    assert_eq!(unit.kind, UnitKind::Test);
+    assert_eq!(unit.assertions, 1);
+}
+
+/// Red gate (1v8k.8, task 2.5): is/are/thrown-with-msg? all count as
+/// assertions inside a deftest, and assertions inside the consumed
+/// `testing` scaffolding are still reached by the body walk.
+#[test]
+fn clojure_is_family_assertions_count_inside_testing() {
+    let module = control_module();
+    let unit = find_unit(&module, "throws-test");
+    assert_eq!(unit.kind, UnitKind::Test);
+    assert_eq!(unit.assertions, 3);
+}
+
+/// Red gate (1v8k.8, task 2.5): a defn inside a defrecord/deftype
+/// protocol implementation body resolves to Method; the defn inside a
+/// deftest body stays Function (deftest is not a type scope).
+#[test]
+fn clojure_record_and_type_methods_are_methods() {
+    let module = parse_clojure_source(
+        "(defrecord Point [x y]\n  Area\n  (defn area [this] 1))\n\n(deftype Cell [held]\n  Proto\n  (defn held? [this] true))\n\n(deftest nested-test\n  (is (= 1 (helper 1))))\n\n(defn helper [x]\n  (inc x))\n",
+    );
+    assert_eq!(find_unit(&module, "area").kind, UnitKind::Method);
+    assert_eq!(find_unit(&module, "held?").kind, UnitKind::Method);
+    // defn at top level stays Function; defn inside deftest too.
+    assert_eq!(find_unit(&module, "helper").kind, UnitKind::Function);
 }
 
 fn parse_clojure_source(source: &'static str) -> Module {

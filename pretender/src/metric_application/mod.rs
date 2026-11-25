@@ -8,18 +8,15 @@
 //!
 //! # Responsibilities
 //! Weight resolution (`WeightMaps` overrides into per-branch cyclomatic/
-//! cognitive specs) and per-unit assembly (`build_code_unit`: name, kind,
-//! parameters, assertions, and the weighted block tree the metrics
-//! pipeline consumes). The recursive body walk itself lives in
-//! `engine.rs` as `QueryEngine`'s walk plumbing; the parameter-extraction
-//! helpers in `params`.
+//! cognitive specs) and per-unit assembly (`build_code_unit`). The
+//! recursive body walk lives in `engine.rs` as `QueryEngine`'s walk
+//! plumbing; the parameter-extraction helpers in `params`.
 //!
 //! # Rationale
 //! Split out of `engine.rs` so the module boundary follows the
-//! responsibility; `new_with_branch_weights` and `extract_params` are
-//! decomposed into stage helpers so every function fits the gate's
-//! limits, with bodies moved verbatim to keep unit output
-//! byte-identical.
+//! responsibility; helpers are decomposed into stage functions so every
+//! function fits the gate's limits, with bodies moved verbatim to keep
+//! unit output byte-identical.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -80,6 +77,7 @@ impl QueryEngine {
             slots,
             call_weights: weights.call.clone(),
             wrap_branch_bodies: weights.nesting.wrap_branch_bodies,
+            query_source: query_source.into(),
         })
     }
 
@@ -142,7 +140,7 @@ fn unit_identity(
 ) -> Result<(String, UnitKind, bool), String> {
     let name = unit_name(name_node, source)?;
     let is_exported = !name.starts_with('_');
-    let kind = determine_unit_kind(def_node, &name);
+    let kind = determine_unit_kind(def_node, &name, source);
     Ok((name, kind, is_exported))
 }
 
@@ -223,26 +221,70 @@ pub(crate) struct FunctionCapture<'a> {
     pub(crate) name_node: Option<tree_sitter::Node<'a>>,
     pub(crate) params_node: Option<tree_sitter::Node<'a>>,
     pub(crate) body_node: Option<tree_sitter::Node<'a>>,
+    /// The query pattern that produced this capture, so predicate
+    /// re-validation can look up its `general_predicates` (krou).
+    pub(crate) pattern_index: usize,
 }
 
-fn determine_unit_kind(node: tree_sitter::Node, name: &str) -> UnitKind {
+/// The unit kind for a captured definition: `Test` for a Clojure
+/// `(deftest …)` form, otherwise decided by the enclosing scopes.
+fn determine_unit_kind(node: tree_sitter::Node, name: &str, source: &[u8]) -> UnitKind {
+    if clojure_deftest_form(node, source) {
+        return UnitKind::Test;
+    }
+    kind_from_scopes(node, name, source)
+}
+
+/// The kind implied by the enclosing scopes: Python class/function
+/// parents, or the Clojure enclosing `(head …)` list.
+fn kind_from_scopes(node: tree_sitter::Node, name: &str, source: &[u8]) -> UnitKind {
     let mut current = node.parent();
     while let Some(parent) = current {
         match parent.kind() {
-            "class_definition" => {
-                if name == "__init__" || name == "__new__" {
-                    return UnitKind::Ctor;
-                }
-                return UnitKind::Method;
-            }
+            "class_definition" => return class_kind(name),
             "function_definition" => return UnitKind::Function,
-            "module" => break,
-            _ => {
+            "list_lit" => {
+                // Clojure: the enclosing head symbol decides the kind.
+                if let Some(kind) = clojure_scope_kind(parent, source) {
+                    return kind;
+                }
                 current = parent.parent();
             }
+            "module" => break,
+            _ => current = parent.parent(),
         }
     }
     UnitKind::Function
+}
+
+/// True when the node is a Clojure `(deftest …)` registration form.
+fn clojure_deftest_form(node: tree_sitter::Node, source: &[u8]) -> bool {
+    node.kind() == "list_lit"
+        && node.named_child(0).is_some_and(|first| {
+            first.kind() == "sym_lit" && first.utf8_text(source).is_ok_and(|text| text == "deftest")
+        })
+}
+
+/// The Python class-member kind: constructors get `Ctor`, everything
+/// else `Method`.
+fn class_kind(name: &str) -> UnitKind {
+    if name == "__init__" || name == "__new__" {
+        return UnitKind::Ctor;
+    }
+    UnitKind::Method
+}
+
+/// The kind implied by a Clojure enclosing `(head …)` scope, if the head
+/// symbol decides one.
+fn clojure_scope_kind(parent: tree_sitter::Node, source: &[u8]) -> Option<UnitKind> {
+    match parent
+        .named_child(0)
+        .and_then(|head| head.utf8_text(source).ok())
+    {
+        Some("defrecord" | "deftype" | "defprotocol") => Some(UnitKind::Method),
+        Some("defn" | "defn-" | "deftest") => Some(UnitKind::Function),
+        _ => None,
+    }
 }
 
 fn unit_name(name_node: tree_sitter::Node, source: &[u8]) -> Result<String, String> {

@@ -35,6 +35,10 @@ pub struct QueryEngine {
     pub(crate) call_weights: BTreeMap<String, f64>,
     /// D4: adapter opted into branch-body nesting (Clojure).
     pub(crate) wrap_branch_bodies: bool,
+    /// The compiled query's source, kept so match collection can
+    /// re-validate `#match?`/`#eq?`/`#any-of?` predicates (krou: the
+    /// binding exposes native text predicates only privately).
+    pub(crate) query_source: Box<str>,
 }
 
 /// Every capture index one compiled query provides, grouped by role:

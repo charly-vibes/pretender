@@ -11,7 +11,7 @@
 - [x] 2.2 Parameter extraction from arity vectors, one parameter per destructuring binding; names into the universal model.
 - [x] 2.3 Per-clause `cond`/`case`/`condp` captures (`@branch.clause` per test/result pair); `recur` as `@branch.recur`.
 - [x] 2.4 Nesting model: branch/loop/recur bodies wrap as nested blocks; `let`/`binding`/`do`/`testing` do not nest.
-- [ ] 2.5 `deftest` units (kind `Test`) + is-family `@assert.*` captures inside units; Method kind inside `defrecord`/`deftype`/`defprotocol` bodies.
+- [x] 2.5 `deftest` units (kind `Test`) + is-family `@assert.*` captures inside units; Method kind inside `defrecord`/`deftype`/`defprotocol` bodies.
 - [x] 2.6 Complete `plugin.toml [branches]` rows for every new capture kind.
 
 ## 3. Python capture coverage

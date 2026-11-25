@@ -179,6 +179,9 @@ pub enum UnitKind {
     Lambda,
     Ctor,
     Initializer,
+    /// Test registration form (e.g. Rust `#[test] fn`, Clojure
+    /// `deftest`) — asserted by the min_assertions rule scope.
+    Test,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
