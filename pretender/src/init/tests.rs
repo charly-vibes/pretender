@@ -80,21 +80,26 @@ fn strict_preset_tables_written() {
     );
     let parsed: Config =
         toml::from_str(&strict_config).unwrap_or_else(|e| panic!("strict config parses: {e}"));
+    expect_strict_threshold_values(&parsed);
+}
+
+/// Task 3.3 pinned strict effective values, in config-table order.
+fn expect_strict_threshold_values(parsed: &Config) {
     assert_eq!(parsed.thresholds.app.cyclomatic_max, 8);
     assert_eq!(parsed.thresholds.app.cognitive_max, 12);
     assert_eq!(parsed.thresholds.app.function_lines_max, 25);
     assert_eq!(parsed.thresholds.app.nesting_max, 2);
     assert_eq!(parsed.thresholds.app.params_max, 3);
     assert_eq!(parsed.thresholds.app.abc_max, 25);
-    assert_eq!(parsed.thresholds.app.duplication_pct_max, 4);
+    assert_eq!(parsed.thresholds.app.checks.duplication_pct_max, 4);
     assert_eq!(parsed.thresholds.app.file_lines_max, 300);
     assert_eq!(parsed.thresholds.test.cyclomatic_max, 2);
     assert_eq!(parsed.thresholds.test.cognitive_max, 3);
     assert_eq!(parsed.thresholds.test.function_lines_max, 60);
     assert_eq!(parsed.thresholds.test.nesting_max, 2);
     // enabled-check values identical to the default preset
-    assert_eq!(parsed.thresholds.app.unwrap_max, 5);
-    assert_eq!(parsed.thresholds.test.mock_count_max, 5);
+    assert_eq!(parsed.thresholds.app.checks.unwrap_max, 5);
+    assert_eq!(parsed.thresholds.test.checks.mock_count_max, 5);
 }
 
 /// --preset default writes the default tables, which must round-trip to
@@ -113,6 +118,11 @@ fn default_preset_tables_written() {
     );
     let parsed: Config =
         toml::from_str(&default_config).unwrap_or_else(|e| panic!("default config parses: {e}"));
+    expect_default_tables_round_trip(&parsed);
+}
+
+/// Default preset tables round-trip to the built-in defaults.
+fn expect_default_tables_round_trip(parsed: &Config) {
     assert_eq!(
         parsed.thresholds.app,
         Config::default().thresholds.app,
@@ -142,21 +152,10 @@ fn absent_flag_writes_default_tables() {
 /// would fail (or fall back to default tables).
 fn explicit_preset_suppresses_preset_prompt() {
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let mut child = init_command(dir.path(), &["init", "--preset", "strict"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+    let mut child = interactive_init_command(dir.path(), &["init", "--preset", "strict"])
         .spawn()
         .unwrap_or_else(|e| panic!("spawn interactive init: {e}"));
-    {
-        use std::io::Write as _;
-        child
-            .stdin
-            .as_mut()
-            .unwrap_or_else(|| panic!("piped stdin"))
-            .write_all(b"\nauto\nn\nn\n")
-            .unwrap_or_else(|e| panic!("write prompt answers: {e}"));
-    }
+    write_prompt_answers(&mut child, b"\nauto\nn\nn\n");
     let out = child
         .wait_with_output()
         .unwrap_or_else(|e| panic!("interactive init finishes: {e}"));
@@ -165,6 +164,25 @@ fn explicit_preset_suppresses_preset_prompt() {
         read_config(dir.path()).contains("cyclomatic_max = 8"),
         "explicit --preset must suppress the preset prompt and emit strict tables"
     );
+}
+
+/// `init_command` with all three stdio streams piped for prompt answers.
+fn interactive_init_command(dir: &Path, args: &[&str]) -> std::process::Command {
+    let mut cmd = init_command(dir, args);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    cmd
+}
+
+/// Feed one line per prompt (`\n` keeps each default) to piped stdin.
+fn write_prompt_answers(child: &mut std::process::Child, answers: &[u8]) {
+    child
+        .stdin
+        .as_mut()
+        .unwrap_or_else(|| panic!("piped stdin"))
+        .write_all(answers)
+        .unwrap_or_else(|e| panic!("write prompt answers: {e}"));
 }
 
 #[test]
@@ -182,24 +200,29 @@ fn init_rejects_unknown_preset() {
     );
 }
 
+/// Stdout of a successful `init` run with `args`.
+fn init_stdout(dir: &Path, args: &[&str], context: &str) -> String {
+    let out = init_run(dir, args);
+    expect_success(&out, context);
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// The gate+strict scenario for the migration-hint test.
+const GATE_STRICT_ARGS: &[&str] = &[
+    "init",
+    "--non-interactive",
+    "--mode",
+    "gate",
+    "--preset",
+    "strict",
+];
+
 #[test]
 fn init_strict_gate_prints_migration_hint() {
     // Spec: Strict Preset Gate Hint — gate + strict must print the
     // --adopt / tiered-lease migration hint after writing the config.
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let out = init_run(
-        dir.path(),
-        &[
-            "init",
-            "--non-interactive",
-            "--mode",
-            "gate",
-            "--preset",
-            "strict",
-        ],
-    );
-    expect_success(&out, "init gate+strict");
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = init_stdout(dir.path(), GATE_STRICT_ARGS, "init gate+strict");
     assert!(
         stdout.contains("check --adopt"),
         "gate+strict must print the adoption hint; stdout: {stdout}"
@@ -210,9 +233,11 @@ fn init_strict_gate_prints_migration_hint() {
 fn init_default_gate_no_migration_hint() {
     // The hint is scoped to gate+strict; default preset stays quiet.
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let out = init_run(dir.path(), &["init", "--non-interactive", "--mode", "gate"]);
-    expect_success(&out, "init gate+default");
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = init_stdout(
+        dir.path(),
+        &["init", "--non-interactive", "--mode", "gate"],
+        "init gate+default",
+    );
     assert!(
         !stdout.contains("check --adopt"),
         "gate+default must not print the adoption hint; stdout: {stdout}"

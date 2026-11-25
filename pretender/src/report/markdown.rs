@@ -13,7 +13,7 @@
 //! moved verbatim from `main.rs`.
 
 use super::summary::{summarize_file, Severity};
-use super::{CheckReport, FileReport};
+use super::{CheckReport, FileReport, UnitReport};
 use anyhow::Result;
 use pretender::config::Bands;
 use std::io::Write;
@@ -43,7 +43,15 @@ fn write_markdown_file(sink: &mut dyn Write, file: &FileReport, bands: &Bands) -
     writeln!(sink, "## `{}` {} {}", file.path, icon, summary.message)?;
     writeln!(sink)?;
     writeln!(sink, "- Role: `{}`", file.role)?;
+    write_markdown_file_violations(sink, file)?;
+    write_markdown_units(sink, file)?;
+    write_markdown_diagnostics(sink, file)?;
+    writeln!(sink)?;
+    Ok(())
+}
 
+/// A file's file-level violation bullets.
+fn write_markdown_file_violations(sink: &mut dyn Write, file: &FileReport) -> Result<()> {
     for violation in &file.file_violations {
         writeln!(
             sink,
@@ -51,10 +59,6 @@ fn write_markdown_file(sink: &mut dyn Write, file: &FileReport, bands: &Bands) -
             violation.metric, violation.actual, violation.limit
         )?;
     }
-
-    write_markdown_units(sink, file)?;
-    write_markdown_diagnostics(sink, file)?;
-    writeln!(sink)?;
     Ok(())
 }
 
@@ -72,13 +76,19 @@ fn write_markdown_units(sink: &mut dyn Write, file: &FileReport) -> Result<()> {
             unit.metrics.nesting_max,
             unit.metrics.abc,
         )?;
-        for violation in &unit.violations {
-            writeln!(
-                sink,
-                "  - violation: `{}` actual `{:.0}` > limit `{:.0}`",
-                violation.metric, violation.actual, violation.limit
-            )?;
-        }
+        write_markdown_unit_violations(sink, unit)?;
+    }
+    Ok(())
+}
+
+/// One unit's violation bullets, indented under its metrics bullet.
+fn write_markdown_unit_violations(sink: &mut dyn Write, unit: &UnitReport) -> Result<()> {
+    for violation in &unit.violations {
+        writeln!(
+            sink,
+            "  - violation: `{}` actual `{:.0}` > limit `{:.0}`",
+            violation.metric, violation.actual, violation.limit
+        )?;
     }
     Ok(())
 }

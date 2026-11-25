@@ -13,24 +13,37 @@
 mod common;
 
 use common::*;
+use std::path::{Path, PathBuf};
 
-#[test]
-fn test_report_markdown_reads_last_json_check() {
-    let dir = tempdir();
+/// Copies the python_violator.py fixture into `dir` as the staged source.
+fn stage_violator(dir: &Path) -> PathBuf {
     let staged = dir.join("python_violator.py");
     std::fs::copy(source_fixture("python_violator.py"), &staged)
         .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+    staged
+}
 
-    let check_output = check_in(&dir, &staged)
+/// Runs `check --format json` on `staged` from `dir`, asserting success.
+fn run_json_check(dir: &Path, staged: &Path) -> std::process::Output {
+    let output = check_in(dir, staged)
         .arg("--format")
         .arg("json")
         .output()
         .unwrap_or_else(|e| panic!("run json check: {e:?}"));
     assert!(
-        check_output.status.success(),
+        output.status.success(),
         "json check failed: {}",
-        String::from_utf8_lossy(&check_output.stderr)
+        String::from_utf8_lossy(&output.stderr)
     );
+    output
+}
+
+#[test]
+fn test_report_markdown_reads_last_json_check() {
+    let dir = tempdir();
+    let staged = stage_violator(&dir);
+
+    run_json_check(&dir, &staged);
 
     let output = report_in(&dir)
         .arg("--format")
@@ -53,21 +66,10 @@ fn test_report_markdown_reads_last_json_check() {
 #[test]
 fn test_report_html_writes_output_file() {
     let dir = tempdir();
-    let staged = dir.join("python_violator.py");
+    let staged = stage_violator(&dir);
     let out_path = dir.join("pretender-report.html");
-    std::fs::copy(source_fixture("python_violator.py"), &staged)
-        .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
 
-    let check_output = check_in(&dir, &staged)
-        .arg("--format")
-        .arg("json")
-        .output()
-        .unwrap_or_else(|e| panic!("run json check: {e:?}"));
-    assert!(
-        check_output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&check_output.stderr)
-    );
+    run_json_check(&dir, &staged);
 
     let output = report_in(&dir)
         .arg("--format")
@@ -97,9 +99,7 @@ fn test_report_html_writes_output_file() {
 #[test]
 fn test_report_markdown_reads_last_human_check() {
     let dir = tempdir();
-    let staged = dir.join("python_violator.py");
-    std::fs::copy(source_fixture("python_violator.py"), &staged)
-        .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+    let staged = stage_violator(&dir);
 
     let check_output = check_in(&dir, &staged)
         .output()

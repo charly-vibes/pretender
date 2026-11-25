@@ -71,26 +71,33 @@ impl Executable for InitArgs {
         let cwd = std::env::current_dir().context("failed to get current directory")?;
         write_init_scaffold(&cwd, &options)?;
         print_gate_strict_hint(&options);
-
-        // Register in genesis discovery manifest
-        genesis::discovery::register(
-            &cwd,
-            "pretender",
-            "Multi-language structural code-quality checks",
-            "file",
-            "pretender.toml",
-        )
-        .map_err(|e| anyhow::anyhow!("failed to register in genesis manifest: {e}"))?;
-
-        if options.install_hook {
-            install_hook(HookName::PreCommit)?;
-        }
-        if options.generate_github_actions {
-            write_github_ci_workflow()?;
-        }
-
+        register_in_genesis_manifest(&cwd)?;
+        install_init_extras(&options)?;
         Ok(ExitCode::SUCCESS)
     }
+}
+
+/// Register the installed tool in the genesis discovery manifest.
+fn register_in_genesis_manifest(cwd: &Path) -> Result<()> {
+    genesis::discovery::register(
+        cwd,
+        "pretender",
+        "Multi-language structural code-quality checks",
+        "file",
+        "pretender.toml",
+    )
+    .map_err(|e| anyhow::anyhow!("failed to register in genesis manifest: {e}"))
+}
+
+/// Optional extras chosen at prompt time: pre-commit hook and workflow.
+fn install_init_extras(options: &InitOptions) -> Result<()> {
+    if options.install_hook {
+        install_hook(HookName::PreCommit)?;
+    }
+    if options.generate_github_actions {
+        write_github_ci_workflow()?;
+    }
+    Ok(())
 }
 
 /// Prompt-driven options, or the non-interactive best-guess defaults.
@@ -142,7 +149,6 @@ fn prompt_init_options(
 ) -> Result<InitOptions> {
     let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
-
     let mode = prompt_mode(&mut stdin, &mut stdout, mode_override)?;
     // An explicit --preset suppresses the prompt (mirrors --mode).
     let preset = prompt_preset(&mut stdin, &mut stdout, preset_override)?;

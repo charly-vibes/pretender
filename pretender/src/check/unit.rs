@@ -82,29 +82,19 @@ fn base_limit_violations(
     metrics: &MetricValues,
     thresholds: &EffectiveThresholds,
 ) -> Vec<ViolationReport> {
-    limit_violation("cyclomatic", metrics.cyclomatic, thresholds.cyclomatic_max)
+    // Single-letter locals keep every table entry on one fmt-stable line.
+    let (m, f) = (metrics, &thresholds.function);
+    let limits = [
+        ("cyclomatic", m.cyclomatic, f.cyclomatic_max),
+        ("cognitive", m.cognitive, f.cognitive_max),
+        ("function_lines", m.function_lines, f.function_lines_max),
+        ("params", m.params, f.params_max),
+        ("nesting_max", m.nesting_max, f.nesting_max),
+    ];
+    limits
         .into_iter()
-        .chain(limit_violation(
-            "cognitive",
-            metrics.cognitive,
-            thresholds.cognitive_max,
-        ))
-        .chain(limit_violation(
-            "function_lines",
-            metrics.function_lines,
-            thresholds.function_lines_max,
-        ))
-        .chain(limit_violation(
-            "params",
-            metrics.params,
-            thresholds.params_max,
-        ))
-        .chain(limit_violation(
-            "nesting_max",
-            metrics.nesting_max,
-            thresholds.nesting_max,
-        ))
-        .chain(limit_violation_f64("abc", metrics.abc, thresholds.abc_max))
+        .filter_map(|(name, actual, max)| limit_violation(name, actual, max))
+        .chain(limit_violation_f64("abc", m.abc, f.abc_max))
         .collect()
 }
 
@@ -136,20 +126,26 @@ fn exported_violations(
     if !unit.is_exported {
         return Vec::new();
     }
-    let exported_cyclomatic = thresholds
-        .exported_cyclomatic_max
-        .and_then(|max| limit_violation("exported_cyclomatic", metrics.cyclomatic, max));
-    let exported_params = thresholds
-        .exported_params_max
-        .and_then(|max| limit_violation("exported_params", metrics.params, max));
-    let exported_lines = thresholds
-        .exported_lines_max
-        .and_then(|max| limit_violation("exported_lines", metrics.function_lines, max));
-    exported_cyclomatic
+    let (m, e) = (metrics, &thresholds.exports);
+    let limits = [
+        (m.cyclomatic, e.exported_cyclomatic_max),
+        (m.params, e.exported_params_max),
+        (m.function_lines, e.exported_lines_max),
+    ];
+    limits
         .into_iter()
-        .chain(exported_params)
-        .chain(exported_lines)
+        .zip(["exported_cyclomatic", "exported_params", "exported_lines"])
+        .filter_map(|((actual, max), name)| exported_violation(name, actual, max))
         .collect()
+}
+
+/// An exported-only violation when `max` is set and `actual` exceeds it.
+fn exported_violation(
+    metric: &'static str,
+    actual: u32,
+    max: Option<u32>,
+) -> Option<ViolationReport> {
+    max.and_then(|max| limit_violation(metric, actual, max))
 }
 
 /// A violation when `actual` exceeds `max`.

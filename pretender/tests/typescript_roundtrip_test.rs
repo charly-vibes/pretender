@@ -9,24 +9,39 @@
 //            (slice 5zo.30) so the source file passes pretender's own
 //            structural gate; assertions are unchanged, unwraps converted to
 //            the unwrap_or_else/panic! pattern with std-identical reporting.
+//            The fixture round trip is split into focused tests (person
+//            fields, generic fields, units separation) sharing the parse
+//            helper; every assertion is unchanged.
 
 use std::path::Path;
 
-use pretender::model::{Language, Parser, Span, TypeKind, UnitKind};
+use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind, UnitKind};
 use pretender::typescript::TypeScriptParser;
 
-#[test]
-fn ts_types_fixture_round_trip() {
-    // Reusable harness pattern (tasks 6.4): the language's real
-    // metrics.scm parses a fixture file; assert TypeDefinition
-    // count/kind/ordered fields and that CodeUnits stay separate.
-    let parser = TypeScriptParser;
+/// Reusable harness pattern (tasks 6.4): the language's real metrics.scm
+/// parses the committed fixture; asserts a clean parse and returns the module.
+fn parse_ts_types_fixture() -> Module {
     let source = include_str!("fixtures/ts_types_sample.ts");
-    let (module, diags) = parser
+    let (module, diags) = TypeScriptParser
         .parse(Path::new("ts_types_sample.ts"), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
 
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    module
+}
+
+/// Finds the type definition named `name` or panics naming it.
+fn find_type<'a>(module: &'a Module, name: &str) -> &'a TypeDefinition {
+    module
+        .type_definitions
+        .iter()
+        .find(|t| t.name == name)
+        .unwrap_or_else(|| panic!("{name} captured"))
+}
+
+#[test]
+fn ts_person_class_fields_round_trip() {
+    let module = parse_ts_types_fixture();
 
     assert_eq!(
         module.type_definitions.len(),
@@ -34,11 +49,7 @@ fn ts_types_fixture_round_trip() {
         "both classes captured; standalone fn is not a type definition"
     );
 
-    let person = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Person")
-        .unwrap_or_else(|| panic!("Person captured"));
+    let person = find_type(&module, "Person");
     assert_eq!(person.kind, TypeKind::Class);
     assert_eq!(person.language, Language::TypeScript);
     assert_eq!(
@@ -62,12 +73,13 @@ fn ts_types_fixture_round_trip() {
         ],
         "typed class fields only, in declaration order, type text from the annotation"
     );
+}
 
-    let pair = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Pair")
-        .unwrap_or_else(|| panic!("generic class captured"));
+#[test]
+fn ts_pair_generic_fields_round_trip() {
+    let module = parse_ts_types_fixture();
+
+    let pair = find_type(&module, "Pair");
     assert_eq!(pair.kind, TypeKind::Class);
     assert!(
         pair.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
@@ -84,6 +96,12 @@ fn ts_types_fixture_round_trip() {
         vec![("first", Some("T")), ("second", Some("T"))],
         "type parameter text must not leak into captured values"
     );
+}
+
+#[test]
+fn ts_units_separate_from_type_members() {
+    let module = parse_ts_types_fixture();
+    let person = find_type(&module, "Person");
 
     // CodeUnits remain separate from type members.
     assert_eq!(module.units.len(), 3);

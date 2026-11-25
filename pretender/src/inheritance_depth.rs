@@ -4,6 +4,8 @@
 //! configured maximum depth. Single-file analysis only — cross-file
 //! parent classes are depth = 1 with a note.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::model::Language;
 
 /// Result of inheritance depth analysis for one file.
@@ -30,42 +32,27 @@ pub struct ClassDepth {
 /// Only resolves chains within the same file — cross-file parents
 /// are depth = 1 with `cross_file = true`.
 pub fn analyze(source: &str, language: &Language) -> InheritanceAnalysis {
-    let declarations = match language {
-        Language::Java => extract_java_classes(source),
-        Language::Python => extract_python_classes(source),
-        Language::JavaScript | Language::TypeScript => extract_ts_classes(source),
-        Language::Cpp => extract_cpp_classes(source),
-        Language::CSharp => extract_csharp_classes(source),
-        Language::Ruby => extract_ruby_classes(source),
-        Language::Rust => extract_rust_traits(source),
-        _ => Vec::new(),
-    };
-
-    // Build a lookup map for quick parent resolution
-    let mut class_map: std::collections::HashMap<String, ClassDecl> =
-        std::collections::HashMap::new();
-    for decl in &declarations {
-        class_map.insert(decl.name.clone(), decl.clone());
-    }
-
-    // Compute depth for each class by walking the parent chain
-    let mut classes = Vec::new();
-    for decl in &declarations {
-        let (depth, cross_file) = compute_depth(
-            &decl.name,
-            &class_map,
-            &mut std::collections::HashSet::new(),
-            0,
-        );
-        classes.push(ClassDepth {
-            name: decl.name.clone(),
-            depth,
-            parent: decl.parent.clone(),
-            cross_file,
-        });
-    }
-
+    let declarations = dispatch_extract(source, language);
+    let class_map: HashMap<String, ClassDecl> = declarations
+        .iter()
+        .map(|decl| (decl.name.clone(), decl.clone()))
+        .collect();
+    let classes = declarations
+        .iter()
+        .map(|decl| class_depth(decl, &class_map))
+        .collect();
     InheritanceAnalysis { classes }
+}
+
+/// Depth resolution for one declaration against the shared class map.
+fn class_depth(decl: &ClassDecl, class_map: &HashMap<String, ClassDecl>) -> ClassDepth {
+    let (depth, cross_file) = compute_depth(&decl.name, class_map, &mut HashSet::new(), 0);
+    ClassDepth {
+        name: decl.name.clone(),
+        depth,
+        parent: decl.parent.clone(),
+        cross_file,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -74,295 +61,228 @@ struct ClassDecl {
     parent: Option<String>,
 }
 
+/// Walk the parent chain for one class.
+///
+/// A parent missing from `class_map` past the root is a cross-file
+/// reference; a cycle stops the walk at the depth reached so far.
 fn compute_depth(
     name: &str,
-    class_map: &std::collections::HashMap<String, ClassDecl>,
-    visited: &mut std::collections::HashSet<String>,
+    class_map: &HashMap<String, ClassDecl>,
+    visited: &mut HashSet<String>,
     depth: u32,
 ) -> (u32, bool) {
-    if let Some(decl) = class_map.get(name) {
-        if let Some(ref parent) = decl.parent {
-            // Cycle detection
-            if visited.contains(parent) {
-                return (depth + 1, false);
-            }
-            visited.insert(parent.clone());
-            let (parent_depth, cross_file) = compute_depth(parent, class_map, visited, depth + 1);
-            (parent_depth, cross_file)
-        } else {
-            (depth, false)
-        }
-    } else if depth > 0 {
-        // Parent class not in this file — cross-file reference
+    let Some(decl) = class_map.get(name) else {
+        return cross_file_depth(depth);
+    };
+    let Some(parent) = decl.parent.as_deref() else {
+        return (depth, false);
+    };
+    // Cycle detection
+    if visited.contains(parent) {
+        return (depth + 1, false);
+    }
+    visited.insert(parent.to_string());
+    compute_depth(parent, class_map, visited, depth + 1)
+}
+
+/// A class absent from the map is cross-file only past the root.
+fn cross_file_depth(depth: u32) -> (u32, bool) {
+    if depth > 0 {
         (depth, true)
     } else {
         (0, false)
     }
 }
 
+/// Per-language line scanners. C# shares the Java scanner; languages
+/// without an entry yield no declarations.
+type Extractor = fn(&str) -> Vec<ClassDecl>;
+
+const EXTRACTORS: &[(Language, Extractor)] = &[
+    (Language::Java, extract_java_classes),
+    (Language::CSharp, extract_java_classes),
+    (Language::Python, extract_python_classes),
+    (Language::JavaScript, extract_ts_classes),
+    (Language::TypeScript, extract_ts_classes),
+    (Language::Cpp, extract_cpp_classes),
+    (Language::Ruby, extract_ruby_classes),
+    (Language::Rust, extract_rust_traits),
+];
+
+fn dispatch_extract(source: &str, language: &Language) -> Vec<ClassDecl> {
+    EXTRACTORS
+        .iter()
+        .find(|(lang, _)| lang == language)
+        .map_or_else(Vec::new, |(_, extract)| extract(source))
+}
+
 fn extract_java_classes(source: &str) -> Vec<ClassDecl> {
-    let mut classes = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // Match: class Foo or class Foo extends Bar
-        if let Some(rest) = trimmed.strip_prefix("class ") {
-            let name = rest.split_whitespace().next().unwrap_or("").to_string();
-            if name.is_empty() || name.starts_with('{') {
-                continue;
-            }
-            let parent = if let Some(extends_pos) = rest.find(" extends ") {
-                rest[extends_pos + 9..]
-                    .split_whitespace()
-                    .next()
-                    .map(|s| s.trim_end_matches('{').trim().to_string())
-            } else {
-                None
-            };
-            classes.push(ClassDecl { name, parent });
-        }
+    source.lines().filter_map(java_class_from_line).collect()
+}
+
+/// Match: `class Foo` or `class Foo extends Bar`.
+fn java_class_from_line(line: &str) -> Option<ClassDecl> {
+    let rest = line.trim().strip_prefix("class ")?;
+    let name = rest.split_whitespace().next()?.to_string();
+    if name.starts_with('{') {
+        return None;
     }
-    classes
+    let parent = rest.find(" extends ").and_then(|extends_pos| {
+        rest[extends_pos + 9..]
+            .split_whitespace()
+            .next()
+            .map(|s| s.trim_end_matches('{').trim().to_string())
+    });
+    Some(ClassDecl { name, parent })
 }
 
 fn extract_python_classes(source: &str) -> Vec<ClassDecl> {
-    let mut classes = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("class ") {
-            // class Foo(Bar):
-            if let Some(paren) = rest.find('(') {
-                let name = rest[..paren].trim().to_string();
-                let parent_part = rest[paren + 1..].trim_end_matches(':').trim();
-                // Get the first parent (ignore multiple inheritance for simplicity)
-                let parent = parent_part.split(',').next().map(|s| s.trim().to_string());
-                if !name.is_empty() && parent.as_deref() != Some("object") {
-                    classes.push(ClassDecl { name, parent });
-                }
-            }
-            // class Foo: (no parent)
-            else if let Some(end) = rest.find(':') {
-                let name = rest[..end].trim().to_string();
-                if !name.is_empty() {
-                    classes.push(ClassDecl { name, parent: None });
-                }
-            }
-        }
+    source.lines().filter_map(python_class_from_line).collect()
+}
+
+/// Dispatch: `class Foo(Bar):` vs `class Foo:`.
+fn python_class_from_line(line: &str) -> Option<ClassDecl> {
+    let rest = line.trim().strip_prefix("class ")?;
+    if let Some(paren) = rest.find('(') {
+        python_inherited_class(rest, paren)
+    } else {
+        python_standalone_class(rest)
     }
-    classes
+}
+
+/// `class Foo(Bar):` — first parent only (multiple inheritance ignored).
+fn python_inherited_class(rest: &str, paren: usize) -> Option<ClassDecl> {
+    let name = rest[..paren].trim().to_string();
+    let parent_part = rest[paren + 1..].trim_end_matches(':').trim();
+    let parent = parent_part.split(',').next().map(|s| s.trim().to_string());
+    if !name.is_empty() && parent.as_deref() != Some("object") {
+        return Some(ClassDecl { name, parent });
+    }
+    None
+}
+
+/// `class Foo:` — declared without a parent.
+fn python_standalone_class(rest: &str) -> Option<ClassDecl> {
+    let name = rest[..rest.find(':')?].trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    Some(ClassDecl { name, parent: None })
 }
 
 fn extract_ts_classes(source: &str) -> Vec<ClassDecl> {
-    let mut classes = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // class Foo extends Bar
-        if let Some(rest) = trimmed.strip_prefix("class ") {
-            if let Some(extends_pos) = rest.find(" extends ") {
-                let name = rest[..extends_pos]
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
-                let parent = rest[extends_pos + 9..].split_whitespace().next().map(|s| {
-                    s.trim_matches(|c: char| c.is_whitespace() || c == '{' || c == ',')
-                        .to_string()
-                });
-                if !name.is_empty() {
-                    classes.push(ClassDecl { name, parent });
-                }
-            }
-        }
-    }
-    classes
+    source.lines().filter_map(ts_class_from_line).collect()
+}
+
+/// Match: `class Foo extends Bar {`.
+fn ts_class_from_line(line: &str) -> Option<ClassDecl> {
+    let rest = line.trim().strip_prefix("class ")?;
+    let extends_pos = rest.find(" extends ")?;
+    let name = rest[..extends_pos].split_whitespace().next()?.to_string();
+    let parent = rest[extends_pos + 9..].split_whitespace().next().map(|s| {
+        s.trim_matches(|c: char| c.is_whitespace() || c == '{' || c == ',')
+            .to_string()
+    });
+    Some(ClassDecl { name, parent })
 }
 
 fn extract_cpp_classes(source: &str) -> Vec<ClassDecl> {
-    let mut classes = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // class Foo : public Bar
-        if let Some(rest) = trimmed.strip_prefix("class ") {
-            let name = rest.split_whitespace().next().unwrap_or("").to_string();
-            if !name.is_empty() && !name.starts_with(';') {
-                // Check for inheritance
-                if let Some(colon_pos) = rest.find(" : ") {
-                    let visibility = ["public ", "private ", "protected "];
-                    let after_colon = rest[colon_pos + 3..].trim();
-                    let parent = visibility
-                        .iter()
-                        .find_map(|v| after_colon.strip_prefix(v))
-                        .or(Some(after_colon))
-                        .and_then(|s| {
-                            s.split_whitespace()
-                                .next()
-                                .map(|s| s.trim_matches(|c: char| c == '{' || c == ',').to_string())
-                        });
-                    classes.push(ClassDecl { name, parent });
-                }
-            }
-        }
-    }
-    classes
+    source.lines().filter_map(cpp_class_from_line).collect()
 }
 
-fn extract_csharp_classes(source: &str) -> Vec<ClassDecl> {
-    // Same pattern as Java for C#
-    extract_java_classes(source)
+/// Match: `class Foo : public Bar {`.
+fn cpp_class_from_line(line: &str) -> Option<ClassDecl> {
+    let rest = line.trim().strip_prefix("class ")?;
+    let name = rest.split_whitespace().next()?.to_string();
+    if name.starts_with(';') {
+        return None;
+    }
+    let colon_pos = rest.find(" : ")?;
+    Some(ClassDecl {
+        name,
+        parent: cpp_parent(rest[colon_pos + 3..].trim()),
+    })
+}
+
+/// First parent after `:`, with visibility keyword stripped.
+fn cpp_parent(after_colon: &str) -> Option<String> {
+    let visibility = ["public ", "private ", "protected "];
+    visibility
+        .iter()
+        .find_map(|v| after_colon.strip_prefix(v))
+        .or(Some(after_colon))
+        .and_then(|s| {
+            s.split_whitespace()
+                .next()
+                .map(|s| s.trim_matches(|c: char| c == '{' || c == ',').to_string())
+        })
 }
 
 fn extract_ruby_classes(source: &str) -> Vec<ClassDecl> {
-    let mut classes = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // class Foo < Bar
-        if let Some(rest) = trimmed.strip_prefix("class ") {
-            if let Some(lt_pos) = rest.find(" < ") {
-                let name = rest[..lt_pos].trim().to_string();
-                let parent = rest[lt_pos + 3..]
-                    .split_whitespace()
-                    .next()
-                    .map(|s| s.to_string());
-                if !name.is_empty() {
-                    classes.push(ClassDecl { name, parent });
-                }
-            }
-        }
+    source.lines().filter_map(ruby_class_from_line).collect()
+}
+
+/// Match: `class Foo < Bar`.
+fn ruby_class_from_line(line: &str) -> Option<ClassDecl> {
+    let rest = line.trim().strip_prefix("class ")?;
+    let lt_pos = rest.find(" < ")?;
+    let name = rest[..lt_pos].trim().to_string();
+    let parent = rest[lt_pos + 3..]
+        .split_whitespace()
+        .next()
+        .map(|s| s.to_string());
+    if name.is_empty() {
+        return None;
     }
-    classes
+    Some(ClassDecl { name, parent })
 }
 
 fn extract_rust_traits(source: &str) -> Vec<ClassDecl> {
-    let mut classes = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // trait Foo: Bar + Baz
-        if let Some(rest) = trimmed.strip_prefix("trait ") {
-            // Split by ':' to get name and bounds separately
-            let parts: Vec<&str> = rest.trim().splitn(2, ": ").collect();
-            let name = parts[0].split_whitespace().next().unwrap_or("").to_string();
-            if name.is_empty() {
-                continue;
-            }
-            if parts.len() > 1 {
-                let bounds = parts[1].trim_end_matches(['{', '}']).trim();
-                // Find the first non-stdlib bound
-                let parent = bounds
-                    .split('+')
-                    .map(|s| s.trim())
-                    .find(|b| {
-                        !matches!(
-                            *b,
-                            "Display"
-                                | "Debug"
-                                | "Clone"
-                                | "Copy"
-                                | "Send"
-                                | "Sync"
-                                | "Sized"
-                                | "Default"
-                                | "Eq"
-                                | "PartialEq"
-                                | "Ord"
-                                | "PartialOrd"
-                                | "Hash"
-                                | "Into"
-                                | "From"
-                        )
-                    })
-                    .map(|s| s.to_string());
-                classes.push(ClassDecl { name, parent });
-            } else {
-                // No bounds — standalone trait
-                classes.push(ClassDecl { name, parent: None });
-            }
-        }
-    }
-    classes
+    source.lines().filter_map(rust_trait_from_line).collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Match: `trait Foo: Bar + Baz {` — first non-stdlib bound is the parent.
+fn rust_trait_from_line(line: &str) -> Option<ClassDecl> {
+    let rest = line.trim().strip_prefix("trait ")?;
+    let parts: Vec<&str> = rest.trim().splitn(2, ": ").collect();
+    let name = parts[0].split_whitespace().next()?.to_string();
+    let parent = if parts.len() > 1 {
+        first_custom_bound(parts[1])
+    } else {
+        // No bounds — standalone trait
+        None
+    };
+    Some(ClassDecl { name, parent })
+}
 
-    #[test]
-    fn java_single_inheritance() {
-        let source = r#"
-class A {}
-class B extends A {}
-class C extends B {}
-"#;
-        let analysis = analyze(source, &Language::Java);
-        let c = analysis.classes.iter().find(|c| c.name == "C").unwrap();
-        assert_eq!(c.depth, 2);
-    }
+/// First bound in `Bar + Baz` that is not a known stdlib trait.
+fn first_custom_bound(bounds: &str) -> Option<String> {
+    let bounds = bounds.trim_end_matches(['{', '}']).trim();
+    bounds
+        .split('+')
+        .map(|s| s.trim())
+        .find(|b| !is_stdlib_bound(b))
+        .map(|s| s.to_string())
+}
 
-    #[test]
-    fn java_exceeds_threshold() {
-        let source = r#"
-class A {}
-class B extends A {}
-class C extends B {}
-class D extends C {}
-"#;
-        let analysis = analyze(source, &Language::Java);
-        let d = analysis.classes.iter().find(|c| c.name == "D").unwrap();
-        assert_eq!(d.depth, 3);
-    }
-
-    #[test]
-    fn no_parent_depth_zero() {
-        let source = "class A {}";
-        let analysis = analyze(source, &Language::Java);
-        let a = analysis.classes.iter().find(|c| c.name == "A").unwrap();
-        assert_eq!(a.depth, 0);
-    }
-
-    #[test]
-    fn python_class_inheritance() {
-        let source = r#"
-class A:
-    pass
-class B(A):
-    pass
-"#;
-        let analysis = analyze(source, &Language::Python);
-        let b = analysis.classes.iter().find(|c| c.name == "B").unwrap();
-        assert_eq!(b.depth, 1);
-    }
-
-    #[test]
-    fn rust_stdlib_trait_excluded() {
-        let source = r#"
-trait Foo: Display + Debug {}
-"#;
-        let analysis = analyze(source, &Language::Rust);
-        let f = analysis.classes.iter().find(|c| c.name == "Foo").unwrap();
-        assert_eq!(f.depth, 0);
-    }
-
-    #[test]
-    fn rust_custom_trait() {
-        let source = r#"
-trait Bar {}
-trait Foo: Bar {}
-"#;
-        let analysis = analyze(source, &Language::Rust);
-        let f = analysis.classes.iter().find(|c| c.name == "Foo").unwrap();
-        assert_eq!(f.depth, 1);
-    }
-
-    #[test]
-    fn cross_file_parent_depth_one() {
-        let source = "class Foo extends Bar {}";
-        let analysis = analyze(source, &Language::Java);
-        let f = analysis.classes.iter().find(|c| c.name == "Foo").unwrap();
-        assert_eq!(f.depth, 1);
-        assert!(f.cross_file);
-    }
-
-    #[test]
-    fn unsupported_language_empty() {
-        let analysis = analyze("nothing", &Language::Julia);
-        assert!(analysis.classes.is_empty());
-    }
+/// Bounds that never count as inheritance parents.
+fn is_stdlib_bound(bound: &str) -> bool {
+    matches!(
+        bound,
+        "Display"
+            | "Debug"
+            | "Clone"
+            | "Copy"
+            | "Send"
+            | "Sync"
+            | "Sized"
+            | "Default"
+            | "Eq"
+            | "PartialEq"
+            | "Ord"
+            | "PartialOrd"
+            | "Hash"
+            | "Into"
+            | "From"
+    )
 }

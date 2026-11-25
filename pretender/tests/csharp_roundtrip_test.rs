@@ -5,28 +5,44 @@
 //                   stay separate from type members.
 // Rationale: Moved verbatim from pretender/src/csharp.rs unit tests (slice
 //            5zo.37) so the source file passes pretender's own structural
-//            gate; assertions are unchanged.
+//            gate; assertions are unchanged. The fixture round trip is
+//            split into focused tests (person fields, generic fields, units
+//            separation) sharing the parse helper; every assertion is
+//            unchanged.
 
 use std::path::Path;
 
 use pretender::csharp::CSharpParser;
-use pretender::model::{Language, Parser, Span, TypeKind};
+use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind};
 
 fn engine() -> CSharpParser {
     CSharpParser
 }
 
-// Reusable harness pattern (tasks 6.3): the language's real metrics.scm
-// parses a fixture file; assert TypeDefinition count/kind/ordered fields
-// and that CodeUnits stay separate.
-#[test]
-fn csharp_types_fixture_round_trip() {
+/// Reusable harness pattern (tasks 6.3): the language's real metrics.scm
+/// parses the committed fixture; asserts a clean parse and returns the module.
+fn parse_csharp_types_fixture() -> Module {
     let source = include_str!("fixtures/csharp_types_sample.cs");
     let (module, diags) = engine()
         .parse(Path::new("csharp_types_sample.cs"), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
 
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    module
+}
+
+/// Finds the type definition named `name` or panics naming it.
+fn find_type<'a>(module: &'a Module, name: &str) -> &'a TypeDefinition {
+    module
+        .type_definitions
+        .iter()
+        .find(|t| t.name == name)
+        .unwrap_or_else(|| panic!("{name} captured"))
+}
+
+#[test]
+fn csharp_person_class_fields_round_trip() {
+    let module = parse_csharp_types_fixture();
 
     assert_eq!(
         module.type_definitions.len(),
@@ -34,11 +50,7 @@ fn csharp_types_fixture_round_trip() {
         "both classes captured; methods are not type definitions"
     );
 
-    let person = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Person")
-        .unwrap_or_else(|| panic!("Person captured"));
+    let person = find_type(&module, "Person");
     assert_eq!(person.kind, TypeKind::Class);
     assert_eq!(person.language, Language::CSharp);
     assert_eq!(
@@ -62,12 +74,13 @@ fn csharp_types_fixture_round_trip() {
         ],
         "named fields only, in declaration order"
     );
+}
 
-    let boxed = module
-        .type_definitions
-        .iter()
-        .find(|t| t.name == "Box")
-        .unwrap_or_else(|| panic!("generic class captured"));
+#[test]
+fn csharp_box_generic_fields_round_trip() {
+    let module = parse_csharp_types_fixture();
+
+    let boxed = find_type(&module, "Box");
     assert_eq!(boxed.kind, TypeKind::Class);
     assert!(
         boxed.name.chars().all(|c| c.is_alphanumeric() || c == '_'),
@@ -84,6 +97,12 @@ fn csharp_types_fixture_round_trip() {
         vec![("Value", Some("T"))],
         "type parameter syntax must not leak into captured values"
     );
+}
+
+#[test]
+fn csharp_units_separate_from_type_members() {
+    let module = parse_csharp_types_fixture();
+    let person = find_type(&module, "Person");
 
     // CodeUnits remain separate from type members.
     assert_eq!(module.units.len(), 2);

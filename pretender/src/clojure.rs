@@ -54,7 +54,21 @@ mod tests {
             Language::Clojure,
             CLOJURE_QUERY,
         )
-        .unwrap()
+        .unwrap_or_else(|e| panic!("clojure query engine: {e:?}"))
+    }
+
+    const DEFRECORD_DEFTYPE_SOURCE: &str =
+        "(defrecord Point [x y])\n\n(deftype Cell [held]\n  (proto)\n  (area [this] 1))\n";
+
+    /// The zero-capture contract: a clean parse with an empty
+    /// `type_definitions` list.
+    fn assert_zero_type_captures(module: &Module, diags: &[Diagnostic]) {
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        assert!(
+            module.type_definitions.is_empty(),
+            "pinned grammar has no distinct type nodes; captures must stay empty, got: {:?}",
+            module.type_definitions
+        );
     }
 
     #[test]
@@ -62,25 +76,18 @@ mod tests {
         // Zero-capture decision (tasks 6.6, design D2/D3): the pinned
         // grammar tree-sitter-clojure 0.1.0 exposes only generic
         // `list_lit`/`sym_lit` nodes — there is no distinct defrecord or
-        // deftype node to anchor `@type.definition` on. Capturing the
-        // `list_lit` would feed the node-kind-based kind mapping
-        // (engine `determine_type_kind`), which maps such nodes to
-        // `Class` — so defrecord could never be a `Record`, the kind D3
-        // reserves for it. Per D2/D3 the adapter therefore ships with
-        // zero type captures and empty `type_definitions`; parsing must
-        // stay valid (spec: "Adapter without type captures stays valid").
+        // deftype node to anchor `@type.definition` on, and capturing
+        // `list_lit` would map to `Class`, never the `Record` kind D3
+        // reserves for defrecord. Per D2/D3 the adapter ships with zero
+        // type captures; parsing must stay valid (spec: "Adapter without
+        // type captures stays valid").
         let engine = clojure_engine();
-        let source =
-            "(defrecord Point [x y])\n\n(deftype Cell [held]\n  (proto)\n  (area [this] 1))\n";
         let (module, diags) = engine
-            .parse(Path::new("clojure_types_sample.clj"), source)
-            .unwrap();
-
-        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
-        assert!(
-            module.type_definitions.is_empty(),
-            "pinned grammar has no distinct type nodes; captures must stay empty, got: {:?}",
-            module.type_definitions
-        );
+            .parse(
+                Path::new("clojure_types_sample.clj"),
+                DEFRECORD_DEFTYPE_SOURCE,
+            )
+            .unwrap_or_else(|e| panic!("clojure sample must parse: {e:?}"));
+        assert_zero_type_captures(&module, &diags);
     }
 }

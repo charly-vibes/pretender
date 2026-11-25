@@ -1,6 +1,18 @@
-use crate::config::Thresholds;
+//! File roles and the per-role effective threshold merge.
+//!
+//! # Responsibilities
+//! Define the [`Role`] enum, the path-heuristic fallback [`heuristic_role`],
+//! and the merge of a role's config table over the app baseline
+//! ([`EffectiveThresholds::for_role`]).
+//!
+//! # Rationale
+//! Heuristic and overlay rules are data tables, so adding a pattern or a
+//! role tweak is one row instead of another ladder arm.
+
+use crate::config::{AppThresholds, Thresholds};
 use std::path::Path;
 
+/// The role a file plays; the `[thresholds]` role tables are keyed by it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
     App,
@@ -13,6 +25,95 @@ pub enum Role {
     IntegrationTest,
 }
 
+/// One heuristic rule: directory hints matched boundary-aware against the
+/// normalized path, plus file-name suffix and substring hints.
+struct RolePattern {
+    role: Role,
+    path_hints: &'static [&'static str],
+    name_suffixes: &'static [&'static str],
+    name_contains: &'static [&'static str],
+}
+
+/// Heuristic rows in evaluation order; the first hit wins, so vendor
+/// outranks generated markers and unit/integration outrank the broad test
+/// rule. Path hints keep their trailing slash so only directory segments
+/// match — a bare file named `vendor` or `spec` is not a role hit.
+const ROLE_PATTERNS: &[RolePattern] = &[
+    RolePattern {
+        role: Role::Vendor,
+        path_hints: &["vendor/", "node_modules/"],
+        name_suffixes: &[],
+        name_contains: &[],
+    },
+    RolePattern {
+        role: Role::Generated,
+        path_hints: &[],
+        name_suffixes: &[
+            "_generated.py",
+            "_generated.js",
+            "_generated.ts",
+            "_generated.rs",
+            ".pb.go",
+        ],
+        name_contains: &[],
+    },
+    RolePattern {
+        role: Role::UnitTest,
+        path_hints: &["tests/unit/", "test/unit/"],
+        name_suffixes: &[],
+        name_contains: &[],
+    },
+    RolePattern {
+        role: Role::IntegrationTest,
+        path_hints: &["tests/integration/", "test/integration/"],
+        name_suffixes: &[],
+        name_contains: &[],
+    },
+    RolePattern {
+        role: Role::Test,
+        path_hints: &["tests/", "spec/"],
+        name_suffixes: &[],
+        name_contains: &["_test."],
+    },
+    RolePattern {
+        role: Role::Library,
+        path_hints: &["pkg/", "lib/"],
+        name_suffixes: &[],
+        name_contains: &[],
+    },
+    RolePattern {
+        role: Role::Script,
+        path_hints: &["scripts/", "examples/"],
+        name_suffixes: &[],
+        name_contains: &[],
+    },
+];
+
+impl RolePattern {
+    fn matches(&self, normalized: &str, file_name: &str) -> bool {
+        self.path_hints
+            .iter()
+            .any(|hint| path_hint_matches(normalized, hint))
+            || self
+                .name_suffixes
+                .iter()
+                .any(|hint| file_name.ends_with(hint))
+            || self
+                .name_contains
+                .iter()
+                .any(|hint| file_name.contains(hint))
+    }
+}
+
+/// Boundary-aware contains: `hint` must start the path or follow a `/`,
+/// so `vendor/` hits `vendor/a.py` and `a/vendor/b.py`, never `xvendor/`.
+fn path_hint_matches(normalized: &str, hint: &str) -> bool {
+    normalized
+        .match_indices(hint)
+        .any(|(at, _)| at == 0 || normalized.as_bytes()[at - 1] == b'/')
+}
+
+/// Best-effort role for paths the configured role tables didn't claim.
 pub(crate) fn heuristic_role(path: &Path) -> Option<Role> {
     let normalized = path
         .to_string_lossy()
@@ -23,208 +124,167 @@ pub(crate) fn heuristic_role(path: &Path) -> Option<Role> {
         .and_then(|name| name.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-
-    if normalized.contains("/vendor/")
-        || normalized.starts_with("vendor/")
-        || normalized.contains("/node_modules/")
-        || normalized.starts_with("node_modules/")
-    {
-        Some(Role::Vendor)
-    } else if file_name.ends_with("_generated.py")
-        || file_name.ends_with("_generated.js")
-        || file_name.ends_with("_generated.ts")
-        || file_name.ends_with("_generated.rs")
-        || file_name.ends_with(".pb.go")
-    {
-        Some(Role::Generated)
-    } else if normalized.starts_with("tests/unit/")
-        || normalized.contains("/tests/unit/")
-        || normalized.starts_with("test/unit/")
-        || normalized.contains("/test/unit/")
-    {
-        Some(Role::UnitTest)
-    } else if normalized.starts_with("tests/integration/")
-        || normalized.contains("/tests/integration/")
-        || normalized.starts_with("test/integration/")
-        || normalized.contains("/test/integration/")
-    {
-        Some(Role::IntegrationTest)
-    } else if normalized.starts_with("tests/")
-        || normalized.contains("/tests/")
-        || normalized.starts_with("spec/")
-        || normalized.contains("/spec/")
-        || file_name.contains("_test.")
-    {
-        Some(Role::Test)
-    } else if normalized.starts_with("pkg/")
-        || normalized.contains("/pkg/")
-        || normalized.starts_with("lib/")
-        || normalized.contains("/lib/")
-    {
-        Some(Role::Library)
-    } else if normalized.starts_with("scripts/")
-        || normalized.contains("/scripts/")
-        || normalized.starts_with("examples/")
-        || normalized.contains("/examples/")
-    {
-        Some(Role::Script)
-    } else {
-        None
-    }
+    ROLE_PATTERNS
+        .iter()
+        .find(|pattern| pattern.matches(&normalized, &file_name))
+        .map(|pattern| pattern.role)
 }
 
+/// Function-size and complexity caps; role tables override these values.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectiveThresholds {
+pub struct FunctionLimits {
     pub cyclomatic_max: u32,
     pub cognitive_max: u32,
     pub function_lines_max: u32,
-    pub file_lines_max: u32,
     pub nesting_max: u32,
     pub params_max: u32,
-    pub duplication_pct_max: u32,
     pub abc_max: u32,
-    pub min_assertions: Option<u32>,
+}
+
+/// File-scope caps for the line, void-mutator, unwrap and field-count checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileLimits {
+    pub file_lines_max: u32,
+    pub void_mutators_max: u32,
+    pub unwrap_max: u32,
+    pub excessive_fields_max: u32,
+}
+
+/// Exported-unit rules; only the library table sets them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportRules {
     pub exported_params_max: Option<u32>,
     pub exported_cyclomatic_max: Option<u32>,
     pub exported_lines_max: Option<u32>,
     pub require_docstring: bool,
-    pub void_mutators_max: u32,
-    pub unwrap_max: u32,
-    pub excessive_fields_max: u32,
+}
+
+/// The thresholds one file is checked against: the app baseline with the
+/// file's role table layered on top.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveThresholds {
+    pub function: FunctionLimits,
+    pub file: FileLimits,
+    pub min_assertions: Option<u32>,
+    pub exports: ExportRules,
     pub duration_max_ms: u32,
 }
 
+/// Overlay a role applies on top of the app baseline; roles without an
+/// entry keep the baseline untouched.
+type RoleOverlay = fn(EffectiveThresholds, &Thresholds) -> EffectiveThresholds;
+
+/// Indexed by `Role as usize` (declaration order of the enum).
+const ROLE_OVERLAYS: [Option<RoleOverlay>; 8] = [
+    None,                                              // App
+    Some(EffectiveThresholds::apply_library),          // Library
+    Some(EffectiveThresholds::apply_test),             // Test
+    Some(EffectiveThresholds::apply_script),           // Script
+    None,                                              // Generated
+    None,                                              // Vendor
+    Some(EffectiveThresholds::apply_unit_test),        // UnitTest
+    Some(EffectiveThresholds::apply_integration_test), // IntegrationTest
+];
+
 impl EffectiveThresholds {
+    /// Merge `role`'s config table over the app baseline.
     pub fn for_role(role: Role, thresholds: &Thresholds) -> Self {
-        let mut effective = Self::from_app(thresholds);
-        match role {
-            Role::App | Role::Generated | Role::Vendor => {}
-            Role::Test => {
-                effective.cyclomatic_max = thresholds.test.cyclomatic_max;
-                effective.cognitive_max = thresholds.test.cognitive_max;
-                effective.function_lines_max = thresholds.test.function_lines_max;
-                effective.nesting_max = thresholds.test.nesting_max;
-                effective.params_max = thresholds.test.params_max;
-                effective.duplication_pct_max = thresholds.test.duplication_pct_max;
-                effective.min_assertions = thresholds.test.min_assertions;
-                effective.void_mutators_max = thresholds.test.void_mutators_max;
-                effective.unwrap_max = thresholds.test.unwrap_max;
-                effective.excessive_fields_max = thresholds.test.excessive_fields_max;
-            }
-            Role::UnitTest => {
-                effective.cyclomatic_max = thresholds.test.cyclomatic_max;
-                effective.cognitive_max = thresholds.test.cognitive_max;
-                effective.function_lines_max = thresholds.test.function_lines_max;
-                effective.nesting_max = thresholds.test.nesting_max;
-                effective.params_max = thresholds.test.params_max;
-                effective.duplication_pct_max = thresholds.test.duplication_pct_max;
-                effective.min_assertions = thresholds.test.min_assertions;
-                effective.void_mutators_max = thresholds.test.void_mutators_max;
-                effective.unwrap_max = thresholds.test.unwrap_max;
-                effective.excessive_fields_max = thresholds.test.excessive_fields_max;
-                effective.duration_max_ms = thresholds.unit_test.duration_max_ms;
-            }
-            Role::IntegrationTest => {
-                effective.cyclomatic_max = thresholds.test.cyclomatic_max;
-                effective.cognitive_max = thresholds.test.cognitive_max;
-                effective.function_lines_max = thresholds.test.function_lines_max;
-                effective.nesting_max = thresholds.test.nesting_max;
-                effective.params_max = thresholds.test.params_max;
-                effective.duplication_pct_max = thresholds.test.duplication_pct_max;
-                effective.min_assertions = thresholds.test.min_assertions;
-                effective.void_mutators_max = thresholds.test.void_mutators_max;
-                effective.unwrap_max = thresholds.test.unwrap_max;
-                effective.excessive_fields_max = thresholds.test.excessive_fields_max;
-                effective.duration_max_ms = thresholds.integration_test.duration_max_ms;
-            }
-            Role::Library => {
-                effective.exported_params_max = Some(thresholds.library.exported_params_max);
-                effective.exported_cyclomatic_max =
-                    Some(thresholds.library.exported_cyclomatic_max);
-                effective.exported_lines_max = Some(thresholds.library.exported_lines_max);
-                effective.require_docstring = thresholds.library.require_docstring;
-            }
-            Role::Script => {
-                effective.function_lines_max = thresholds.script.function_lines_max;
-                effective.file_lines_max = thresholds.script.file_lines_max;
-            }
+        let effective = Self::from_app(thresholds);
+        if let Some(overlay) = ROLE_OVERLAYS[role as usize] {
+            return overlay(effective, thresholds);
         }
         effective
     }
 
+    /// The app table is the baseline; export rules and durations start off.
     fn from_app(thresholds: &Thresholds) -> Self {
         Self {
-            cyclomatic_max: thresholds.app.cyclomatic_max,
-            cognitive_max: thresholds.app.cognitive_max,
-            function_lines_max: thresholds.app.function_lines_max,
-            file_lines_max: thresholds.app.file_lines_max,
-            nesting_max: thresholds.app.nesting_max,
-            params_max: thresholds.app.params_max,
-            duplication_pct_max: thresholds.app.duplication_pct_max,
-            abc_max: thresholds.app.abc_max,
+            function: FunctionLimits::from_app(&thresholds.app),
+            file: FileLimits::from_app(&thresholds.app),
             min_assertions: None,
-            exported_params_max: None,
-            exported_cyclomatic_max: None,
-            exported_lines_max: None,
-            require_docstring: false,
-            void_mutators_max: thresholds.app.void_mutators_max,
-            unwrap_max: thresholds.app.unwrap_max,
-            excessive_fields_max: thresholds.app.excessive_fields_max,
+            exports: ExportRules::none(),
             duration_max_ms: 0,
+        }
+    }
+
+    /// The test table; unit/integration inherit it and overlay a duration.
+    fn apply_test(mut self, thresholds: &Thresholds) -> Self {
+        let test = &thresholds.test;
+        self.function.cyclomatic_max = test.cyclomatic_max;
+        self.function.cognitive_max = test.cognitive_max;
+        self.function.function_lines_max = test.function_lines_max;
+        self.function.nesting_max = test.nesting_max;
+        self.function.params_max = test.params_max;
+        self.min_assertions = test.checks.min_assertions;
+        self.file.void_mutators_max = test.checks.void_mutators_max;
+        self.file.unwrap_max = test.checks.unwrap_max;
+        self.file.excessive_fields_max = test.checks.excessive_fields_max;
+        self
+    }
+
+    fn apply_unit_test(self, thresholds: &Thresholds) -> Self {
+        Self {
+            duration_max_ms: thresholds.unit_test.duration_max_ms,
+            ..self.apply_test(thresholds)
+        }
+    }
+
+    fn apply_integration_test(self, thresholds: &Thresholds) -> Self {
+        Self {
+            duration_max_ms: thresholds.integration_test.duration_max_ms,
+            ..self.apply_test(thresholds)
+        }
+    }
+
+    fn apply_library(mut self, thresholds: &Thresholds) -> Self {
+        self.exports = ExportRules {
+            exported_params_max: Some(thresholds.library.exported_params_max),
+            exported_cyclomatic_max: Some(thresholds.library.exported_cyclomatic_max),
+            exported_lines_max: Some(thresholds.library.exported_lines_max),
+            require_docstring: thresholds.library.require_docstring,
+        };
+        self
+    }
+
+    fn apply_script(mut self, thresholds: &Thresholds) -> Self {
+        self.function.function_lines_max = thresholds.script.function_lines_max;
+        self.file.file_lines_max = thresholds.script.file_lines_max;
+        self
+    }
+}
+
+impl FunctionLimits {
+    fn from_app(app: &AppThresholds) -> Self {
+        Self {
+            cyclomatic_max: app.cyclomatic_max,
+            cognitive_max: app.cognitive_max,
+            function_lines_max: app.function_lines_max,
+            nesting_max: app.nesting_max,
+            params_max: app.params_max,
+            abc_max: app.abc_max,
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::Config;
-
-    fn config(toml: &str) -> Config {
-        Config::parse_str(toml).unwrap_or_else(|e| panic!("config parses: {e}"))
+impl FileLimits {
+    fn from_app(app: &AppThresholds) -> Self {
+        Self {
+            file_lines_max: app.file_lines_max,
+            void_mutators_max: app.void_mutators_max,
+            unwrap_max: app.checks.unwrap_max,
+            excessive_fields_max: app.checks.excessive_fields_max,
+        }
     }
+}
 
-    #[test]
-    fn role_thresholds_apply_overrides_before_metric_evaluation() {
-        let config = Config::default();
-
-        let app = EffectiveThresholds::for_role(Role::App, &config.thresholds);
-        let test = EffectiveThresholds::for_role(Role::Test, &config.thresholds);
-        let library = EffectiveThresholds::for_role(Role::Library, &config.thresholds);
-        let script = EffectiveThresholds::for_role(Role::Script, &config.thresholds);
-
-        assert_eq!(app.cyclomatic_max, 10);
-        assert_eq!(test.cyclomatic_max, 3);
-        assert_eq!(test.min_assertions, Some(1));
-        assert_eq!(library.exported_cyclomatic_max, Some(8));
-        assert!(library.require_docstring);
-        assert_eq!(script.function_lines_max, 100);
-    }
-
-    #[test]
-    fn unit_test_effective_thresholds_inherit_test_and_overlay_duration() {
-        let config = config(
-            r#"
-            [thresholds.unit-test]
-            duration_max_ms = 100
-            [thresholds.integration-test]
-            duration_max_ms = 500
-            "#,
-        );
-
-        let unit = EffectiveThresholds::for_role(Role::UnitTest, &config.thresholds);
-        let integration = EffectiveThresholds::for_role(Role::IntegrationTest, &config.thresholds);
-        let base_test = EffectiveThresholds::for_role(Role::Test, &config.thresholds);
-
-        // Sub-roles inherit test thresholds
-        assert_eq!(unit.cyclomatic_max, base_test.cyclomatic_max);
-        assert_eq!(unit.min_assertions, base_test.min_assertions);
-
-        // Sub-roles overlay duration_max_ms
-        assert_eq!(unit.duration_max_ms, 100);
-        assert_eq!(integration.duration_max_ms, 500);
-
-        // Base test has no duration threshold
-        assert_eq!(base_test.duration_max_ms, 0);
+impl ExportRules {
+    /// No export rules outside the library role.
+    fn none() -> Self {
+        Self {
+            exported_params_max: None,
+            exported_cyclomatic_max: None,
+            exported_lines_max: None,
+            require_docstring: false,
+        }
     }
 }

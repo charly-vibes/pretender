@@ -55,13 +55,22 @@ fn walk_classify(
         if cursor.goto_first_child() {
             continue;
         }
-        loop {
-            if cursor.goto_next_sibling() {
-                break;
-            }
-            if !cursor.goto_parent() {
-                return (code, comment);
-            }
+        if !advance_cursor(&mut cursor) {
+            return (code, comment);
+        }
+    }
+}
+
+/// Advance to the next node in pre-order after the current subtree:
+/// the next sibling, or the nearest ancestor's next sibling. Returns
+/// false when the walk has no nodes left.
+fn advance_cursor(cursor: &mut tree_sitter::TreeCursor) -> bool {
+    loop {
+        if cursor.goto_next_sibling() {
+            return true;
+        }
+        if !cursor.goto_parent() {
+            return false;
         }
     }
 }
@@ -73,15 +82,25 @@ fn classify_leaf(node: tree_sitter::Node, code: &mut HashSet<u32>, comment: &mut
     }
     let start = node.start_position().row as u32 + 1;
     let end = node.end_position().row as u32 + 1;
-    let is_comment = node.kind().contains("comment");
     for line in start..=end {
-        if is_comment {
-            if !code.contains(&line) {
-                comment.insert(line);
-            }
-        } else if !node.kind().trim().is_empty() {
-            code.insert(line);
-            comment.remove(&line);
+        classify_line(line, &node, code, comment);
+    }
+}
+
+/// Classify a single line touched by a leaf: comment lines only count
+/// when no code touches them; non-empty code leaves claim the line.
+fn classify_line(
+    line: u32,
+    node: &tree_sitter::Node,
+    code: &mut HashSet<u32>,
+    comment: &mut HashSet<u32>,
+) {
+    if node.kind().contains("comment") {
+        if !code.contains(&line) {
+            comment.insert(line);
         }
+    } else if !node.kind().trim().is_empty() {
+        code.insert(line);
+        comment.remove(&line);
     }
 }

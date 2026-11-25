@@ -138,14 +138,19 @@ fn consider_banded_metric(summary: &mut FileSummary, unit_name: &str, hit: Metri
     consider_summary(
         summary,
         severity,
-        format!(
-            "{}(): {} {} ({})",
-            unit_name,
-            metric,
-            actual,
-            severity_label(severity)
-        ),
+        banded_message(unit_name, metric, actual, severity),
     );
+}
+
+/// The summary message for a banded metric, e.g. `fn(): cyclomatic 12 (red)`.
+fn banded_message(unit_name: &str, metric: &str, actual: u32, severity: Severity) -> String {
+    format!(
+        "{}(): {} {} ({})",
+        unit_name,
+        metric,
+        actual,
+        severity_label(severity)
+    )
 }
 
 fn consider_summary(summary: &mut FileSummary, severity: Severity, message: String) {

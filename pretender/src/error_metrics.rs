@@ -44,89 +44,103 @@ pub fn detect_unwraps(source: &str, language: &Language) -> Vec<UnwrapSite> {
 fn detect_rust_unwraps(source: &str) -> Vec<UnwrapSite> {
     let mut sites = Vec::new();
     for (i, line) in source.lines().enumerate() {
-        let line_num = (i + 1) as u32;
-        let trimmed = line.trim();
-        // Skip comments
-        if trimmed.starts_with("//") || trimmed.starts_with("/*") {
-            continue;
-        }
-        // unwrap() calls
-        if trimmed.contains(".unwrap(") || trimmed.contains(".unwrap()") {
-            // Skip test assertions that use .unwrap() idiomatically
-            if !trimmed.starts_with("#[") {
-                sites.push(UnwrapSite {
-                    line: line_num,
-                    kind: UnwrapKind::Unwrap,
-                });
-            }
-        }
-        // expect() calls
-        if trimmed.contains(".expect(") || trimmed.contains(".expect()") {
-            sites.push(UnwrapSite {
-                line: line_num,
-                kind: UnwrapKind::Expect,
-            });
-        }
+        rust_line_unwrap((i + 1) as u32, line.trim(), &mut sites);
     }
     sites
+}
+
+/// Classify one Rust line: comments are skipped, `.unwrap()` is skipped for
+/// attribute lines, `.expect()` always flags.
+fn rust_line_unwrap(line_num: u32, trimmed: &str, sites: &mut Vec<UnwrapSite>) {
+    if trimmed.starts_with("//") || trimmed.starts_with("/*") {
+        return;
+    }
+    // unwrap() calls, skipping #[...] attribute lines (`.unwrap(` covers `.unwrap()`)
+    if trimmed.contains(".unwrap(") && !trimmed.starts_with("#[") {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::Unwrap,
+        });
+    }
+    if trimmed.contains(".expect(") {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::Expect,
+        });
+    }
 }
 
 fn detect_python_unwraps(source: &str) -> Vec<UnwrapSite> {
     let mut sites = Vec::new();
-    let lines: Vec<&str> = source.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line_num = (i + 1) as u32;
-        let trimmed = lines[i].trim();
-        // Bare except: (except: with no type specified)
-        if trimmed == "except:" || trimmed.starts_with("except :") {
-            sites.push(UnwrapSite {
-                line: line_num,
-                kind: UnwrapKind::BareExcept,
-            });
-        }
-        // except Exception: (catching too broadly)
-        if trimmed.starts_with("except Exception")
-            && !trimmed.contains("as e")
-            && !trimmed.contains(" as ")
-        {
-            sites.push(UnwrapSite {
-                line: line_num,
-                kind: UnwrapKind::BareExcept,
-            });
-        }
-        i += 1;
+    for (i, line) in source.lines().enumerate() {
+        python_line_unwrap((i + 1) as u32, line.trim(), &mut sites);
     }
     sites
 }
 
+/// Classify one Python line: bare `except:` and broad `except Exception:`.
+fn python_line_unwrap(line_num: u32, trimmed: &str, sites: &mut Vec<UnwrapSite>) {
+    // Bare except: (except: with no type specified)
+    if trimmed == "except:" || trimmed.starts_with("except :") {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::BareExcept,
+        });
+    }
+    // except Exception: (catching too broadly)
+    if trimmed.starts_with("except Exception")
+        && !trimmed.contains("as e")
+        && !trimmed.contains(" as ")
+    {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::BareExcept,
+        });
+    }
+}
+
 fn detect_js_unwraps(source: &str) -> Vec<UnwrapSite> {
-    let mut sites = Vec::new();
     let lines: Vec<&str> = source.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line_num = (i + 1) as u32;
-        let trimmed = lines[i].trim();
-        // Empty catch block: catch {} or catch(e) {} on same line
-        if trimmed.contains("catch") && (trimmed.ends_with("{}") || trimmed.ends_with("{ }")) {
-            sites.push(UnwrapSite {
-                line: line_num,
-                kind: UnwrapKind::EmptyCatch,
-            });
-        }
-        // catch on one line, empty block on next
-        if trimmed.contains("catch") && i + 1 < lines.len() {
-            let next = lines[i + 1].trim();
-            if next == "{}" || next == "{ }" {
-                sites.push(UnwrapSite {
-                    line: line_num,
-                    kind: UnwrapKind::EmptyCatch,
-                });
-            }
-        }
-        i += 1;
+    let mut sites = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        js_line_unwrap(
+            (i + 1) as u32,
+            line.trim(),
+            lines.get(i + 1).copied(),
+            &mut sites,
+        );
     }
     sites
+}
+
+/// An empty block closing a line (`… {}`), or braces alone on a line.
+fn is_empty_catch_tail(line: &str) -> bool {
+    line.ends_with("{}") || line.ends_with("{ }")
+}
+
+/// An empty block alone on a line (the catch body on the next line).
+fn is_bare_empty_block(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed == "{}" || trimmed == "{ }"
+}
+
+/// Classify one JS line: `catch` followed by an empty block on the same
+/// line, or an empty block alone on the next line.
+fn js_line_unwrap(line_num: u32, trimmed: &str, next: Option<&str>, sites: &mut Vec<UnwrapSite>) {
+    // Empty catch block: catch {} or catch(e) {} on same line
+    if trimmed.contains("catch") && is_empty_catch_tail(trimmed) {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::EmptyCatch,
+        });
+    }
+    // catch on one line, empty block on next
+    if trimmed.contains("catch") && next.is_some_and(is_bare_empty_block) {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::EmptyCatch,
+        });
+    }
 }
 
 fn detect_java_unwraps(source: &str) -> Vec<UnwrapSite> {
@@ -150,26 +164,28 @@ fn detect_java_unwraps(source: &str) -> Vec<UnwrapSite> {
 fn detect_go_unwraps(source: &str) -> Vec<UnwrapSite> {
     let mut sites = Vec::new();
     for (i, line) in source.lines().enumerate() {
-        let line_num = (i + 1) as u32;
-        let trimmed = line.trim();
-        // Ignored error: _ = fn()
-        if trimmed.starts_with("_ = ") || trimmed.starts_with("_, ") {
-            sites.push(UnwrapSite {
-                line: line_num,
-                kind: UnwrapKind::IgnoredError,
-            });
-        }
-        // Bare panic or recover outside of error check
-        // Note: `if err != nil { return err }` is idiomatic Go — NOT flagged
-        if trimmed == "panic(" || trimmed.starts_with("panic(") && !trimmed.starts_with("panic(err")
-        {
-            sites.push(UnwrapSite {
-                line: line_num,
-                kind: UnwrapKind::BarePanic,
-            });
-        }
+        go_line_unwrap((i + 1) as u32, line.trim(), &mut sites);
     }
     sites
+}
+
+/// Classify one Go line: ignored errors and bare panic/recover.
+/// Note: `if err != nil { return err }` is idiomatic Go — NOT flagged.
+fn go_line_unwrap(line_num: u32, trimmed: &str, sites: &mut Vec<UnwrapSite>) {
+    // Ignored error: _ = fn()
+    if trimmed.starts_with("_ = ") || trimmed.starts_with("_, ") {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::IgnoredError,
+        });
+    }
+    // Bare panic or recover outside of error check
+    if trimmed == "panic(" || trimmed.starts_with("panic(") && !trimmed.starts_with("panic(err") {
+        sites.push(UnwrapSite {
+            line: line_num,
+            kind: UnwrapKind::BarePanic,
+        });
+    }
 }
 
 #[cfg(test)]

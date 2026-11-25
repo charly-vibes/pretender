@@ -5,7 +5,7 @@
 //! everything the main.rs wiring needs to build `ViolationReport`s
 //! (metric id, subject, span, actual, limit).
 
-use crate::model::{Span, TypeDefinition};
+use crate::model::{Field, Span, TypeDefinition};
 use crate::primitive_obsession::{is_bare_primitive_type, is_domain_param_name};
 
 /// Metric id for the field-count check.
@@ -38,15 +38,7 @@ pub fn analyze(
     let mut violations = Vec::new();
 
     for type_def in type_defs {
-        if excessive_fields_max > 0 && type_def.fields.len() as u32 >= excessive_fields_max {
-            violations.push(DataModelViolation {
-                metric: EXCESSIVE_FIELDS,
-                subject: type_def.name.clone(),
-                span: type_def.span.clone(),
-                actual: type_def.fields.len() as u32,
-                limit: excessive_fields_max,
-            });
-        }
+        push_excessive_fields_violation(type_def, excessive_fields_max, &mut violations);
 
         if primitive_field_check {
             check_primitive_fields(type_def, domain_patterns, &mut violations);
@@ -54,6 +46,24 @@ pub fn analyze(
     }
 
     violations
+}
+
+/// Push the `excessive_fields` violation when a type carries too many
+/// fields; `excessive_fields_max` 0 disables the check.
+fn push_excessive_fields_violation(
+    type_def: &TypeDefinition,
+    excessive_fields_max: u32,
+    violations: &mut Vec<DataModelViolation>,
+) {
+    if excessive_fields_max > 0 && type_def.fields.len() as u32 >= excessive_fields_max {
+        violations.push(DataModelViolation {
+            metric: EXCESSIVE_FIELDS,
+            subject: type_def.name.clone(),
+            span: type_def.span.clone(),
+            actual: type_def.fields.len() as u32,
+            limit: excessive_fields_max,
+        });
+    }
 }
 
 /// Purpose: per-type primitive-obsession field scan.
@@ -74,14 +84,19 @@ fn check_primitive_fields(
             .as_deref()
             .is_some_and(is_bare_primitive_type);
         if is_primitive && is_domain_param_name(&field.name, domain_patterns) {
-            violations.push(DataModelViolation {
-                metric: PRIMITIVE_FIELD,
-                subject: format!("{}.{}", type_def.name, field.name),
-                span: field.span.clone(),
-                actual: 1,
-                limit: 1,
-            });
+            violations.push(primitive_field_violation(type_def, field));
         }
+    }
+}
+
+/// One `primitive_field` violation for a bare-primitive domain field.
+fn primitive_field_violation(type_def: &TypeDefinition, field: &Field) -> DataModelViolation {
+    DataModelViolation {
+        metric: PRIMITIVE_FIELD,
+        subject: format!("{}.{}", type_def.name, field.name),
+        span: field.span.clone(),
+        actual: 1,
+        limit: 1,
     }
 }
 

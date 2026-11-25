@@ -45,25 +45,13 @@ impl Parser for CParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::TypeKind;
+    use crate::model::{TypeDefinition, TypeKind};
 
     const C_TYPES_SAMPLE: &str = include_str!("../tests/fixtures/c_types_sample.c");
 
-    #[test]
-    fn c_types_sample_round_trip() {
-        let parser = CParser;
-        let (module, diagnostics) = parser
-            .parse(Path::new("tests/fixtures/c_types_sample.c"), C_TYPES_SAMPLE)
-            .unwrap();
-        assert!(diagnostics.is_empty(), "unexpected: {diagnostics:?}");
-
-        // Structs are captured; unions are not (design D3).
-        assert_eq!(
-            module.type_definitions.len(),
-            1,
-            "the union must not yield a TypeDefinition"
-        );
-        let def = &module.type_definitions[0];
+    /// The captured struct is Person with three fields of fixed names and
+    /// types; the free function stays a CodeUnit, not duplicated as a field.
+    fn assert_person_shape(module: &Module, def: &TypeDefinition) {
         assert_eq!(def.name, "Person");
         assert_eq!(def.kind, TypeKind::Struct);
         assert_eq!(def.language, Language::C);
@@ -73,8 +61,24 @@ mod tests {
         let types: Vec<Option<&str>> = def.fields.iter().map(|f| f.type_name.as_deref()).collect();
         assert_eq!(types, [Some("char"), Some("int"), Some("double")]);
 
-        // The free function stays a CodeUnit and is not duplicated as a field.
         assert!(module.units.iter().any(|u| u.name == "person_age"));
         assert!(def.fields.iter().all(|f| f.name != "person_age"));
+    }
+
+    #[test]
+    fn c_types_sample_round_trip() {
+        let parser = CParser;
+        let (module, diagnostics) = parser
+            .parse(Path::new("tests/fixtures/c_types_sample.c"), C_TYPES_SAMPLE)
+            .unwrap_or_else(|e| panic!("c_types_sample.c must parse: {e:?}"));
+        assert!(diagnostics.is_empty(), "unexpected: {diagnostics:?}");
+
+        // Structs are captured; unions are not (design D3).
+        assert_eq!(
+            module.type_definitions.len(),
+            1,
+            "the union must not yield a TypeDefinition"
+        );
+        assert_person_shape(&module, &module.type_definitions[0]);
     }
 }

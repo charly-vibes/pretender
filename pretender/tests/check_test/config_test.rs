@@ -10,16 +10,11 @@
 //! expect/unwrap calls converted to the sanctioned panic-on-failure forms.
 
 use crate::common::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-#[test]
-fn test_check_rust_raw_local_no_parse_error_warning() {
-    // pretender-mlw: a local named `raw` referenced as `&raw` collided with
-    // the &raw const/mut expression lookahead in tree-sitter-rust 0.23.3,
-    // producing a false "Parse errors detected" warning (and, worse, empty
-    // metrics — the engine early-returns on has_error). Valid Rust must
-    // parse cleanly and yield metrics.
-    let dir = tempdir();
+/// Writes the pretender-mlw `raw` repro (`repro.rs` plus a minimal config)
+/// into `dir` and returns the source path.
+fn write_raw_repro(dir: &Path) -> std::path::PathBuf {
     let source = dir.join("repro.rs");
     std::fs::write(
         &source,
@@ -28,6 +23,18 @@ fn test_check_rust_raw_local_no_parse_error_warning() {
     .unwrap_or_else(|e| panic!("write repro.rs: {e:?}"));
     std::fs::write(dir.join("pretender.toml"), "[pretender]\n")
         .unwrap_or_else(|e| panic!("write config: {e:?}"));
+    source
+}
+
+#[test]
+fn test_check_rust_raw_local_no_parse_error_warning() {
+    // pretender-mlw: a local named `raw` referenced as `&raw` collided with
+    // the &raw const/mut expression lookahead in tree-sitter-rust 0.23.3,
+    // producing a false "Parse errors detected" warning (and, worse, empty
+    // metrics — the engine early-returns on has_error). Valid Rust must
+    // parse cleanly.
+    let dir = tempdir();
+    let source = write_raw_repro(&dir);
 
     let output = check_in(&dir, &source)
         .output()
@@ -45,9 +52,17 @@ fn test_check_rust_raw_local_no_parse_error_warning() {
         !stdout.contains("Parse errors detected") && !stderr.contains("Parse errors detected"),
         "valid Rust with a local named 'raw' must not warn; stdout: {stdout}, stderr: {stderr}"
     );
-    // Metrics must actually compute — engine.rs early-returns empty units on
-    // has_error, so the warning's absence alone doesn't prove units parsed.
+}
+
+#[test]
+fn test_check_rust_raw_local_computes_metrics() {
+    // Second half of the pretender-mlw proof: metrics must actually
+    // compute — engine.rs early-returns empty units on has_error, so the
+    // warning's absence alone doesn't prove units parsed.
     // `complexity` lists per-function scores.
+    let dir = tempdir();
+    let source = write_raw_repro(&dir);
+
     let cx = pretender_cmd()
         .arg("complexity")
         .arg(&source)

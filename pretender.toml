@@ -6,6 +6,21 @@ languages = ["auto"]
 # exercise the tool) — they are not production code and stay out of the gate.
 exclude = ["vendor/**", "node_modules/**", "**/*_generated.*", "**/fixtures/**"]
 
+# Epic 5zo.15 ratchet targets (R8): tightened from defaults
+# cyclomatic 30, cognitive 15, function_lines 30, file_lines 400, nesting 3,
+# unwraps 5. abc_max 20 and duplication_pct_max 3 match defaults, pinned for
+# the record.
+[thresholds]
+cyclomatic_max = 5
+cognitive_max = 8
+function_lines_max = 20
+file_lines_max = 300
+nesting_max = 2
+abc_max = 20
+unwrap_max = 0
+duplication_pct_max = 3
+
+
 [roles.test]
 paths = ["tests/**", "**/*_test.*", "spec/**"]
 

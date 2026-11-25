@@ -32,6 +32,13 @@ pub enum PrimitiveViolationKind {
     PrimitiveDomainParam,
 }
 
+/// Per-run heuristic configuration shared by the analysis helpers.
+struct UnitChecks<'a> {
+    bool_cluster_max: u32,
+    primitive_param_check: bool,
+    extra_domain_patterns: &'a [String],
+}
+
 /// Analyze code units for primitive-obsession violations.
 ///
 /// * `bool_cluster_max` — max number of bare bool params before flagging (0 = disabled)
@@ -43,27 +50,17 @@ pub fn analyze(
     primitive_param_check: bool,
     extra_domain_patterns: &[String],
 ) -> Vec<PrimitiveObsessionAnalysis> {
-    units
-        .iter()
-        .map(|u| {
-            analyze_unit(
-                u,
-                bool_cluster_max,
-                primitive_param_check,
-                extra_domain_patterns,
-            )
-        })
-        .collect()
+    let cfg = UnitChecks {
+        bool_cluster_max,
+        primitive_param_check,
+        extra_domain_patterns,
+    };
+    units.iter().map(|u| analyze_unit(u, &cfg)).collect()
 }
 
 /// Per-unit driver: skips ctor/initializer defs (empty analysis still
 /// emitted). Verbatim extraction; early return replaces the negated `if`.
-fn analyze_unit(
-    unit: &CodeUnit,
-    bool_cluster_max: u32,
-    primitive_param_check: bool,
-    extra_domain_patterns: &[String],
-) -> PrimitiveObsessionAnalysis {
+fn analyze_unit(unit: &CodeUnit, cfg: &UnitChecks<'_>) -> PrimitiveObsessionAnalysis {
     let mut analysis = PrimitiveObsessionAnalysis::default();
 
     // Skip struct/class/record definitions — only check function/method params
@@ -71,13 +68,8 @@ fn analyze_unit(
         return analysis;
     }
 
-    count_bool_and_domain_params(
-        unit,
-        primitive_param_check,
-        extra_domain_patterns,
-        &mut analysis,
-    );
-    flag_bool_cluster(unit, bool_cluster_max, &mut analysis);
+    count_bool_and_domain_params(unit, cfg, &mut analysis);
+    flag_bool_cluster(unit, cfg.bool_cluster_max, &mut analysis);
 
     analysis
 }
@@ -86,8 +78,7 @@ fn analyze_unit(
 /// parameter order before any BoolCluster (order pinned by tests).
 fn count_bool_and_domain_params(
     unit: &CodeUnit,
-    primitive_param_check: bool,
-    extra_domain_patterns: &[String],
+    cfg: &UnitChecks<'_>,
     analysis: &mut PrimitiveObsessionAnalysis,
 ) {
     for param in &unit.parameters {
@@ -96,8 +87,8 @@ fn count_bool_and_domain_params(
         }
 
         // Check for primitive domain params
-        if primitive_param_check {
-            flag_primitive_domain_param(unit, param, extra_domain_patterns, analysis);
+        if cfg.primitive_param_check {
+            flag_primitive_domain_param(unit, param, cfg, analysis);
         }
     }
 }
@@ -130,13 +121,14 @@ fn is_bool_counting_type(type_name: &str) -> bool {
 fn flag_primitive_domain_param(
     unit: &CodeUnit,
     param: &Parameter,
-    extra_domain_patterns: &[String],
+    cfg: &UnitChecks<'_>,
     analysis: &mut PrimitiveObsessionAnalysis,
 ) {
     let Some(type_name) = &param.type_name else {
         return;
     };
-    if is_bare_primitive_type(type_name) && is_domain_param_name(&param.name, extra_domain_patterns)
+    if is_bare_primitive_type(type_name)
+        && is_domain_param_name(&param.name, cfg.extra_domain_patterns)
     {
         analysis.violations.push(PrimitiveViolation {
             kind: PrimitiveViolationKind::PrimitiveDomainParam,
@@ -144,6 +136,20 @@ fn flag_primitive_domain_param(
             param_name: param.name.clone(),
             line: param.span.start_line,
         });
+    }
+}
+
+/// One violation finding for a parameter of `unit`.
+fn primitive_violation(
+    kind: PrimitiveViolationKind,
+    unit: &CodeUnit,
+    param: &Parameter,
+) -> PrimitiveViolation {
+    PrimitiveViolation {
+        kind,
+        unit_name: unit.name.clone(),
+        param_name: param.name.clone(),
+        line: param.span.start_line,
     }
 }
 
@@ -159,18 +165,12 @@ fn flag_bool_cluster(
     }
 
     for param in &unit.parameters {
-        let is_bool = param
-            .type_name
-            .as_deref()
-            .map(is_bool_cluster_type)
-            .unwrap_or(false);
-        if is_bool {
-            analysis.violations.push(PrimitiveViolation {
-                kind: PrimitiveViolationKind::BoolCluster,
-                unit_name: unit.name.clone(),
-                param_name: param.name.clone(),
-                line: param.span.start_line,
-            });
+        if param.type_name.as_deref().is_some_and(is_bool_cluster_type) {
+            analysis.violations.push(primitive_violation(
+                PrimitiveViolationKind::BoolCluster,
+                unit,
+                param,
+            ));
         }
     }
 }
@@ -196,28 +196,29 @@ pub(crate) fn is_bare_primitive_type(type_name: &str) -> bool {
     )
 }
 
+/// Domain name patterns that suggest a primitive should be a domain type.
+const DOMAIN_PATTERNS: [&str; 12] = [
+    "email",
+    "url",
+    "uri",
+    "date",
+    "timestamp",
+    "phone",
+    "address",
+    "zip",
+    "ssn",
+    "uuid",
+    "token",
+    "secret",
+];
+
 /// Check if a parameter name suggests a domain concept that should be a type.
 ///
 /// Excludes common false positives: `id`, `name`, `path` — these are
 /// legitimate primitive uses in most contexts.
 pub(crate) fn is_domain_param_name(name: &str, extra_patterns: &[String]) -> bool {
-    let domain_patterns = [
-        "email",
-        "url",
-        "uri",
-        "date",
-        "timestamp",
-        "phone",
-        "address",
-        "zip",
-        "ssn",
-        "uuid",
-        "token",
-        "secret",
-    ];
-
     let lower = name.to_ascii_lowercase();
-    domain_patterns
+    DOMAIN_PATTERNS
         .iter()
         .copied()
         .chain(extra_patterns.iter().map(|s| s.as_str()))

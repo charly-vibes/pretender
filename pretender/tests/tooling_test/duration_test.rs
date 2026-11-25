@@ -12,7 +12,34 @@
 
 use crate::common::*;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Creates `tests/unit/test_math.py` inside `dir` so role detection can find it.
+fn write_test_math_file(dir: &Path) -> PathBuf {
+    let test_file = dir.join("tests/unit/test_math.py");
+    std::fs::create_dir_all(
+        test_file
+            .parent()
+            .unwrap_or_else(|| panic!("test file path has no parent")),
+    )
+    .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
+    std::fs::write(&test_file, "def test_addition(): pass")
+        .unwrap_or_else(|e| panic!("write test file: {e:?}"));
+    test_file
+}
+
+/// Writes a JUnit XML report whose single 100ms testcase is `test_file`.
+fn write_junit_report(test_file: &Path) -> PathBuf {
+    let junit_xml = format!(
+        r#"<?xml version="1.0"?>
+    <testsuite name="ts" tests="1">
+        <testcase classname="test_math" name="test_addition" file="{}" time="0.1"/>
+    </testsuite>"#,
+        test_file.display()
+    );
+    let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
+    report_path
+}
 
 /// Helper: set up a temp dir with a pretender.toml, a test file, and a JUnit XML report.
 fn duration_setup() -> (PathBuf, PathBuf, PathBuf) {
@@ -27,25 +54,8 @@ fn duration_setup() -> (PathBuf, PathBuf, PathBuf) {
         integration-test = { paths = [] }
         "#,
     );
-    // Create the test file so role detection can find it
-    let test_file = dir.join("tests/unit/test_math.py");
-    std::fs::create_dir_all(
-        test_file
-            .parent()
-            .unwrap_or_else(|| panic!("test file path has no parent")),
-    )
-    .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
-    std::fs::write(&test_file, "def test_addition(): pass")
-        .unwrap_or_else(|e| panic!("write test file: {e:?}"));
-
-    let junit_xml = format!(
-        r#"<?xml version="1.0"?>
-    <testsuite name="ts" tests="1">
-        <testcase classname="test_math" name="test_addition" file="{}" time="0.1"/>
-    </testsuite>"#,
-        test_file.display()
-    );
-    let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
+    let test_file = write_test_math_file(&dir);
+    let report_path = write_junit_report(&test_file);
     (dir, test_file, report_path)
 }
 
@@ -142,24 +152,8 @@ fn test_duration_no_threshold_no_findings() {
         integration-test = { paths = [] }
         "#,
     );
-    let test_file = dir.join("tests/unit/test_math.py");
-    std::fs::create_dir_all(
-        test_file
-            .parent()
-            .unwrap_or_else(|| panic!("test file path has no parent")),
-    )
-    .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
-    std::fs::write(&test_file, "def test_addition(): pass")
-        .unwrap_or_else(|e| panic!("write test file: {e:?}"));
-
-    let junit_xml = format!(
-        r#"<?xml version="1.0"?>
-    <testsuite name="ts" tests="1">
-        <testcase classname="test_math" name="test_addition" file="{}" time="0.1"/>
-    </testsuite>"#,
-        test_file.display()
-    );
-    let (_, report_path) = write_temp_file("test-report.xml", &junit_xml);
+    let test_file = write_test_math_file(&dir);
+    let report_path = write_junit_report(&test_file);
 
     let output = pretender_cmd()
         .arg("check")

@@ -43,23 +43,29 @@ pub(crate) fn write_json_report(
 ) -> Result<()> {
     let version = env!("CARGO_PKG_VERSION");
     let kind = EnvelopeKind::Check;
-    let remediation_text = "set advisory_until or switch to mode=gate";
     let mut env = Envelope::success(version, kind, report, vec![], vec![]);
-    // GH #35: a lease fail-closed exits 1, so the envelope must not claim
-    // ok:true — surface the reason as a structured warning instead.
+    apply_lease_warning(&mut env, lease_warning);
+    serde_json::to_writer_pretty(&mut *sink, &env)?;
+    writeln!(sink)?;
+    Ok(())
+}
+
+/// GH #35: a lease fail-closed exits 1, so the envelope must not claim
+/// ok:true — surface the reason as a structured warning instead.
+fn apply_lease_warning<T: Serialize>(env: &mut Envelope<T>, lease_warning: Option<String>) {
     if let Some(message) = lease_warning {
         env.ok = false;
         env.warnings.push(Warning {
             rule_name: "advisory-lease".to_string(),
             entity_id: None,
             message,
-            suggested_remediation: Some(remediation_text.to_string()),
+            suggested_remediation: Some(LEASE_REMEDIATION.to_string()),
         });
     }
-    serde_json::to_writer_pretty(&mut *sink, &env)?;
-    writeln!(sink)?;
-    Ok(())
 }
+
+/// Remediation hint attached to the advisory-lease warning.
+const LEASE_REMEDIATION: &str = "set advisory_until or switch to mode=gate";
 
 /// The finished check result: one report per `pretender check` run and
 /// the persisted shape of `.pretender/last-check.json`.

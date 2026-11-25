@@ -10,6 +10,7 @@
 //! expect calls converted to the sanctioned panic-on-failure forms.
 
 use crate::common::*;
+use std::path::Path;
 
 const RUFF_PLUGIN_TOML: &str = r#"
 name = "ruff"
@@ -86,6 +87,28 @@ fn test_ci_generate_non_github_stays_stubbed() {
 
 /// The python_simple.py fixture has a 112-char comment on line 1, which triggers
 /// E501 (line too long > 79) when ruff is run with --select=E501.
+///
+/// Runs `check --format json` with the external-plugin metrics dir pointing
+/// at `metrics_dir`, asserting success and a valid envelope; returns the JSON.
+fn run_ruff_check_json(metrics_dir: &Path) -> serde_json::Value {
+    let (_dir, staged) = stage_fixture("python_simple.py");
+
+    let output = check(&staged)
+        .arg("--format")
+        .arg("json")
+        .env("PRETENDER_METRICS_DIR", metrics_dir)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("valid json output: {e:?}"))
+}
+
 #[test]
 fn test_external_plugin_ruff_json_findings() {
     if std::process::Command::new("ruff")
@@ -101,23 +124,7 @@ fn test_external_plugin_ruff_json_findings() {
     std::fs::write(metrics_dir.join("ruff.toml"), RUFF_PLUGIN_TOML)
         .unwrap_or_else(|e| panic!("write ruff.toml: {e:?}"));
 
-    let (_dir, staged) = stage_fixture("python_simple.py");
-
-    let output = check(&staged)
-        .arg("--format")
-        .arg("json")
-        .env("PRETENDER_METRICS_DIR", &metrics_dir)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .unwrap_or_else(|e| panic!("valid json output: {e:?}"));
+    let json = run_ruff_check_json(&metrics_dir);
 
     let files = json["data"]["files"]
         .as_array()

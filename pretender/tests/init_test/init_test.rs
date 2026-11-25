@@ -151,13 +151,10 @@ fn test_check_and_doctor_report_no_foreign_block_drift() {
     );
 }
 
-#[test]
-fn test_init_interactive_can_install_hook_and_ci() {
-    let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
-
-    let output = init_in(&dir)
+/// Runs `pretender init` interactively, answering the mode/preset/languages/
+/// hook/workflow prompts, and asserts success.
+fn init_interactive(dir: &std::path::Path) -> std::process::Output {
+    let output = init_in(dir)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -180,6 +177,17 @@ fn test_init_interactive_can_install_hook_and_ci() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    output
+}
+
+#[test]
+fn test_init_interactive_can_install_hook_and_ci() {
+    let dir = tempdir();
+    std::fs::create_dir_all(dir.join(".git/hooks"))
+        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+
+    init_interactive(&dir);
+
     let config = std::fs::read_to_string(dir.join("pretender.toml"))
         .unwrap_or_else(|e| panic!("config exists: {e:?}"));
     assert!(config.contains("mode = \"guidance\""), "config: {config}");

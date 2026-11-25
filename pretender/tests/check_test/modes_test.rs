@@ -8,19 +8,30 @@
 //! # Rationale
 //! Moved verbatim from `tests/cli_test.rs` (wave 3 per-command split);
 //! expect/unwrap calls converted to the sanctioned panic-on-failure forms.
+//! The check subprocess invocation is concentrated in `run_check`; exit-code
+//! and stdout/stderr assertions stay in the tests.
 
 use crate::common::*;
+use std::path::Path;
+use std::process::Output;
+
+/// Runs `pretender check <staged> [args...]` with color suppressed and
+/// returns the raw output; exit-code policy stays with the caller.
+fn run_check(staged: &Path, args: &[&str]) -> Output {
+    pretender_cmd()
+        .arg("check")
+        .arg(staged)
+        .args(args)
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"))
+}
 
 #[test]
 fn test_check_default_gate_mode_fails_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .env("NO_COLOR", "1")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &[]);
 
     // Gate is now the fail-closed default (pretender-1te): violations EXIT 1
     assert_eq!(
@@ -36,15 +47,10 @@ fn test_check_default_gate_mode_fails_on_violation() {
 fn test_check_tiered_mode_shows_advisory_not_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("tiered")
-        .arg("--advisory-until")
-        .arg("2099-12-31")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(
+        &staged,
+        &["--mode", "tiered", "--advisory-until", "2099-12-31"],
+    );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -65,14 +71,7 @@ fn test_check_tiered_mode_shows_advisory_not_violation() {
 fn test_check_tiered_missing_lease_fails_closed_with_diagnostic() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("tiered")
-        .env("NO_COLOR", "1")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "tiered"]);
 
     assert_eq!(
         output.status.code(),
@@ -101,16 +100,7 @@ fn test_check_tiered_missing_lease_fails_closed_with_diagnostic() {
 fn test_check_tiered_missing_lease_json_ok_false_with_warning() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("tiered")
-        .arg("--format")
-        .arg("json")
-        .env("NO_COLOR", "1")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "tiered", "--format", "json"]);
 
     assert_eq!(output.status.code(), Some(1));
     let json: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
@@ -136,14 +126,7 @@ fn test_check_tiered_missing_lease_json_ok_false_with_warning() {
 fn test_check_gate_mode_no_lease_no_advisory_diagnostic() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("gate")
-        .env("NO_COLOR", "1")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "gate"]);
 
     assert!(output.status.success(), "gate + green files must pass");
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -157,16 +140,17 @@ fn test_check_gate_mode_no_lease_no_advisory_diagnostic() {
 fn test_check_gate_mode_shows_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("gate")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "gate"]);
 
+    // Gate violations must fail (exit 1)...
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "gate mode must exit 1 on violations; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Only assert the label — color codes vary by terminal
+    // ...and show the violation — assert only the label, color codes vary by terminal
     assert!(
         stdout.contains("VIOLATION"),
         "gate mode should show VIOLATION; stdout: {stdout}"
@@ -177,15 +161,10 @@ fn test_check_gate_mode_shows_violation() {
 fn test_check_guidance_mode_exits_zero_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("guidance")
-        .arg("--advisory-until")
-        .arg("2099-12-31")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(
+        &staged,
+        &["--mode", "guidance", "--advisory-until", "2099-12-31"],
+    );
 
     assert_eq!(
         output.status.code(),
@@ -198,6 +177,10 @@ fn test_check_guidance_mode_exits_zero_on_violation() {
     assert!(
         stdout.contains("ADVISORY"),
         "guidance mode should surface violations as advisories; got: {stdout}",
+    );
+    assert!(
+        !stdout.contains("VIOLATION"),
+        "guidance mode must not label findings as violations; got: {stdout}",
     );
 }
 
@@ -220,7 +203,14 @@ fn test_check_gate_mode_from_config_fails_on_violation() {
         .output()
         .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
+    // The config-driven gate must both fail...
     assert_eq!(output.status.code(), Some(1));
+    // ...and report the violation like the --mode gate spelling does.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("VIOLATION"),
+        "config-selected gate mode should show VIOLATION; stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -255,13 +245,7 @@ fn test_check_tiered_human_output_highlights_yellow_band() {
 fn test_check_gate_mode_fails_on_violation() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("gate")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "gate"]);
 
     assert_eq!(output.status.code(), Some(1));
 }
@@ -271,13 +255,7 @@ fn test_check_default_hides_clean_functions() {
     // python_simple has passing functions — default output should not list them
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("gate")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "gate"]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // No per-function metric lines should appear for a clean file
@@ -293,14 +271,7 @@ fn test_check_default_hides_clean_functions() {
 fn test_check_verbose_shows_all_functions() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = pretender_cmd()
-        .arg("check")
-        .arg(&staged)
-        .arg("--mode")
-        .arg("gate")
-        .arg("--show-all")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = run_check(&staged, &["--mode", "gate", "--show-all"]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
