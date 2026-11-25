@@ -11,7 +11,8 @@
 //! cognitive specs) and per-unit assembly (`build_code_unit`: name, kind,
 //! parameters, assertions, and the weighted block tree the metrics
 //! pipeline consumes). The recursive body walk itself lives in
-//! `engine.rs` as `QueryEngine`'s walk plumbing.
+//! `engine.rs` as `QueryEngine`'s walk plumbing; the parameter-extraction
+//! helpers in `params`.
 //!
 //! # Rationale
 //! Split out of `engine.rs` so the module boundary follows the
@@ -28,8 +29,11 @@ use crate::engine::{
     build_block, compile_query, count_captured_nodes, has_test_marker, index_capture_slots,
     node_span, QueryEngine, WalkCtx, WeightMaps,
 };
-use crate::model::{Block, BranchKind, CodeUnit, Language, Parameter, UnitKind};
+use crate::model::{Block, BranchKind, CodeUnit, Language, UnitKind};
 use crate::plugin::BranchWeights;
+
+/// A tree-sitter node borrowed from the parsed source.
+type TsNode<'a> = tree_sitter::Node<'a>;
 
 #[derive(Clone, Copy)]
 pub(crate) struct BranchCaptureSpec {
@@ -90,26 +94,18 @@ impl QueryEngine {
         source: &[u8],
         captures: &CaptureMap,
     ) -> Result<CodeUnit, String> {
-        let def_node = fc.def_node.ok_or("missing definition node")?;
-        let name_node = fc.name_node.ok_or("missing name node")?;
-        let body_node = fc.body_node.ok_or("missing body node")?;
-
-        let name = unit_name(name_node, source)?;
-        let parameters = unit_parameters(fc, source);
-        let body = self.unit_body(body_node, captures);
-        let kind = determine_unit_kind(def_node, &name);
-        let is_exported = !name.starts_with('_');
-
+        let (def_node, name_node, body_node) = required_capture_nodes(fc)?;
+        let (name, kind, is_exported) = unit_identity(def_node, name_node, source)?;
         Ok(CodeUnit {
             name,
             kind,
             span: node_span(def_node),
-            parameters,
-            body,
-            is_exported,
-            assertions: count_captured_nodes(body_node, &captures.assertions),
+            parameters: unit_parameters(fc, source),
+            body: self.unit_body(body_node, captures),
             parent_class: None,
             has_test_attribute: has_test_marker(def_node, source),
+            is_exported,
+            assertions: count_captured_nodes(body_node, &captures.assertions),
         })
     }
 
@@ -123,23 +119,48 @@ impl QueryEngine {
     }
 }
 
+/// The definition, name, and body nodes a code unit is built from.
+fn required_capture_nodes<'a>(
+    fc: &FunctionCapture<'a>,
+) -> Result<(TsNode<'a>, TsNode<'a>, TsNode<'a>), String> {
+    Ok((
+        fc.def_node.ok_or("missing definition node")?,
+        fc.name_node.ok_or("missing name node")?,
+        fc.body_node.ok_or("missing body node")?,
+    ))
+}
+
+/// Resolve a unit's name, kind, and export flag from its captures.
+fn unit_identity(
+    def_node: TsNode<'_>,
+    name_node: TsNode<'_>,
+    source: &[u8],
+) -> Result<(String, UnitKind, bool), String> {
+    let name = unit_name(name_node, source)?;
+    let is_exported = !name.starts_with('_');
+    let kind = determine_unit_kind(def_node, &name);
+    Ok((name, kind, is_exported))
+}
+
+/// Query capture names mapped to the branch kinds they represent.
+const BRANCH_MAPPING: [(&str, BranchKind); 8] = [
+    ("branch.if", BranchKind::If),
+    ("branch.elif", BranchKind::ElseIf),
+    ("branch.switch_case", BranchKind::SwitchCase),
+    ("branch.loop", BranchKind::Loop),
+    ("branch.catch", BranchKind::Catch),
+    ("branch.ternary", BranchKind::Ternary),
+    ("branch.logical.and", BranchKind::LogicalAnd),
+    ("branch.logical.or", BranchKind::LogicalOr),
+];
+
 /// Resolve adapter weight overrides into per-capture-index branch specs,
 /// skipping branch kinds the query does not capture.
 fn resolve_branch_captures(
     query: &tree_sitter::Query,
     weights: &WeightMaps<'_>,
 ) -> Vec<(u32, BranchCaptureSpec)> {
-    let branch_mapping = [
-        ("branch.if", BranchKind::If),
-        ("branch.elif", BranchKind::ElseIf),
-        ("branch.switch_case", BranchKind::SwitchCase),
-        ("branch.loop", BranchKind::Loop),
-        ("branch.catch", BranchKind::Catch),
-        ("branch.ternary", BranchKind::Ternary),
-        ("branch.logical.and", BranchKind::LogicalAnd),
-        ("branch.logical.or", BranchKind::LogicalOr),
-    ];
-    branch_mapping
+    BRANCH_MAPPING
         .iter()
         .filter_map(|(name, kind)| {
             query
@@ -205,86 +226,6 @@ fn determine_unit_kind(node: tree_sitter::Node, name: &str) -> UnitKind {
     UnitKind::Function
 }
 
-fn extract_params(params_node: tree_sitter::Node, source: &[u8]) -> Vec<Parameter> {
-    let mut params = Vec::new();
-    let mut cursor = params_node.walk();
-    for child in params_node.children(&mut cursor) {
-        if let Some(name) = param_name(&child, source) {
-            params.push(param_entry(&child, name, source));
-        }
-    }
-    params
-}
-
-/// The parameter name a grammar-specific parameter node carries, if any.
-fn param_name(child: &tree_sitter::Node, source: &[u8]) -> Option<String> {
-    match child.kind() {
-        "identifier" => child.utf8_text(source).ok().map(str::to_string),
-        "typed_parameter" | "default_parameter" | "typed_default_parameter" => child
-            .child_by_field_name("name")
-            .and_then(|n| n.utf8_text(source).ok())
-            .map(str::to_string),
-        "parameter" => pattern_param_name(child, source),
-        // Rust `self` parameters (`fn f(&self)` / `fn f(&mut self)`).
-        "self_parameter" | "self" => Some("self".to_string()),
-        "list_splat_pattern" | "dictionary_splat_pattern" => splat_param_name(*child, source),
-        _ => None,
-    }
-}
-
-/// Python/Go-style parameters expose a `name` field; Rust
-/// (tree-sitter-rust) exposes a `pattern` field instead.
-fn pattern_param_name(child: &tree_sitter::Node, source: &[u8]) -> Option<String> {
-    child
-        .child_by_field_name("name")
-        .or_else(|| child.child_by_field_name("pattern"))
-        .and_then(|pattern| {
-            if pattern.kind() == "self" {
-                return Some("self".to_string());
-            }
-            pattern_ident(&pattern, source)
-                .or_else(|| pattern.utf8_text(source).ok().map(str::to_string))
-        })
-}
-
-/// First identifier child of a pattern node, if any.
-fn pattern_ident(pattern: &tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let mut c = pattern.walk();
-    for n in pattern.children(&mut c) {
-        if n.kind() == "identifier" {
-            return n.utf8_text(source).ok().map(str::to_string);
-        }
-    }
-    None
-}
-
-/// Splat parameters keep their `*`/`**` prefix before the identifier.
-fn splat_param_name(child: tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let prefix = if child.kind() == "list_splat_pattern" {
-        "*"
-    } else {
-        "**"
-    };
-    let mut c = child.walk();
-    let ident = child
-        .children(&mut c)
-        .find(|n| n.kind() == "identifier")
-        .and_then(|n| n.utf8_text(source).ok())
-        .map(|s| format!("{prefix}{s}"));
-    ident
-}
-
-fn param_entry(child: &tree_sitter::Node, name: String, source: &[u8]) -> Parameter {
-    Parameter {
-        span: node_span(*child),
-        name,
-        type_name: child
-            .child_by_field_name("type")
-            .and_then(|n| n.utf8_text(source).ok())
-            .map(str::to_string),
-    }
-}
-
 fn unit_name(name_node: tree_sitter::Node, source: &[u8]) -> Result<String, String> {
     Ok(name_node
         .utf8_text(source)
@@ -292,8 +233,6 @@ fn unit_name(name_node: tree_sitter::Node, source: &[u8]) -> Result<String, Stri
         .to_string())
 }
 
-fn unit_parameters(fc: &FunctionCapture, source: &[u8]) -> Vec<Parameter> {
-    fc.params_node
-        .map(|p| extract_params(p, source))
-        .unwrap_or_default()
-}
+mod params;
+
+use params::unit_parameters;

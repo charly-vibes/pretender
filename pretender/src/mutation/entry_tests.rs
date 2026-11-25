@@ -1,16 +1,16 @@
-//! Unit tests for the `mutation_entry` parsers (crate-private items).
+//! Unit tests for the mutation tool-report parsers and site enumeration
+//! (crate-private items).
 //!
-//! Kept in-src because `mutation_entry` is `pub(crate)`: its parser
+//! Kept in-src because `mutation`'s parser modules are crate-private: their
 //! functions are not reachable from the integration-test target. The
 //! tests for the public `mutation` items (detection, scoring, list
 //! parsing) moved verbatim to `tests/tooling_test/mutation_test.rs`.
 
-use super::*;
-use crate::mutation_entry::{
-    build_mutmut_report, enumerate_mutation_sites, parse_cargo_mutants_outcomes,
-    parse_mutmut_summary, parse_stryker_report,
-};
-use std::path::Path;
+use super::cargo_mutants::parse_cargo_mutants_outcomes;
+use super::mutmut::{build_mutmut_report, parse_mutmut_summary};
+use super::sites::enumerate_mutation_sites;
+use super::stryker::parse_stryker_report;
+use std::path::{Path, PathBuf};
 
 // ── cargo-mutants outcomes parser ────────────────────────────────────────
 

@@ -4,24 +4,29 @@
 //! tool (`cargo mutants` / `mutmut` / `stryker`), and hand back normalised
 //! `MutationReport`s or planned-mutant listings.
 //! Responsibilities: extension-based language detection, per-tool command
-//! construction, and delegation of output parsing to `mutation_entry`.
-//! Report types and scoring live in `report`; tool-output parsing in
-//! `mutation_entry`; the entry parsers' unit tests in `entry_tests`.
+//! construction, and delegation of output parsing to the per-tool parser
+//! modules. Report types and scoring live in `report`; dry-run
+//! source-site enumeration in `sites`; the parsers' unit tests in
+//! `entry_tests`.
 
+mod cargo_mutants;
+mod mutmut;
 mod report;
+mod sites;
+mod stryker;
 
 pub use report::{
     compute_score, parse_cargo_mutants_list, MutationReport, PlannedMutant, SurvivingMutant,
 };
 
-use crate::mutation_entry::{
-    build_mutmut_report, enumerate_mutation_sites, parse_cargo_mutants_outcomes,
-    parse_stryker_report,
-};
 use anyhow::{Context, Result};
+use cargo_mutants::parse_cargo_mutants_outcomes;
+use mutmut::build_mutmut_report;
+use sites::enumerate_mutation_sites;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use stryker::parse_stryker_report;
 
 // ── language detection ────────────────────────────────────────────────────────
 
