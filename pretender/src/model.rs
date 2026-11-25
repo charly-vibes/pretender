@@ -221,12 +221,17 @@ pub enum BranchKind {
     LogicalOr,
     CondClause,
     Recur,
+    MatchCase,
+    ComprehensionFilter,
 }
 
 impl BranchKind {
     /// D4: branch-bearing control forms wrap their body one level
     /// deeper; logical operators are expressions and never nest.
     pub(crate) fn nests_body(self) -> bool {
-        !matches!(self, BranchKind::LogicalAnd | BranchKind::LogicalOr)
+        !matches!(
+            self,
+            BranchKind::LogicalAnd | BranchKind::LogicalOr | BranchKind::ComprehensionFilter
+        )
     }
 }

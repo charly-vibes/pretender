@@ -12,6 +12,22 @@
 (except_clause) @branch.catch
 (conditional_expression) @branch.ternary
 
+; Match statements: one branch per case clause (guards are part of the
+; clause and never double-count; `case _:` is still a clause).
+(case_clause) @branch.match_case
+
+; Comprehensions: each for-in clause is a loop, each if filter is a
+; comprehension filter (never wraps a body). The enclosing
+; list/dict/set comprehension or generator expression is not a branch.
+; if_clause is scoped under a comprehension ancestor because the same
+; node kind also appears as a case_clause guard, which must not
+; double-count as its own branch.
+(for_in_clause) @branch.loop
+(list_comprehension (if_clause) @branch.comprehension_filter)
+(dictionary_comprehension (if_clause) @branch.comprehension_filter)
+(set_comprehension (if_clause) @branch.comprehension_filter)
+(generator_expression (if_clause) @branch.comprehension_filter)
+
 ; Logical operators
 (boolean_operator
   operator: "and") @branch.logical.and

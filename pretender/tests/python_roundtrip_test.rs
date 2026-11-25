@@ -12,7 +12,10 @@
 
 use std::path::Path;
 
-use pretender::model::{Language, Module, Parser, Span, TypeDefinition, TypeKind, UnitKind};
+use pretender::metrics::cyclomatic;
+use pretender::model::{
+    BranchKind, CodeUnit, Language, Module, Node, Parser, Span, TypeDefinition, TypeKind, UnitKind,
+};
 use pretender::registry::{lookup, GenericParser};
 
 /// The production record for py, through the public registry API.
@@ -137,4 +140,89 @@ fn python_units_separate_from_type_members() {
         .find(|u| u.name == "__init__")
         .unwrap_or_else(|| panic!("__init__ captured"));
     assert_eq!(ctor.kind, UnitKind::Ctor);
+}
+
+/// Collects branch kinds from a unit's body tree, depth-first.
+fn branch_kinds(unit: &CodeUnit) -> Vec<BranchKind> {
+    fn walk(block: &pretender::model::Block, out: &mut Vec<BranchKind>) {
+        for node in &block.children {
+            match node {
+                Node::Branch(b) => out.push(b.kind),
+                Node::NestedBlock(b) => walk(b, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&unit.body, &mut out);
+    out
+}
+
+fn find_unit<'a>(module: &'a Module, name: &str) -> &'a CodeUnit {
+    module
+        .units
+        .iter()
+        .find(|u| u.name == name)
+        .unwrap_or_else(|| panic!("{name} not captured"))
+}
+
+fn parse_py_source(source: &'static str) -> Module {
+    let record = lookup("py").unwrap_or_else(|| panic!("py must be registered"));
+    let parser = GenericParser { record };
+    let (module, diags) = parser
+        .parse(Path::new("python_branches.py"), source)
+        .unwrap_or_else(|e| panic!("python source must parse: {e:?}"));
+    assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+    module
+}
+
+const MATCH_SAMPLE: &str = "\
+def sort_key(item):
+    match item:
+        case {\"kind\": \"circle\", \"radius\": r}:
+            return 3.14 * r * r
+        case [x, y] if x > y:
+            return x - y
+        case _:
+            return 0
+";
+
+/// Task 3.1: each `case` clause of a Python match statement is one branch
+/// (kind match-case). The wildcard and guarded clauses count too; a guard
+/// is part of its clause and must not double-count.
+#[test]
+fn python_match_statement_counts_one_branch_per_case_clause() {
+    let module = parse_py_source(MATCH_SAMPLE);
+    let unit = find_unit(&module, "sort_key");
+    assert_eq!(cyclomatic(unit), 4, "3 case clauses + base");
+    assert_eq!(
+        branch_kinds(unit),
+        vec![BranchKind::MatchCase; 3],
+        "one match-case branch per case clause"
+    );
+}
+
+const COMPREHENSION_SAMPLE: &str = "\
+def collect(items):
+    kept = [x for x in items if x > 0 if x < 100]
+    return kept
+";
+
+/// Task 3.2: a comprehension's `for` clause is one loop branch and each
+/// `if` filter is one comprehension-filter branch; filters never wrap a
+/// body (no nesting contribution).
+#[test]
+fn python_comprehension_counts_for_clause_and_if_filters() {
+    let module = parse_py_source(COMPREHENSION_SAMPLE);
+    let unit = find_unit(&module, "collect");
+    assert_eq!(cyclomatic(unit), 4, "1 for clause + 2 if filters + base");
+    assert_eq!(
+        branch_kinds(unit),
+        vec![
+            BranchKind::Loop,
+            BranchKind::ComprehensionFilter,
+            BranchKind::ComprehensionFilter
+        ],
+        "loop for the for clause, one comprehension-filter branch per if"
+    );
 }

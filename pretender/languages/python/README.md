@@ -24,6 +24,9 @@ including `elif`, `except`, and ternary expressions.
 | `conditional_expression` | `@branch.ternary` | +1 cyclomatic, +1 cognitive |
 | `boolean_operator` `"and"` | `@branch.logical.and` | +1 cyclomatic, +1 cognitive |
 | `boolean_operator` `"or"` | `@branch.logical.or` | +1 cyclomatic, +1 cognitive |
+| `case_clause` | `@branch.match_case` | +1 cyclomatic, +1 cognitive |
+| `for_in_clause` (comprehension) | `@branch.loop` | +1 cyclomatic, +1 cognitive |
+| `if_clause` (comprehension filter) | `@branch.comprehension_filter` | +1 cyclomatic, +1 cognitive |
 | `call` | `@call` | +1 ABC C-count |
 | `assignment` | `@assign` | +1 ABC A-count |
 | `augmented_assignment` | `@assign` | +1 ABC A-count |

@@ -147,7 +147,7 @@ fn unit_identity(
 }
 
 /// Query capture names mapped to the branch kinds they represent.
-const BRANCH_MAPPING: [(&str, BranchKind); 10] = [
+const BRANCH_MAPPING: [(&str, BranchKind); 12] = [
     ("branch.if", BranchKind::If),
     ("branch.elif", BranchKind::ElseIf),
     ("branch.switch_case", BranchKind::SwitchCase),
@@ -158,6 +158,11 @@ const BRANCH_MAPPING: [(&str, BranchKind); 10] = [
     ("branch.logical.or", BranchKind::LogicalOr),
     ("branch.clause", BranchKind::CondClause),
     ("branch.recur", BranchKind::Recur),
+    ("branch.match_case", BranchKind::MatchCase),
+    (
+        "branch.comprehension_filter",
+        BranchKind::ComprehensionFilter,
+    ),
 ];
 
 /// Resolve adapter weight overrides into per-capture-index branch specs,
