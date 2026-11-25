@@ -103,7 +103,7 @@ fn run_file_checks(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
     facts.file_violations.extend(limit_violation(
         "file_lines",
         ctx.module.lines_total,
-        ctx.thresholds.file_lines_max,
+        ctx.thresholds.file.file_lines_max,
     ));
     check_mock_overuse(ctx, facts, role);
     check_void_mutators(ctx, facts);
@@ -123,7 +123,7 @@ fn detect_module(path: &Path, detector: &RoleDetector) -> Result<Option<Detected
         Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Ok(None),
         Err(e) => {
             return Err(e)
-                .with_context(|| format!("failed to read source file: {}", path.display()))
+                .with_context(|| format!("failed to read source file: {}", path.display()));
         }
     };
 
@@ -144,18 +144,18 @@ fn detect_module(path: &Path, detector: &RoleDetector) -> Result<Option<Detected
 
 /// Mock-overuse detection for test-role files.
 fn check_mock_overuse(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
-    if role == Role::Test && ctx.config.thresholds.test.mock_count_max > 0 {
+    if role == Role::Test && ctx.config.thresholds.test.checks.mock_count_max > 0 {
         let analysis = mock_detector::detect_mocks(
             ctx.source,
             &ctx.module.language,
             &ctx.config.patterns.mock.extra,
             ctx.path,
         );
-        if analysis.total_usage > ctx.config.thresholds.test.mock_count_max {
+        if analysis.total_usage > ctx.config.thresholds.test.checks.mock_count_max {
             facts.file_violations.push(ViolationReport {
                 metric: "mock_count".to_string(),
                 actual: analysis.total_usage as f64,
-                limit: ctx.config.thresholds.test.mock_count_max as f64,
+                limit: ctx.config.thresholds.test.checks.mock_count_max as f64,
                 line: None,
             });
         }
@@ -166,18 +166,18 @@ fn check_mock_overuse(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role)
 /// Void-mutator detection (non-test roles by default, role-specific
 /// threshold).
 fn check_void_mutators(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.thresholds.void_mutators_max > 0 {
+    if ctx.thresholds.file.void_mutators_max > 0 {
         let mutators = mutability_metrics::detect_void_mutators(
             ctx.source,
             &ctx.module.language,
             &ctx.module.units,
             ctx.path,
         );
-        if mutators.len() as u32 > ctx.thresholds.void_mutators_max {
+        if mutators.len() as u32 > ctx.thresholds.file.void_mutators_max {
             facts.file_violations.push(ViolationReport {
                 metric: "void_mutator".to_string(),
                 actual: mutators.len() as f64,
-                limit: ctx.thresholds.void_mutators_max as f64,
+                limit: ctx.thresholds.file.void_mutators_max as f64,
                 line: None,
             });
         }
@@ -186,15 +186,15 @@ fn check_void_mutators(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 
 /// Mutable-state ratio check.
 fn check_mut_ratio(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.config.thresholds.app.mut_ratio_max > 0.0 {
+    if ctx.config.thresholds.app.checks.mut_ratio_max > 0.0 {
         let binding_analysis =
             mutability_metrics::count_mutable_bindings(ctx.source, &ctx.module.language);
         let ratio = binding_analysis.ratio();
-        if ratio > ctx.config.thresholds.app.mut_ratio_max {
+        if ratio > ctx.config.thresholds.app.checks.mut_ratio_max {
             facts.file_violations.push(ViolationReport {
                 metric: "mut_ratio".to_string(),
                 actual: ratio,
-                limit: ctx.config.thresholds.app.mut_ratio_max,
+                limit: ctx.config.thresholds.app.checks.mut_ratio_max,
                 line: None,
             });
         }
@@ -203,13 +203,13 @@ fn check_mut_ratio(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 
 /// Unwrap-density check.
 fn check_unwrap_density(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.thresholds.unwrap_max > 0 {
+    if ctx.thresholds.file.unwrap_max > 0 {
         let sites = error_metrics::detect_unwraps(ctx.source, &ctx.module.language);
-        if sites.len() as u32 > ctx.thresholds.unwrap_max {
+        if sites.len() as u32 > ctx.thresholds.file.unwrap_max {
             facts.file_violations.push(ViolationReport {
                 metric: "unwraps".to_string(),
                 actual: sites.len() as f64,
-                limit: ctx.thresholds.unwrap_max as f64,
+                limit: ctx.thresholds.file.unwrap_max as f64,
                 line: None,
             });
         }
@@ -218,13 +218,13 @@ fn check_unwrap_density(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 
 /// Primitive-obsession check: bool clusters and primitive domain params.
 fn check_primitive_obsession(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.config.thresholds.app.bool_cluster_max > 0
-        || ctx.config.thresholds.app.primitive_param_check
+    if ctx.config.thresholds.app.checks.bool_cluster_max > 0
+        || ctx.config.thresholds.app.checks.primitive_param_check
     {
         let po_results = primitive_obsession::analyze(
             &ctx.module.units,
-            ctx.config.thresholds.app.bool_cluster_max,
-            ctx.config.thresholds.app.primitive_param_check,
+            ctx.config.thresholds.app.checks.bool_cluster_max,
+            ctx.config.thresholds.app.checks.primitive_param_check,
             &[],
         );
         for result in &po_results {
@@ -241,13 +241,13 @@ fn check_po_result(
     result: &primitive_obsession::PrimitiveObsessionAnalysis,
 ) {
     if result.bool_param_count > 0
-        && ctx.config.thresholds.app.bool_cluster_max > 0
-        && result.bool_param_count >= ctx.config.thresholds.app.bool_cluster_max
+        && ctx.config.thresholds.app.checks.bool_cluster_max > 0
+        && result.bool_param_count >= ctx.config.thresholds.app.checks.bool_cluster_max
     {
         facts.file_violations.push(ViolationReport {
             metric: "bool_cluster".to_string(),
             actual: result.bool_param_count as f64,
-            limit: ctx.config.thresholds.app.bool_cluster_max as f64,
+            limit: ctx.config.thresholds.app.checks.bool_cluster_max as f64,
             line: None,
         });
     }
@@ -268,12 +268,14 @@ fn check_po_result(
 /// primitive_field/domain_patterns are app-level only (spec: not
 /// role-mergeable).
 fn check_data_model(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.thresholds.excessive_fields_max > 0 || ctx.config.thresholds.app.primitive_field_check {
+    if ctx.thresholds.file.excessive_fields_max > 0
+        || ctx.config.thresholds.app.checks.primitive_field_check
+    {
         let findings = data_model::analyze(
             &ctx.module.type_definitions,
-            ctx.thresholds.excessive_fields_max,
-            ctx.config.thresholds.app.primitive_field_check,
-            &ctx.config.thresholds.app.domain_patterns,
+            ctx.thresholds.file.excessive_fields_max,
+            ctx.config.thresholds.app.checks.primitive_field_check,
+            &ctx.config.thresholds.app.checks.domain_patterns,
         );
         for finding in findings {
             facts.file_violations.push(ViolationReport {
@@ -288,14 +290,14 @@ fn check_data_model(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 
 /// Inheritance depth check.
 fn check_inheritance_depth(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.config.thresholds.app.inheritance_depth_max > 0 {
+    if ctx.config.thresholds.app.checks.inheritance_depth_max > 0 {
         let ih = inheritance_depth::analyze(ctx.source, &ctx.module.language);
         for class in &ih.classes {
-            if class.depth > ctx.config.thresholds.app.inheritance_depth_max {
+            if class.depth > ctx.config.thresholds.app.checks.inheritance_depth_max {
                 facts.file_violations.push(ViolationReport {
                     metric: "inheritance_depth".to_string(),
                     actual: class.depth as f64,
-                    limit: ctx.config.thresholds.app.inheritance_depth_max as f64,
+                    limit: ctx.config.thresholds.app.checks.inheritance_depth_max as f64,
                     line: None,
                 });
             }
@@ -305,16 +307,16 @@ fn check_inheritance_depth(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 
 /// Lazy test cluster detection for test-role files.
 fn check_lazy_clusters(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
-    if role == Role::Test && ctx.config.thresholds.test.lazy_cluster_min > 0 {
+    if role == Role::Test && ctx.config.thresholds.test.checks.lazy_cluster_min > 0 {
         let clusters = cluster_detector::detect(
             &ctx.module.units,
-            ctx.config.thresholds.test.lazy_cluster_min,
+            ctx.config.thresholds.test.checks.lazy_cluster_min,
         );
         for cluster in &clusters {
             facts.file_violations.push(ViolationReport {
                 metric: "lazy_cluster".to_string(),
                 actual: cluster.count as f64,
-                limit: ctx.config.thresholds.test.lazy_cluster_min as f64,
+                limit: ctx.config.thresholds.test.checks.lazy_cluster_min as f64,
                 line: None,
             });
         }

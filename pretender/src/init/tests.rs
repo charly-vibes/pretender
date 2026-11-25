@@ -86,15 +86,15 @@ fn strict_preset_tables_written() {
     assert_eq!(parsed.thresholds.app.nesting_max, 2);
     assert_eq!(parsed.thresholds.app.params_max, 3);
     assert_eq!(parsed.thresholds.app.abc_max, 25);
-    assert_eq!(parsed.thresholds.app.duplication_pct_max, 4);
+    assert_eq!(parsed.thresholds.app.checks.duplication_pct_max, 4);
     assert_eq!(parsed.thresholds.app.file_lines_max, 300);
     assert_eq!(parsed.thresholds.test.cyclomatic_max, 2);
     assert_eq!(parsed.thresholds.test.cognitive_max, 3);
     assert_eq!(parsed.thresholds.test.function_lines_max, 60);
     assert_eq!(parsed.thresholds.test.nesting_max, 2);
     // enabled-check values identical to the default preset
-    assert_eq!(parsed.thresholds.app.unwrap_max, 5);
-    assert_eq!(parsed.thresholds.test.mock_count_max, 5);
+    assert_eq!(parsed.thresholds.app.checks.unwrap_max, 5);
+    assert_eq!(parsed.thresholds.test.checks.mock_count_max, 5);
 }
 
 /// --preset default writes the default tables, which must round-trip to

@@ -82,29 +82,22 @@ fn base_limit_violations(
     metrics: &MetricValues,
     thresholds: &EffectiveThresholds,
 ) -> Vec<ViolationReport> {
-    limit_violation("cyclomatic", metrics.cyclomatic, thresholds.cyclomatic_max)
-        .into_iter()
-        .chain(limit_violation(
-            "cognitive",
-            metrics.cognitive,
-            thresholds.cognitive_max,
-        ))
-        .chain(limit_violation(
+    let function = &thresholds.function;
+    let limits = [
+        ("cyclomatic", metrics.cyclomatic, function.cyclomatic_max),
+        ("cognitive", metrics.cognitive, function.cognitive_max),
+        (
             "function_lines",
             metrics.function_lines,
-            thresholds.function_lines_max,
-        ))
-        .chain(limit_violation(
-            "params",
-            metrics.params,
-            thresholds.params_max,
-        ))
-        .chain(limit_violation(
-            "nesting_max",
-            metrics.nesting_max,
-            thresholds.nesting_max,
-        ))
-        .chain(limit_violation_f64("abc", metrics.abc, thresholds.abc_max))
+            function.function_lines_max,
+        ),
+        ("params", metrics.params, function.params_max),
+        ("nesting_max", metrics.nesting_max, function.nesting_max),
+    ];
+    limits
+        .into_iter()
+        .filter_map(|(name, actual, max)| limit_violation(name, actual, max))
+        .chain(limit_violation_f64("abc", metrics.abc, function.abc_max))
         .collect()
 }
 
@@ -137,12 +130,15 @@ fn exported_violations(
         return Vec::new();
     }
     let exported_cyclomatic = thresholds
+        .exports
         .exported_cyclomatic_max
         .and_then(|max| limit_violation("exported_cyclomatic", metrics.cyclomatic, max));
     let exported_params = thresholds
+        .exports
         .exported_params_max
         .and_then(|max| limit_violation("exported_params", metrics.params, max));
     let exported_lines = thresholds
+        .exports
         .exported_lines_max
         .and_then(|max| limit_violation("exported_lines", metrics.function_lines, max));
     exported_cyclomatic

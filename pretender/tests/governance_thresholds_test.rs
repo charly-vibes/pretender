@@ -1,7 +1,8 @@
 //! Governance gate .19.3: pretender's effective thresholds must stay within
 //! the reviewed bounds in governance/threshold-floor.toml.
 //!
-//! Effective value = `impl Default` from pretender/src/config.rs merged with
+//! Effective value = `impl Default` from pretender's config module
+//! (src/config.rs and src/config/{thresholds,sections}.rs) merged with
 //! any *honored* pretender.toml `[thresholds]` override. The flat
 //! `[thresholds]` spelling is what serde honors (flattened onto the app
 //! thresholds); the `[thresholds.<table>]` table spelling is ignored by
@@ -24,6 +25,14 @@ const TABLE_STRUCTS: &[(&str, &str)] = &[
     ("coupling", "CouplingThresholds"),
     ("unit-test", "DurationThresholds"),
     ("integration-test", "DurationThresholds"),
+];
+
+/// Flattened sub-structs whose `impl Default` carries part of a table's
+/// leaf defaults (wave 4 ratchet split the two oversized tables; the TOML
+/// spelling is unchanged, so the bounds here are unchanged too).
+const TABLE_GROUPS: &[(&str, &[&str])] = &[
+    ("app", &["AppChecksThresholds"]),
+    ("test", &["TestChecksThresholds"]),
 ];
 
 fn struct_name(table: &str) -> &'static str {
@@ -186,7 +195,15 @@ impl Gate {
                 .expect("parse governance/threshold-floor.toml"),
             config: toml::from_str(&util::read(root, "pretender.toml"))
                 .expect("parse pretender.toml"),
-            source: util::read(root, "pretender/src/config.rs"),
+            // The defaults live across the config module files; a single
+            // concatenated source keeps the `impl Default for <Struct>`
+            // search working over the whole tree.
+            source: format!(
+                "{}{}{}",
+                util::read(root, "pretender/src/config.rs"),
+                util::read(root, "pretender/src/config/thresholds.rs"),
+                util::read(root, "pretender/src/config/sections.rs"),
+            ),
         }
     }
 
@@ -201,7 +218,17 @@ impl Gate {
     fn section_violations(&self, bound: &'static Bound) -> Vec<String> {
         let mut out = Vec::new();
         for (table, entries) in floor_tables(&self.floor_doc, bound.name) {
-            let defaults = struct_defaults(&self.source, struct_name(&table));
+            let mut defaults = struct_defaults(&self.source, struct_name(&table));
+            let groups = TABLE_GROUPS
+                .iter()
+                .find(|(name, _)| *name == table)
+                .map(|(_, groups)| *groups)
+                .unwrap_or(&[]);
+            for group in groups {
+                let group_defaults = struct_defaults(&self.source, group);
+                defaults.nums.extend(group_defaults.nums);
+                defaults.bools.extend(group_defaults.bools);
+            }
             let ctx = TableCtx {
                 bound,
                 table,
