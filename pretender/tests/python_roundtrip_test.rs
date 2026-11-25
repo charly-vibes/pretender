@@ -20,22 +20,35 @@ use pretender::registry::{lookup, GenericParser};
 
 /// The production record for py, through the public registry API.
 fn parser_for_py() -> GenericParser {
-    match lookup("py") {
-        Some(record) => GenericParser { record },
-        None => panic!("py must be registered"),
-    }
+    lookup("py")
+        .map(|record| GenericParser { record })
+        .unwrap_or_else(|| panic!("py must be registered"))
 }
 
 /// Reusable harness pattern (tasks 6.2): the language's real metrics.scm
-/// parses the committed fixture; asserts a clean parse and returns the module.
-fn parse_python_types_fixture() -> Module {
-    let source = include_str!("fixtures/python_types_sample.py");
+/// parses the committed source; asserts a clean parse and returns the module.
+fn parse_py(path: &str, source: &'static str) -> Module {
     let (module, diags) = parser_for_py()
-        .parse(Path::new("python_types_sample.py"), source)
+        .parse(Path::new(path), source)
         .unwrap_or_else(|e| panic!("fixture must parse: {e:?}"));
-
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
     module
+}
+
+/// Types fixture through the production parser (task 6.2 harness).
+fn parse_python_types_fixture() -> Module {
+    parse_py(
+        "python_types_sample.py",
+        include_str!("fixtures/python_types_sample.py"),
+    )
+}
+
+/// Forms fixture through the production parser (1v8k.4 assert-guard).
+fn parse_python_forms_fixture() -> Module {
+    parse_py(
+        "python_forms_sample.py",
+        include_str!("fixtures/python_forms_sample.py"),
+    )
 }
 
 /// Finds the type definition named `name` or panics naming it.
@@ -166,16 +179,6 @@ fn find_unit<'a>(module: &'a Module, name: &str) -> &'a CodeUnit {
         .unwrap_or_else(|| panic!("{name} not captured"))
 }
 
-fn parse_py_source(source: &'static str) -> Module {
-    let record = lookup("py").unwrap_or_else(|| panic!("py must be registered"));
-    let parser = GenericParser { record };
-    let (module, diags) = parser
-        .parse(Path::new("python_branches.py"), source)
-        .unwrap_or_else(|e| panic!("python source must parse: {e:?}"));
-    assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
-    module
-}
-
 const MATCH_SAMPLE: &str = "\
 def sort_key(item):
     match item:
@@ -192,7 +195,7 @@ def sort_key(item):
 /// is part of its clause and must not double-count.
 #[test]
 fn python_match_statement_counts_one_branch_per_case_clause() {
-    let module = parse_py_source(MATCH_SAMPLE);
+    let module = parse_py("python_branches.py", MATCH_SAMPLE);
     let unit = find_unit(&module, "sort_key");
     assert_eq!(cyclomatic(unit), 4, "3 case clauses + base");
     assert_eq!(
@@ -213,7 +216,7 @@ def collect(items):
 /// body (no nesting contribution).
 #[test]
 fn python_comprehension_counts_for_clause_and_if_filters() {
-    let module = parse_py_source(COMPREHENSION_SAMPLE);
+    let module = parse_py("python_branches.py", COMPREHENSION_SAMPLE);
     let unit = find_unit(&module, "collect");
     assert_eq!(cyclomatic(unit), 4, "1 for clause + 2 if filters + base");
     assert_eq!(
@@ -224,5 +227,70 @@ fn python_comprehension_counts_for_clause_and_if_filters() {
             BranchKind::ComprehensionFilter
         ],
         "loop for the for clause, one comprehension-filter branch per if"
+    );
+}
+
+/// Every Python form in the fixture is captured as a unit with the pinned
+/// kind and cyclomatic complexity: async def as a unit, decorated defs with
+/// no decorator complexity, @property/@staticmethod as Method, and nested
+/// defs as their own unit.
+#[test]
+fn python_forms_fixture_kinds_and_cyclomatic() {
+    let module = parse_python_forms_fixture();
+    let expected: Vec<(&str, UnitKind, u32)> = vec![
+        ("fetch", UnitKind::Function, 1),
+        ("make_greeter", UnitKind::Function, 1),
+        ("greet", UnitKind::Function, 2),
+        ("size", UnitKind::Method, 1),
+        ("tag", UnitKind::Method, 1),
+        ("pulse", UnitKind::Method, 1),
+        ("shield", UnitKind::Method, 3),
+        ("sieve", UnitKind::Method, 6),
+    ];
+    let got: Vec<(&str, UnitKind, u32)> = module
+        .units
+        .iter()
+        .map(|u| (u.name.as_str(), u.kind, cyclomatic(u)))
+        .collect();
+    assert_eq!(
+        got, expected,
+        "each form captured with pinned kind/complexity"
+    );
+}
+
+/// The nested def's branch and call stay out of the parent's body metrics
+/// while being reported on the nested unit itself.
+#[test]
+fn python_nested_def_excluded_from_parent_body() {
+    let module = parse_python_forms_fixture();
+    let parent = find_unit(&module, "make_greeter");
+    assert_eq!(cyclomatic(parent), 1, "greet's if must not leak in");
+    assert!(
+        branch_kinds(parent).is_empty(),
+        "greet's branch must not appear in the parent body tree"
+    );
+    let greet = find_unit(&module, "greet");
+    assert!(greet.span.start_line > parent.span.start_line);
+    assert!(greet.span.end_line < parent.span.end_line);
+}
+
+/// except* groups count one catch branch per group; comprehension fors are loops, filters are filters.
+#[test]
+fn python_except_groups_and_comprehension_forms() {
+    let module = parse_python_forms_fixture();
+    assert_eq!(
+        branch_kinds(find_unit(&module, "shield")),
+        vec![BranchKind::Catch; 2],
+        "one catch branch per except* group"
+    );
+    assert_eq!(
+        branch_kinds(find_unit(&module, "sieve")),
+        vec![
+            BranchKind::Loop,
+            BranchKind::ComprehensionFilter,
+            BranchKind::ComprehensionFilter,
+            BranchKind::Loop,
+            BranchKind::Loop,
+        ]
     );
 }
