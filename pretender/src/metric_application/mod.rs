@@ -30,7 +30,7 @@ use crate::engine::{
     node_span, QueryEngine, WalkCtx, WeightMaps,
 };
 use crate::model::{Block, BranchKind, CodeUnit, Language, UnitKind};
-use crate::plugin::BranchWeights;
+use crate::plugin::{BranchWeights, NestingConfig};
 
 /// A tree-sitter node borrowed from the parsed source.
 type TsNode<'a> = tree_sitter::Node<'a>;
@@ -51,6 +51,7 @@ impl QueryEngine {
     ) -> Result<Self> {
         let empty_branches = BTreeMap::new();
         let empty_calls = BTreeMap::new();
+        let default_nesting = NestingConfig::default();
         Self::new_with_branch_weights(
             language,
             lang_kind,
@@ -58,6 +59,7 @@ impl QueryEngine {
             &WeightMaps {
                 branch: &empty_branches,
                 call: &empty_calls,
+                nesting: &default_nesting,
             },
         )
     }
@@ -77,6 +79,7 @@ impl QueryEngine {
             query,
             slots,
             call_weights: weights.call.clone(),
+            wrap_branch_bodies: weights.nesting.wrap_branch_bodies,
         })
     }
 
@@ -113,6 +116,7 @@ impl QueryEngine {
         let walk_ctx = WalkCtx {
             captures,
             call_weights: &self.call_weights,
+            wrap_branch_bodies: self.wrap_branch_bodies,
             nesting: 0,
         };
         build_block(&walk_ctx, body_node)
