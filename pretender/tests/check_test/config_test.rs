@@ -26,7 +26,8 @@ fn test_check_rust_raw_local_no_parse_error_warning() {
         "fn f(x: &str) -> usize {\n    let raw = x.to_string();\n    raw.len() + (&raw).len()\n}\n",
     )
     .unwrap_or_else(|e| panic!("write repro.rs: {e:?}"));
-    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").unwrap_or_else(|e| panic!("write config: {e:?}"));
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n")
+        .unwrap_or_else(|e| panic!("write config: {e:?}"));
 
     let output = check_in(&dir, &source)
         .output()
@@ -65,7 +66,8 @@ fn test_check_rust_raw_local_no_parse_error_warning() {
 fn test_check_warns_when_no_config() {
     let dir = tempdir();
     let source = dir.join("hello.py");
-    std::fs::write(&source, "def hello():\n    pass\n").unwrap_or_else(|e| panic!("write source: {e:?}"));
+    std::fs::write(&source, "def hello():\n    pass\n")
+        .unwrap_or_else(|e| panic!("write source: {e:?}"));
 
     let output = check_in(&dir, &source)
         .output()
@@ -86,8 +88,10 @@ fn test_check_warns_when_no_config() {
 fn test_check_no_warning_when_config_present() {
     let dir = tempdir();
     let source = dir.join("hello.py");
-    std::fs::write(&source, "def hello():\n    pass\n").unwrap_or_else(|e| panic!("write source: {e:?}"));
-    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").unwrap_or_else(|e| panic!("write config: {e:?}"));
+    std::fs::write(&source, "def hello():\n    pass\n")
+        .unwrap_or_else(|e| panic!("write source: {e:?}"));
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n")
+        .unwrap_or_else(|e| panic!("write config: {e:?}"));
 
     let output = check_in(&dir, &source)
         .output()
@@ -109,8 +113,10 @@ fn test_empty_config_file_falls_back_to_defaults_for_check() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../tests/fixtures")
         .join("python_simple.py");
-    std::fs::copy(&src, dir.join("python_simple.py")).unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
-    std::fs::write(dir.join("pretender.toml"), "").unwrap_or_else(|e| panic!("write empty config: {e:?}"));
+    std::fs::copy(&src, dir.join("python_simple.py"))
+        .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+    std::fs::write(dir.join("pretender.toml"), "")
+        .unwrap_or_else(|e| panic!("write empty config: {e:?}"));
 
     let output = check(&dir.join("python_simple.py"))
         .output()
@@ -160,8 +166,10 @@ fn test_check_warns_on_unsupported_language_paths() {
 #[test]
 fn test_check_no_warning_when_supported_language_found() {
     let dir = tempdir();
-    std::fs::write(dir.join("main.clj"), "(ns my-app)\n").unwrap_or_else(|e| panic!("write clojure file: {e:?}"));
-    std::fs::write(dir.join("main.py"), "def hello(): pass\n").unwrap_or_else(|e| panic!("write python file: {e:?}"));
+    std::fs::write(dir.join("main.clj"), "(ns my-app)\n")
+        .unwrap_or_else(|e| panic!("write clojure file: {e:?}"));
+    std::fs::write(dir.join("main.py"), "def hello(): pass\n")
+        .unwrap_or_else(|e| panic!("write python file: {e:?}"));
 
     let output = pretender_cmd()
         .arg("check")
@@ -181,7 +189,9 @@ fn test_check_no_warning_when_supported_language_found() {
 fn test_csharp_check() {
     let (_dir, staged) = stage_fixture("csharp_sample.cs");
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert!(
         output.status.success(),

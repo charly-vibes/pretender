@@ -120,7 +120,9 @@ fn test_check_tiered_missing_lease_json_ok_false_with_warning() {
         serde_json::json!(false),
         "envelope ok must agree with the exit code; got: {json}"
     );
-    let warnings = json["warnings"].as_array().unwrap_or_else(|| panic!("warnings array"));
+    let warnings = json["warnings"]
+        .as_array()
+        .unwrap_or_else(|| panic!("warnings array"));
     assert!(
         warnings.iter().any(|w| {
             let msg = w["message"].as_str().unwrap_or("");
@@ -203,7 +205,8 @@ fn test_check_guidance_mode_exits_zero_on_violation() {
 fn test_check_gate_mode_from_config_fails_on_violation() {
     let dir = tempdir();
     let staged = dir.join("python_violator.py");
-    std::fs::copy(source_fixture("python_violator.py"), &staged).unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+    std::fs::copy(source_fixture("python_violator.py"), &staged)
+        .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
     std::fs::write(dir.join("pretender.toml"), "[pretender]\nmode = \"gate\"\n")
         .unwrap_or_else(|e| panic!("write config: {e:?}"));
 

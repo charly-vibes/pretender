@@ -12,9 +12,9 @@
 //!
 //! # Rationale
 //! Extracted verbatim from main.rs (pretender-5zo.2.2); the original
-//! 67-line `collect_path` and 37-line `is_supported_source` were split
-//! into verbatim-behaving helpers while moving so walk order, filtering,
-//! and error semantics stay identical within the structural limits.
+//! 67-line `collect_path` and 37-line `is_supported_source` split into
+//! verbatim-behaving helpers so walk order and error semantics stay
+//! identical within the structural limits.
 use anyhow::{Context, Result};
 use pretender::config::Config;
 use std::collections::HashSet;
@@ -39,12 +39,8 @@ pub(super) fn apply_file_filter(
     files
         .into_iter()
         .filter(|f| {
-            let abs = if f.is_absolute() {
-                f.clone()
-            } else {
-                cwd.join(f)
-            };
-            let canonical = std::fs::canonicalize(&abs).unwrap_or(abs);
+            let joined = cwd.join(f);
+            let canonical = std::fs::canonicalize(&joined).unwrap_or(joined);
             allowed.contains(&canonical)
         })
         .collect()
@@ -138,8 +134,24 @@ fn is_supported_source(path: &Path) -> bool {
 fn is_supported_extension(ext: &str) -> bool {
     matches!(
         ext,
-        "cs" | "clj" | "cljs" | "cljc" | "edn" | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hxx"
-            | "go" | "java" | "jl" | "js" | "jsx" | "mjs" | "cjs"
+        "cs" | "clj"
+            | "cljs"
+            | "cljc"
+            | "edn"
+            | "c"
+            | "h"
+            | "cpp"
+            | "cc"
+            | "cxx"
+            | "hpp"
+            | "hxx"
+            | "go"
+            | "java"
+            | "jl"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
     ) || matches!(
         ext,
         "py" | "r" | "R" | "rb" | "rs" | "ts" | "mts" | "tsx" | "cts"
@@ -202,8 +214,8 @@ fn walk_with_gitignore(opts: &CollectOpts<'_>, path: &Path, out: &mut Vec<PathBu
     builder.hidden(false);
     builder.filter_entry(|e| e.file_name() != ".git");
     for entry in builder.build() {
-        let entry = entry
-            .with_context(|| format!("failed to walk directory: {}", path.display()))?;
+        let entry =
+            entry.with_context(|| format!("failed to walk directory: {}", path.display()))?;
         let entry_path = entry.path();
         if entry_path == path || is_excluded(opts.exclude, entry_path) {
             continue;
@@ -242,8 +254,7 @@ mod gitignore_walk_tests {
     /// unwrapping, keeping the file's unwrap count within the structural
     /// limit.
     fn fs_write(path: &std::path::Path, contents: &str) {
-        std::fs::write(path, contents)
-            .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        std::fs::write(path, contents).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
     }
 
     /// Temp repo fixture: git-initialized, with `target/` and `vendor/`

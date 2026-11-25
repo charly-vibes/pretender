@@ -37,10 +37,7 @@ pub(super) fn metric_to_rule_key(metric: &str) -> &str {
 }
 
 /// Compute and score one code unit against role-merged thresholds.
-pub(super) fn build_unit_report(
-    unit: &CodeUnit,
-    thresholds: &EffectiveThresholds,
-) -> UnitReport {
+pub(super) fn build_unit_report(unit: &CodeUnit, thresholds: &EffectiveThresholds) -> UnitReport {
     let metrics = unit_metrics(unit);
     let violations = unit_violations(unit, &metrics, thresholds);
     UnitReport {
@@ -97,7 +94,11 @@ fn base_limit_violations(
             metrics.function_lines,
             thresholds.function_lines_max,
         ))
-        .chain(limit_violation("params", metrics.params, thresholds.params_max))
+        .chain(limit_violation(
+            "params",
+            metrics.params,
+            thresholds.params_max,
+        ))
         .chain(limit_violation(
             "nesting_max",
             metrics.nesting_max,
@@ -121,7 +122,9 @@ fn min_assertion_violation(
     if !(unit.has_test_attribute || has_test_name(&unit.name)) {
         return Vec::new();
     }
-    min_violation("min_assertions", metrics.assertions, min).into_iter().collect()
+    min_violation("min_assertions", metrics.assertions, min)
+        .into_iter()
+        .collect()
 }
 
 /// The exported-only limits for exported units, in the original order.
@@ -150,7 +153,11 @@ fn exported_violations(
 }
 
 /// A violation when `actual` exceeds `max`.
-pub(super) fn limit_violation(metric: &'static str, actual: u32, max: u32) -> Option<ViolationReport> {
+pub(super) fn limit_violation(
+    metric: &'static str,
+    actual: u32,
+    max: u32,
+) -> Option<ViolationReport> {
     (actual > max).then(|| ViolationReport {
         metric: metric.to_string(),
         actual: actual as f64,

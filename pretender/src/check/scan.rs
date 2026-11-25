@@ -81,11 +81,7 @@ fn select_check_files(args: &CheckArgs, config: &Config) -> Result<Option<Vec<Pa
 fn warn_unsupported_paths(args: &CheckArgs, files: &[PathBuf]) {
     let explicit_paths = !args.staged && !args.diff_only && args.diff_base.is_none();
     if explicit_paths && !files.iter().any(|f| get_parser(f).is_ok()) {
-        let unsupported: Vec<String> = args
-            .paths
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect();
+        let unsupported: Vec<String> = args.paths.iter().map(|p| p.display().to_string()).collect();
         eprintln!(
             "warning: no files matched a supported grammar in: {}",
             unsupported.join(", ")
@@ -200,8 +196,7 @@ fn run_test_duration_pass(
     let timings = test_report::parse_junit(&report_path, config.execute.test_time_unit)
         .context("failed to parse JUnit XML report")?;
     let search_root = std::env::current_dir().context("failed to get current directory")?;
-    report.test_findings =
-        test_report::evaluate_duration(&timings, detector, config, &search_root);
+    report.test_findings = test_report::evaluate_duration(&timings, detector, config, &search_root);
     Ok(())
 }
 
@@ -274,10 +269,7 @@ fn wait_test_result(child: &mut std::process::Child, timeout: std::time::Duratio
             true
         }
         Ok(None) => {
-            eprintln!(
-                "warning: test_cmd timed out after {}s",
-                timeout.as_secs()
-            );
+            eprintln!("warning: test_cmd timed out after {}s", timeout.as_secs());
             let _ = child.kill();
             let _ = child.wait();
             false
@@ -316,8 +308,7 @@ pub(crate) fn get_parser(path: &Path) -> Result<Box<dyn model::Parser>> {
         .extension()
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow!("missing file extension for path: {}", path.display()))?;
-    parser_for_extension(ext)
-        .ok_or_else(|| anyhow!("unsupported file extension '.{}'", ext))
+    parser_for_extension(ext).ok_or_else(|| anyhow!("unsupported file extension '.{}'", ext))
 }
 
 /// Parser lookup for the first half of the supported extensions.

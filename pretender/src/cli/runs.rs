@@ -26,7 +26,7 @@ use anyhow::{anyhow, Context, Result};
 use genesis::envelope::{Envelope, EnvelopeKind};
 use genesis::feedback::{self as genesis_feedback, FeedbackArgs as GenesisFeedbackArgs};
 use pretender::model::Metric;
-use pretender::{duplication, doctor, explain, metrics, model, mutation};
+use pretender::{doctor, duplication, explain, metrics, model, mutation};
 use std::cmp::Reverse;
 use std::fs;
 use std::path::PathBuf;
@@ -62,8 +62,11 @@ impl Executable for FeedbackArgs {
         let repo = extract_repo_from_cargo_toml()?;
         let project_root = std::env::current_dir().context("failed to get current directory")?;
 
-        let genesis_args =
-            GenesisFeedbackArgs::new(feedback_kind_str(self.kind), self.dry_run, self.from_last_error);
+        let genesis_args = GenesisFeedbackArgs::new(
+            feedback_kind_str(self.kind),
+            self.dry_run,
+            self.from_last_error,
+        );
         match genesis_feedback::handle_feedback(
             &genesis_args,
             env!("CARGO_PKG_NAME"),
@@ -345,7 +348,6 @@ fn print_mutation_report(report: &mutation::MutationReport) {
         }
     }
 }
-
 
 #[cfg(test)]
 mod managed_block_ownership_tests {

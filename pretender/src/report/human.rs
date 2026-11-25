@@ -13,8 +13,8 @@
 //! stage helpers so every function fits the gate's limits; bodies moved
 //! verbatim from `main.rs`.
 
-use super::{CheckReport, FileReport, UnitReport};
 use super::summary::{fmt_metric, summarize_file, Severity};
+use super::{CheckReport, FileReport, UnitReport};
 use anyhow::Result;
 use pretender::config::{Bands, Mode};
 use pretender::test_report::TestDurationFinding;
@@ -73,6 +73,25 @@ pub(crate) fn write_human_report(
     write_human_test_findings(sink, report, blocking, &palette)
 }
 
+/// The (icon, accent) pair a file's severity renders with. Gate mode stains
+/// red findings with the hard-fail icon; advisory modes keep them yellow.
+fn severity_marker(
+    severity: Severity,
+    palette: &HumanPalette,
+    blocking: bool,
+) -> (&'static str, &'static str) {
+    let red_accent = if blocking {
+        palette.red
+    } else {
+        palette.yellow
+    };
+    match severity {
+        Severity::Green => ("✓", palette.green),
+        Severity::Yellow => ("⚠", palette.yellow),
+        Severity::Red => (palette.icon, red_accent),
+    }
+}
+
 fn write_human_file(
     sink: &mut dyn Write,
     file: &FileReport,
@@ -81,11 +100,7 @@ fn write_human_file(
 ) -> Result<()> {
     let blocking = matches!(opts.mode, Mode::Gate);
     let summary = summarize_file(file, opts.bands);
-    let (icon, accent) = match summary.severity {
-        Severity::Green => ("✓", palette.green),
-        Severity::Yellow => ("⚠", palette.yellow),
-        Severity::Red => (palette.icon, if blocking { palette.red } else { palette.yellow }),
-    };
+    let (icon, accent) = severity_marker(summary.severity, palette, blocking);
 
     writeln!(
         sink,
@@ -186,12 +201,7 @@ fn write_human_annotations(
         writeln!(
             sink,
             "  {}EXTERNAL{} {} {} line {}: {}",
-            palette.red,
-            palette.reset,
-            finding.source,
-            code,
-            finding.line,
-            finding.message
+            palette.red, palette.reset, finding.source, code, finding.line, finding.message
         )?;
     }
     Ok(())
@@ -214,7 +224,10 @@ fn write_human_test_findings(
         writeln!(
             sink,
             "{}{}{} {} test duration violation(s)",
-            palette.accent, palette.label, palette.reset, report.test_findings.len(),
+            palette.accent,
+            palette.label,
+            palette.reset,
+            report.test_findings.len(),
         )?;
     }
     Ok(())

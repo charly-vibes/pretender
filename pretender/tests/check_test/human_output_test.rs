@@ -35,9 +35,10 @@ fn test_check_output_flag_writes_to_file() {
         String::from_utf8_lossy(&output.stdout)
     );
 
-    let written = std::fs::read_to_string(&out_path).unwrap_or_else(|e| panic!("report file should exist: {e:?}"));
-    let json: serde_json::Value =
-        serde_json::from_str(&written).unwrap_or_else(|e| panic!("report file should be valid json: {e:?}"));
+    let written = std::fs::read_to_string(&out_path)
+        .unwrap_or_else(|e| panic!("report file should exist: {e:?}"));
+    let json: serde_json::Value = serde_json::from_str(&written)
+        .unwrap_or_else(|e| panic!("report file should be valid json: {e:?}"));
     assert_eq!(json["data"]["files"].as_array().map(Vec::len), Some(1));
 }
 
@@ -57,7 +58,8 @@ fn test_check_human_output_to_file_is_uncolored() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let written = std::fs::read_to_string(&out_path).unwrap_or_else(|e| panic!("report file should exist: {e:?}"));
+    let written = std::fs::read_to_string(&out_path)
+        .unwrap_or_else(|e| panic!("report file should exist: {e:?}"));
     assert!(
         !written.contains('\u{1b}'),
         "report written to file must not contain ANSI escape sequences: {written:?}"
@@ -68,7 +70,9 @@ fn test_check_human_output_to_file_is_uncolored() {
 fn test_check_human_output_surfaces_violations() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Default mode is tiered → ⚠ ADVISORY (not ✗ VIOLATION)
@@ -92,7 +96,9 @@ fn test_check_human_output_surfaces_violations() {
 fn test_check_human_output_reports_cognitive_violations() {
     let (_dir, staged) = stage_fixture("python_cognitive.py");
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -185,8 +191,7 @@ fn test_check_sarif_output_structure() {
     let (_dir, staged) = stage_fixture("python_violator.py");
 
     let output = check(&staged)
-        .arg("--format")
-        .arg("sarif")
+        .args(["--format", "sarif"])
         .output()
         .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
@@ -196,8 +201,8 @@ fn test_check_sarif_output_structure() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let sarif: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid SARIF JSON: {e:?}"));
+    let sarif: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid SARIF JSON: {e:?}"));
 
     assert_eq!(
         sarif["version"].as_str(),
@@ -206,7 +211,9 @@ fn test_check_sarif_output_structure() {
     );
     assert!(sarif["$schema"].as_str().is_some(), "must have $schema");
 
-    let runs = sarif["runs"].as_array().unwrap_or_else(|| panic!("must have runs array"));
+    let runs = sarif["runs"]
+        .as_array()
+        .unwrap_or_else(|| panic!("must have runs array"));
     assert_eq!(runs.len(), 1, "must have exactly one run");
 
     let run = &runs[0];
@@ -227,35 +234,43 @@ fn test_check_sarif_output_structure() {
         assert!(rule["id"].as_str().is_some(), "each rule must have an id");
     }
 
-    let results = run["results"].as_array().unwrap_or_else(|| panic!("must have results array"));
+    let results = run["results"]
+        .as_array()
+        .unwrap_or_else(|| panic!("must have results array"));
     assert!(
         !results.is_empty(),
         "results must not be empty for a file with violations"
     );
     for result in results {
-        assert!(
-            result["ruleId"].as_str().is_some(),
-            "each result must have ruleId"
-        );
-        assert!(
-            result["message"]["text"].as_str().is_some(),
-            "each result must have message.text"
-        );
-        let locations = result["locations"]
-            .as_array()
-            .unwrap_or_else(|| panic!("each result must have locations"));
-        assert!(
-            !locations.is_empty(),
-            "each result must have at least one location"
-        );
-        let phys = &locations[0]["physicalLocation"];
-        assert!(
-            phys["artifactLocation"]["uri"].as_str().is_some(),
-            "must have uri"
-        );
-        assert!(
-            phys["region"]["startLine"].as_i64().is_some(),
-            "must have startLine"
-        );
+        assert_result_shape(result);
     }
+}
+
+/// Every result carries ruleId, message.text, and one physical location with
+/// uri + startLine — the minimum a SARIF consumer needs to route a finding.
+fn assert_result_shape(result: &serde_json::Value) {
+    assert!(
+        result["ruleId"].as_str().is_some(),
+        "each result must have ruleId"
+    );
+    assert!(
+        result["message"]["text"].as_str().is_some(),
+        "each result must have message.text"
+    );
+    let locations = result["locations"]
+        .as_array()
+        .unwrap_or_else(|| panic!("each result must have locations"));
+    assert!(
+        !locations.is_empty(),
+        "each result must have at least one location"
+    );
+    let phys = &locations[0]["physicalLocation"];
+    assert!(
+        phys["artifactLocation"]["uri"].as_str().is_some(),
+        "must have uri"
+    );
+    assert!(
+        phys["region"]["startLine"].as_i64().is_some(),
+        "must have startLine"
+    );
 }

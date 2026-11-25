@@ -17,12 +17,13 @@
 //! functions were split into verbatim-behaving helpers while moving so
 //! every function lands within the structural limits unchanged.
 use crate::report::{CheckReport, FileReport};
-use pretender::config::{Mode, is_lease_expired};
+use pretender::config::{is_lease_expired, Mode};
 use pretender::history;
 use std::collections::HashSet;
 use std::process::ExitCode;
 
 use super::unit::metric_to_rule_key;
+use crate::report::ViolationReport;
 
 /// Gate baseline location: next to pretender.toml (repo root), so it can be
 /// committed and gate mode behaves identically in CI.
@@ -97,11 +98,7 @@ fn has_gating_finding(report: &CheckReport, baselined: &HashSet<String>) -> bool
     let has_cycle = !report.cycles.is_empty();
     let has_duration_violation = !report.test_findings.is_empty();
 
-    has_violation
-        || has_skipped
-        || has_coupling_violation
-        || has_cycle
-        || has_duration_violation
+    has_violation || has_skipped || has_coupling_violation || has_cycle || has_duration_violation
 }
 
 /// A metric violation as a stable finding: everything needed to derive the
@@ -129,33 +126,39 @@ pub(crate) fn violation_findings(report: &CheckReport) -> Vec<ViolationFinding> 
     findings
 }
 
+/// One shared finding shape for file-level and unit-level violations.
+fn finding(
+    path: &str,
+    unit_name: Option<String>,
+    file: &FileReport,
+    violation: &ViolationReport,
+) -> ViolationFinding {
+    ViolationFinding {
+        path: path.to_string(),
+        unit_name,
+        role: file.role.clone(),
+        metric: violation.metric.clone(),
+        rule_key: metric_to_rule_key(&violation.metric).to_string(),
+        actual: violation.actual,
+        limit: violation.limit,
+    }
+}
+
 /// Collect one file's file-scope and unit-scope findings. The leading "./"
 /// is normalized away so fingerprints are stable regardless of how the CLI
 /// path was spelled (e.g. "src/foo.rs" vs "./src/foo.rs").
 fn collect_file_findings(out: &mut Vec<ViolationFinding>, file: &FileReport) {
-    let path = file.path.strip_prefix("./").unwrap_or(&file.path).to_string();
+    let path = file
+        .path
+        .strip_prefix("./")
+        .unwrap_or(&file.path)
+        .to_string();
     for violation in &file.file_violations {
-        out.push(ViolationFinding {
-            path: path.clone(),
-            unit_name: None,
-            role: file.role.clone(),
-            metric: violation.metric.clone(),
-            rule_key: metric_to_rule_key(&violation.metric).to_string(),
-            actual: violation.actual,
-            limit: violation.limit,
-        });
+        out.push(finding(&path, None, file, violation));
     }
     for unit in &file.units {
         for violation in &unit.violations {
-            out.push(ViolationFinding {
-                path: path.clone(),
-                unit_name: Some(unit.name.clone()),
-                role: file.role.clone(),
-                metric: violation.metric.clone(),
-                rule_key: metric_to_rule_key(&violation.metric).to_string(),
-                actual: violation.actual,
-                limit: violation.limit,
-            });
+            out.push(finding(&path, Some(unit.name.clone()), file, violation));
         }
     }
 }

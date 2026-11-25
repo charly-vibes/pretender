@@ -11,8 +11,33 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BASELINE_NAME: &str = "pretender-baseline.json";
-const TEST_PATH: &str = "pretender/src/main.rs";
-const TEST_RULE: &str = "function_lines_max";
+
+/// Picks the selector exercised by the recipe run from the committed ledger
+/// itself: the first finding ID's path-part and rule-part. The selector must
+/// track the live ledger — the epic's whole point is that rows disappear as
+/// refactors land, so any hard-coded (path, rule) fixture would break by design.
+fn pick_selector(baseline: &serde_json::Value) -> (String, String) {
+    let first = baseline["finding_ids"]
+        .as_array()
+        .unwrap_or_else(|| panic!("finding_ids is an array"))
+        .first()
+        .and_then(|id| id.as_str())
+        .unwrap_or_else(|| {
+            panic!("committed ledger must retain at least one finding for the fixture")
+        })
+        .to_string();
+    let parts: Vec<&str> = first.split("::").collect();
+    (
+        parts
+            .first()
+            .unwrap_or_else(|| panic!("ID has a path part"))
+            .to_string(),
+        parts
+            .last()
+            .unwrap_or_else(|| panic!("ID has a rule part"))
+            .to_string(),
+    )
+}
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -51,24 +76,21 @@ fn count_matching(baseline: &serde_json::Value, selector: (&str, &str)) -> usize
 }
 
 /// Runs the recipe on a temp copy of the committed baseline and returns
-/// (original, filtered, matched count, the documented run ID).
-fn run_dogfood_red_on_temp_copy() -> (serde_json::Value, serde_json::Value, usize, String) {
+/// (original, filtered, matched count, the (path, rule) selector used).
+fn run_dogfood_red_on_temp_copy() -> (
+    serde_json::Value,
+    serde_json::Value,
+    usize,
+    (String, String),
+) {
     let root = repo_root();
     let original_bytes = committed_baseline_bytes();
     let original: serde_json::Value = serde_json::from_slice(&original_bytes)
         .unwrap_or_else(|e| panic!("committed baseline parses: {e}"));
 
-    let matched = count_matching(&original, (TEST_PATH, TEST_RULE));
+    let (test_path, test_rule) = pick_selector(&original);
+    let matched = count_matching(&original, (&test_path, &test_rule));
     assert!(matched > 0, "fixture must contain matching IDs to remove");
-    let run_id = format!("{TEST_PATH}::run::{TEST_RULE}");
-    assert!(
-        original["finding_ids"]
-            .as_array()
-            .unwrap_or_else(|| panic!("finding_ids is an array"))
-            .iter()
-            .any(|id| id.as_str() == Some(run_id.as_str())),
-        "fixture must contain the documented {run_id} ID"
-    );
 
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
     let baseline = dir.path().join(BASELINE_NAME);
@@ -78,7 +100,7 @@ fn run_dogfood_red_on_temp_copy() -> (serde_json::Value, serde_json::Value, usiz
     let output = Command::new("just")
         .arg("--justfile")
         .arg(root.join("justfile"))
-        .args(["dogfood-red", TEST_PATH, TEST_RULE])
+        .args(["dogfood-red", &test_path, &test_rule])
         .arg(&baseline)
         .current_dir(&root)
         .output()
@@ -94,12 +116,12 @@ fn run_dogfood_red_on_temp_copy() -> (serde_json::Value, serde_json::Value, usiz
         std::fs::read(&baseline).unwrap_or_else(|e| panic!("read filtered baseline: {e}"));
     let filtered: serde_json::Value = serde_json::from_slice(&filtered_bytes)
         .unwrap_or_else(|e| panic!("filtered baseline parses: {e}"));
-    (original, filtered, matched, run_id)
+    (original, filtered, matched, (test_path, test_rule))
 }
 
 #[test]
 fn dogfood_red_removes_exactly_matching_ids_from_temp_copy() {
-    let (original, filtered, matched, run_id) = run_dogfood_red_on_temp_copy();
+    let (original, filtered, matched, (test_path, test_rule)) = run_dogfood_red_on_temp_copy();
 
     assert_eq!(
         filtered["schema_version"], original["schema_version"],
@@ -122,7 +144,7 @@ fn dogfood_red_removes_exactly_matching_ids_from_temp_copy() {
         "exactly the {matched} matching IDs must be removed"
     );
     assert_eq!(
-        count_matching(&filtered, (TEST_PATH, TEST_RULE)),
+        count_matching(&filtered, (&test_path, &test_rule)),
         0,
         "no matching ID may survive the filter"
     );
@@ -136,7 +158,7 @@ fn dogfood_red_removes_exactly_matching_ids_from_temp_copy() {
         })
         .filter(|id| {
             let (id_path, id_rule) = id_parts(id);
-            !(id_path == TEST_PATH && id_rule == TEST_RULE)
+            !(id_path == test_path && id_rule == test_rule)
         })
         .collect();
     let actual: Vec<&str> = after
@@ -150,11 +172,6 @@ fn dogfood_red_removes_exactly_matching_ids_from_temp_copy() {
         actual, expected,
         "remaining IDs must be the original non-matching IDs, byte-identical and in order"
     );
-
-    assert!(
-        !actual.contains(&run_id.as_str()),
-        "the documented {run_id} ID must be removed"
-    );
 }
 
 #[test]
@@ -163,10 +180,15 @@ fn dogfood_red_fails_cleanly_on_missing_baseline() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
     let missing = dir.path().join("does-not-exist.json");
 
+    let (test_path, test_rule) = pick_selector(
+        &serde_json::from_slice(&committed_baseline_bytes())
+            .unwrap_or_else(|e| panic!("committed baseline parses: {e}")),
+    );
+
     let output = Command::new("just")
         .arg("--justfile")
         .arg(root.join("justfile"))
-        .args(["dogfood-red", TEST_PATH, TEST_RULE])
+        .args(["dogfood-red", &test_path, &test_rule])
         .arg(&missing)
         .current_dir(&root)
         .output()

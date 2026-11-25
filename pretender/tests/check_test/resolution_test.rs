@@ -14,7 +14,8 @@ use crate::common::*;
 fn test_check_parallel_results_are_deterministic() {
     let dir = tempdir();
     for name in ["python_simple.py", "python_violator.py"] {
-        std::fs::copy(source_fixture(name), dir.join(name)).unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+        std::fs::copy(source_fixture(name), dir.join(name))
+            .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
     }
 
     let run = || {
@@ -45,7 +46,8 @@ fn test_check_parallel_results_are_deterministic() {
     // remove history from the parsed tree (not conditionally) so runs with
     // and without a history block normalize to the same shape.
     let normalize = |s: &str| {
-        let mut v: serde_json::Value = serde_json::from_str(s).unwrap_or_else(|e| panic!("valid json: {e:?}"));
+        let mut v: serde_json::Value =
+            serde_json::from_str(s).unwrap_or_else(|e| panic!("valid json: {e:?}"));
         if let Some(data) = v.get_mut("data").and_then(|d| d.as_object_mut()) {
             data.remove("history");
         }
@@ -65,7 +67,8 @@ fn test_resolution_tracking_reports_delta_across_runs() {
     // snapshot. The fix was to remove the violation between runs.
     let dir = tempdir();
     let violator = dir.join("violator.py");
-    std::fs::copy(source_fixture("python_violator.py"), &violator).unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+    std::fs::copy(source_fixture("python_violator.py"), &violator)
+        .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
 
     let check = || {
         pretender_cmd()
@@ -113,7 +116,8 @@ fn test_resolution_tracking_reports_delta_across_runs() {
 fn test_resolution_rate_appears_in_json_history() {
     let dir = tempdir();
     let violator = dir.join("violator.py");
-    std::fs::copy(source_fixture("python_violator.py"), &violator).unwrap_or_else(|e| panic!("copy: {e:?}"));
+    std::fs::copy(source_fixture("python_violator.py"), &violator)
+        .unwrap_or_else(|e| panic!("copy: {e:?}"));
     let run = || {
         pretender_cmd()
             .arg("check")
@@ -127,7 +131,8 @@ fn test_resolution_rate_appears_in_json_history() {
     };
     run();
     let second = run();
-    let json: serde_json::Value = serde_json::from_slice(&second.stdout).unwrap_or_else(|e| panic!("json: {e:?}"));
+    let json: serde_json::Value =
+        serde_json::from_slice(&second.stdout).unwrap_or_else(|e| panic!("json: {e:?}"));
     let resolution = &json["data"]["history"]["resolution"];
     assert_eq!(resolution["fixed"], 0);
     assert_eq!(resolution["still_open"], 1);

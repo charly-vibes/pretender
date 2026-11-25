@@ -91,8 +91,7 @@ fn test_init_non_interactive_writes_config_with_mode_override() {
 fn test_init_leaves_foreign_managed_blocks_untouched() {
     let dir = tempdir();
     let agents = seed_foreign_blocks_and_init(&dir);
-    let after_init =
-        std::fs::read(&agents).unwrap_or_else(|e| panic!("read AGENTS.md: {e:?}"));
+    let after_init = std::fs::read(&agents).unwrap_or_else(|e| panic!("read AGENTS.md: {e:?}"));
     assert_eq!(
         after_init,
         FOREIGN_AGENTS.as_bytes(),

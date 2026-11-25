@@ -68,7 +68,10 @@ fn init_preset_prompt_writes_threshold_tables() {
 /// effective values (spec: Strict Preset Values) via toml::from_str.
 fn strict_preset_tables_written() {
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let out = init_run(dir.path(), &["init", "--non-interactive", "--preset", "strict"]);
+    let out = init_run(
+        dir.path(),
+        &["init", "--non-interactive", "--preset", "strict"],
+    );
     expect_success(&out, "init --preset strict");
     let strict_config = read_config(dir.path());
     assert!(
@@ -98,7 +101,10 @@ fn strict_preset_tables_written() {
 /// the built-in defaults.
 fn default_preset_tables_written() {
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let out = init_run(dir.path(), &["init", "--non-interactive", "--preset", "default"]);
+    let out = init_run(
+        dir.path(),
+        &["init", "--non-interactive", "--preset", "default"],
+    );
     expect_success(&out, "init --preset default");
     let default_config = read_config(dir.path());
     assert!(
@@ -164,7 +170,10 @@ fn explicit_preset_suppresses_preset_prompt() {
 #[test]
 fn init_rejects_unknown_preset() {
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
-    let out = init_run(dir.path(), &["init", "--non-interactive", "--preset", "loose"]);
+    let out = init_run(
+        dir.path(),
+        &["init", "--non-interactive", "--preset", "loose"],
+    );
     assert!(!out.status.success(), "unknown preset must exit non-zero");
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -180,7 +189,14 @@ fn init_strict_gate_prints_migration_hint() {
     let dir = tempfile::TempDir::new().unwrap_or_else(|e| panic!("tempdir: {e}"));
     let out = init_run(
         dir.path(),
-        &["init", "--non-interactive", "--mode", "gate", "--preset", "strict"],
+        &[
+            "init",
+            "--non-interactive",
+            "--mode",
+            "gate",
+            "--preset",
+            "strict",
+        ],
     );
     expect_success(&out, "init gate+strict");
     let stdout = String::from_utf8_lossy(&out.stdout);

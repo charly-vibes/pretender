@@ -20,13 +20,13 @@ pub(crate) mod hooks;
 pub(crate) mod infra;
 mod runs;
 
-use crate::CheckArgs;
 use crate::init::InitArgs;
+use crate::CheckArgs;
+use anyhow::Result;
 use args::{
     CiCommand, ComplexityArgs, DoctorArgs, DuplicationArgs, ExplainArgs, FeedbackArgs,
     HooksCommand, MutationArgs, PluginsCommand, ReportArgs,
 };
-use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 use std::process::ExitCode;
 

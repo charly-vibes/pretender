@@ -110,7 +110,8 @@ fn test_complexity_directory_with_non_source_files() {
     std::fs::write(dir.join("README.md"), "# docs\n")
         .unwrap_or_else(|e| panic!("write readme: {e:?}"));
     std::fs::create_dir_all(dir.join("sub")).unwrap_or_else(|e| panic!("mkdir: {e:?}"));
-    std::fs::write(dir.join("sub/note.txt"), "hi\n").unwrap_or_else(|e| panic!("write note: {e:?}"));
+    std::fs::write(dir.join("sub/note.txt"), "hi\n")
+        .unwrap_or_else(|e| panic!("write note: {e:?}"));
 
     let output = pretender_cmd()
         .arg("complexity")

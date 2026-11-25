@@ -253,7 +253,10 @@ fn stryker_survivor(file_path: &str, mutant: &StrykerMutant) -> SurvivingMutant 
     SurvivingMutant {
         file: file_path.to_string(),
         line: mutant.location.start.line,
-        description: format!("{}: replace with {}", mutant.mutator_name, mutant.replacement),
+        description: format!(
+            "{}: replace with {}",
+            mutant.mutator_name, mutant.replacement
+        ),
         missed_tests: vec![],
     }
 }
@@ -266,7 +269,10 @@ fn tally_stryker_mutants(
     mutants.iter().fold(
         (0u32, 0u32, Vec::new()),
         |(total, killed, mut survivors), mutant| {
-            if matches!(mutant.status.as_str(), "CompileError" | "Ignored" | "NoCoverage") {
+            if matches!(
+                mutant.status.as_str(),
+                "CompileError" | "Ignored" | "NoCoverage"
+            ) {
                 return (total, killed, survivors);
             }
             if mutant.status == "Survived" {
@@ -331,23 +337,11 @@ fn node_mutation_site(node: tree_sitter::Node, source: &[u8], file: &str) -> Opt
     let line = node.start_position().row as u32 + 1;
     match node.kind() {
         // Binary arithmetic / comparison / boolean operators
-        "binary_operator" | "comparison_operator" | "boolean_operator" | "binary_expression"
-        | "augmented_assignment" => {
-            // Find the operator child (usually a single-char or keyword node)
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if is_mutation_operator(child.kind()) {
-                    if let Ok(op_text) = child.utf8_text(source) {
-                        return Some(PlannedMutant {
-                            file: file.to_string(),
-                            line,
-                            description: format!("replace operator `{op_text}`"),
-                        });
-                    }
-                }
-            }
-            None
-        }
+        "binary_operator"
+        | "comparison_operator"
+        | "boolean_operator"
+        | "binary_expression"
+        | "augmented_assignment" => binary_op_site(node, source, file, line),
         "return_statement" | "return" => Some(PlannedMutant {
             file: file.to_string(),
             line,
@@ -355,6 +349,29 @@ fn node_mutation_site(node: tree_sitter::Node, source: &[u8], file: &str) -> Opt
         }),
         _ => None,
     }
+}
+
+/// Finds the operator child of a binary node and plans its replacement.
+fn binary_op_site(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file: &str,
+    line: u32,
+) -> Option<PlannedMutant> {
+    // Find the operator child (usually a single-char or keyword node)
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if is_mutation_operator(child.kind()) {
+            if let Ok(op_text) = child.utf8_text(source) {
+                return Some(PlannedMutant {
+                    file: file.to_string(),
+                    line,
+                    description: format!("replace operator `{op_text}`"),
+                });
+            }
+        }
+    }
+    None
 }
 
 /// Depth-first pre-order collection: the node's own site, then its children.
@@ -368,32 +385,9 @@ fn collect_sites(node: tree_sitter::Node, source: &[u8], file: &str) -> Vec<Plan
 }
 
 fn is_mutation_operator(kind: &str) -> bool {
-    matches!(
-        kind,
-        "+" | "-"
-            | "*"
-            | "/"
-            | "%"
-            | "**"
-            | "=="
-            | "!="
-            | "<"
-            | ">"
-            | "<="
-            | ">="
-            | "and"
-            | "or"
-            | "&&"
-            | "||"
-            | "not"
-            | "<<"
-            | ">>"
-            | "&"
-            | "|"
-            | "^"
-            | "+="
-            | "-="
-            | "*="
-            | "/="
-    )
+    const OPS: &[&str] = &[
+        "+", "-", "*", "/", "%", "**", "==", "!=", "<", ">", "<=", ">=", "and", "or", "&&", "||",
+        "not", "<<", ">>", "&", "|", "^", "+=", "-=", "*=", "/=",
+    ];
+    OPS.contains(&kind)
 }

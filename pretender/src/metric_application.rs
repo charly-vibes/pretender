@@ -25,8 +25,8 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::Result;
 
 use crate::engine::{
-    WeightMaps, WalkCtx, build_block, compile_query, count_captured_nodes, has_test_marker,
-    index_capture_slots, node_span, QueryEngine,
+    build_block, compile_query, count_captured_nodes, has_test_marker, index_capture_slots,
+    node_span, QueryEngine, WalkCtx, WeightMaps,
 };
 use crate::model::{Block, BranchKind, CodeUnit, Language, Parameter, UnitKind};
 use crate::plugin::BranchWeights;
@@ -157,7 +157,11 @@ fn branch_spec(weights: &WeightMaps<'_>, name: &str, kind: &BranchKind) -> Branc
         cyclomatic: 1,
         cognitive: 1,
     };
-    let w = weights.branch.get(&capture_name).copied().unwrap_or(defaults);
+    let w = weights
+        .branch
+        .get(&capture_name)
+        .copied()
+        .unwrap_or(defaults);
     BranchCaptureSpec {
         kind: *kind,
         cyclomatic_weight: w.cyclomatic,

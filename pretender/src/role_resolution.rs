@@ -14,7 +14,7 @@
 //! of `roles.rs` so that module keeps only the pure role and threshold
 //! tables; bodies moved verbatim to keep role assignment identical.
 use crate::config::Config;
-use crate::roles::{Role, heuristic_role};
+use crate::roles::{heuristic_role, Role};
 use globset::{Glob, GlobMatcher};
 use std::path::Path;
 

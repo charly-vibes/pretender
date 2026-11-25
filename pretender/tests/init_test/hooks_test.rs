@@ -87,8 +87,8 @@ fn test_hooks_install_pre_push_installs_pre_push_hook() {
     );
 
     let hook_path = dir.join(".git/hooks/pre-push");
-    let hook =
-        std::fs::read_to_string(&hook_path).unwrap_or_else(|e| panic!("pre-push hook exists: {e:?}"));
+    let hook = std::fs::read_to_string(&hook_path)
+        .unwrap_or_else(|e| panic!("pre-push hook exists: {e:?}"));
     assert!(hook.contains("Installed by Pretender"), "hook: {hook}");
     assert!(
         hook.contains("exec pretender check . --staged"),

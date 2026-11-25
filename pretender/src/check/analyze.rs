@@ -217,7 +217,8 @@ fn check_unwrap_density(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 
 /// Primitive-obsession check: bool clusters and primitive domain params.
 fn check_primitive_obsession(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
-    if ctx.config.thresholds.app.bool_cluster_max > 0 || ctx.config.thresholds.app.primitive_param_check
+    if ctx.config.thresholds.app.bool_cluster_max > 0
+        || ctx.config.thresholds.app.primitive_param_check
     {
         let po_results = primitive_obsession::analyze(
             &ctx.module.units,
@@ -304,7 +305,10 @@ fn check_inheritance_depth(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
 /// Lazy test cluster detection for test-role files.
 fn check_lazy_clusters(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
     if role == Role::Test && ctx.config.thresholds.test.lazy_cluster_min > 0 {
-        let clusters = cluster_detector::detect(&ctx.module.units, ctx.config.thresholds.test.lazy_cluster_min);
+        let clusters = cluster_detector::detect(
+            &ctx.module.units,
+            ctx.config.thresholds.test.lazy_cluster_min,
+        );
         for cluster in &clusters {
             facts.file_violations.push(ViolationReport {
                 metric: "lazy_cluster".to_string(),

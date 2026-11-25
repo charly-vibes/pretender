@@ -130,7 +130,9 @@ fn visit_child(
     out: &mut Vec<crate::model::Node>,
 ) -> bool {
     if let Some(&spec) = ctx.captures.branches.get(&child.id()) {
-        out.push(crate::model::Node::Branch(branch_node(ctx, parent, child, spec)));
+        out.push(crate::model::Node::Branch(branch_node(
+            ctx, parent, child, spec,
+        )));
         collect_nested_blocks(ctx, child, out);
         return true;
     }

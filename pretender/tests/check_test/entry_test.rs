@@ -38,7 +38,9 @@ fn test_check_defaults_to_current_dir() {
 fn test_check_command_human_output() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert!(
         output.status.success(),
@@ -69,8 +71,8 @@ fn test_check_command_json_output() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
 
     assert_eq!(json["data"]["files"].as_array().map(Vec::len), Some(1));
     assert_eq!(
@@ -102,8 +104,8 @@ fn test_check_json_output_has_envelope_shape() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
 
     // Verify genesis envelope shape
     assert!(json.get("ok").is_some(), "envelope must have 'ok' field");
@@ -148,7 +150,9 @@ fn test_check_json_output_has_envelope_shape() {
 fn test_check_exits_zero_when_clean() {
     let (_dir, staged) = stage_fixture("python_simple.py");
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(
         output.status.code(),
@@ -179,7 +183,8 @@ fn test_check_staged_no_files_prints_message() {
     let dir = tempdir();
     git_init(&dir);
     // No staged files — just an empty git repo with a source file not added
-    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n").unwrap_or_else(|e| panic!("write file: {e:?}"));
+    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n")
+        .unwrap_or_else(|e| panic!("write file: {e:?}"));
 
     let output = check_in(&dir, &dir)
         .arg("--staged")
@@ -205,7 +210,8 @@ fn test_check_staged_no_files_json_envelope() {
     // envelope when --format json is requested, same shape as a normal run.
     let dir = tempdir();
     git_init(&dir);
-    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n").unwrap_or_else(|e| panic!("write file: {e:?}"));
+    std::fs::write(dir.join("hello.py"), "def hello():\n    pass\n")
+        .unwrap_or_else(|e| panic!("write file: {e:?}"));
 
     let output = check_in(&dir, &dir)
         .arg("--staged")
@@ -220,8 +226,9 @@ fn test_check_staged_no_files_json_envelope() {
         "should exit 0 with no staged files; stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .unwrap_or_else(|e| panic!("--format json must emit a JSON envelope even when nothing is staged: {e:?}"));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
+        panic!("--format json must emit a JSON envelope even when nothing is staged: {e:?}")
+    });
 
     assert_eq!(json["ok"], true, "no findings on empty diff, ok=true");
     assert_eq!(
@@ -240,9 +247,12 @@ fn test_check_skips_binary_files() {
     let dir = tempdir();
     // Write a binary file (null bytes are not valid UTF-8)
     let binary = dir.join("artifact.bin");
-    std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe").unwrap_or_else(|e| panic!("write binary file: {e:?}"));
+    std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe")
+        .unwrap_or_else(|e| panic!("write binary file: {e:?}"));
 
-    let output = check(&binary).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&binary)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(
         output.status.code(),
@@ -257,11 +267,15 @@ fn test_check_skips_binary_files_in_directory() {
     let dir = tempdir();
     // Write a source file alongside a binary file
     let source = dir.join("hello.py");
-    std::fs::write(&source, "def hello():\n    pass\n").unwrap_or_else(|e| panic!("write source: {e:?}"));
+    std::fs::write(&source, "def hello():\n    pass\n")
+        .unwrap_or_else(|e| panic!("write source: {e:?}"));
     let binary = dir.join("artifact.bin");
-    std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe").unwrap_or_else(|e| panic!("write binary file: {e:?}"));
+    std::fs::write(&binary, b"\x00\x01\x02\x03\xff\xfe")
+        .unwrap_or_else(|e| panic!("write binary file: {e:?}"));
 
-    let output = check(&dir).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&dir)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(
         output.status.code(),

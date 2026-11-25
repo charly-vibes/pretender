@@ -24,7 +24,8 @@ fn data_model_source_fixture(name: &str) -> PathBuf {
 
 fn stage_data_model_fixture(dir: &Path, fixture: &str) -> PathBuf {
     let staged = dir.join(fixture);
-    std::fs::copy(data_model_source_fixture(fixture), &staged).unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
+    std::fs::copy(data_model_source_fixture(fixture), &staged)
+        .unwrap_or_else(|e| panic!("copy fixture: {e:?}"));
     staged
 }
 
@@ -38,7 +39,6 @@ fn data_model_fixture_dir(fixture: &str) -> (PathBuf, PathBuf) {
     .unwrap_or_else(|e| panic!("copy fixture toml: {e:?}"));
     (dir, staged)
 }
-
 
 #[test]
 fn test_check_data_model_violations_json() {
@@ -58,8 +58,8 @@ fn test_check_data_model_violations_json() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
     let violations = json["data"]["files"][0]["file_violations"]
         .as_array()
         .unwrap_or_else(|| panic!("file_violations array"));
@@ -97,14 +97,15 @@ fn test_check_test_role_threshold_disables_excessive_fields() {
     let dir = tempdir();
     let staged = stage_data_model_fixture(&dir, "rust_test_role_data_model_sample.rs");
 
-    std::fs::write(dir.join("pretender.toml"), "[pretender]\n").unwrap_or_else(|e| panic!("write default config: {e:?}"));
+    std::fs::write(dir.join("pretender.toml"), "[pretender]\n")
+        .unwrap_or_else(|e| panic!("write default config: {e:?}"));
     let baseline = check_in(&dir, &staged)
         .arg("--format")
         .arg("json")
         .output()
         .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
-    let baseline_json: serde_json::Value =
-        serde_json::from_slice(&baseline.stdout).unwrap_or_else(|e| panic!("baseline stdout should be valid json: {e:?}"));
+    let baseline_json: serde_json::Value = serde_json::from_slice(&baseline.stdout)
+        .unwrap_or_else(|e| panic!("baseline stdout should be valid json: {e:?}"));
     let baseline_violations = baseline_json["data"]["files"][0]["file_violations"]
         .as_array()
         .unwrap_or_else(|| panic!("file_violations array"));
@@ -125,8 +126,8 @@ fn test_check_test_role_threshold_disables_excessive_fields() {
         .arg("json")
         .output()
         .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
     let violations = json["data"]["files"][0]["file_violations"]
         .as_array()
         .unwrap_or_else(|| panic!("file_violations array"));
@@ -154,8 +155,8 @@ fn test_check_sarif_data_model_rules_carry_fixture_lines() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let sarif: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid SARIF json: {e:?}"));
+    let sarif: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid SARIF json: {e:?}"));
     assert_eq!(sarif["version"].as_str(), Some("2.1.0"));
 
     let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
@@ -203,10 +204,12 @@ fn test_check_r_without_type_captures_stays_silent() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("stdout should be valid json: {e:?}"));
     let file = &json["data"]["files"][0];
-    let diagnostics = file["diagnostics"].as_array().unwrap_or_else(|| panic!("diagnostics array"));
+    let diagnostics = file["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("diagnostics array"));
     assert!(
         diagnostics.is_empty(),
         "R fixture must parse without diagnostics: {diagnostics:?}"

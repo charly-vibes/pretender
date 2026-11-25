@@ -4,13 +4,13 @@
 //! type-definition building. Bodies moved verbatim from `engine.rs`, or
 //! split along order-preserving seams, so findings stay byte-identical.
 
-use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use streaming_iterator::StreamingIterator;
 
 use crate::engine::{node_span, QueryEngine};
+use crate::line_counts::LineCounts;
 use crate::metric_application::{CaptureMap, FunctionCapture};
 use crate::model::{
     CodeUnit, Diagnostic, DiagnosticSeverity, Import, Language, Module, Span, TypeDefinition,
@@ -31,7 +31,8 @@ impl QueryEngine {
         }
 
         let source_bytes = source.as_bytes();
-        let captures = self.collect_query_captures(root, source_bytes, CollectedCaptures::default());
+        let captures =
+            self.collect_query_captures(root, source_bytes, CollectedCaptures::default());
         let (units, diagnostics) = self.build_units(&captures, source_bytes);
         let type_definitions = build_type_definitions(
             TypeCaptures {
@@ -156,21 +157,6 @@ struct CollectedCaptures<'a> {
     type_fields: Vec<TypeFieldCapture<'a>>,
 }
 
-/// Classified line counts for one file (total, code, comment).
-struct LineCounts {
-    total: u32,
-    code: u32,
-    comment: u32,
-}
-
-impl LineCounts {
-    fn collect(root: tree_sitter::Node, source: &str) -> Self {
-        let lines_total = source.lines().count() as u32;
-        let (code, comment) = classify_lines(root, lines_total);
-        Self { total: lines_total, code, comment }
-    }
-}
-
 /// Per-match slots: a pending call site plus five optional type captures.
 struct PendingMatch<'a, 'e> {
     engine: &'e QueryEngine,
@@ -205,7 +191,12 @@ impl<'a, 'e> PendingMatch<'a, 'e> {
     ) -> bool {
         if let Some(spec) = self.engine.branch_capture_for_index(capture.index) {
             map.branches.insert(capture.node.id(), spec);
-        } else if self.engine.slots.assert_capture_indices.contains(&capture.index) {
+        } else if self
+            .engine
+            .slots
+            .assert_capture_indices
+            .contains(&capture.index)
+        {
             map.assertions.insert(capture.node.id());
         } else if Some(capture.index) == self.engine.slots.assign_idx {
             map.assignments.insert(capture.node.id());
@@ -339,57 +330,5 @@ fn parse_error_diagnostic(path: &Path, root: tree_sitter::Node) -> Diagnostic {
         message: format!("Parse errors detected in {}", path.display()),
         span: Some(node_span(root)),
         severity: DiagnosticSeverity::Warning,
-    }
-}
-
-/// Classify each line in the file using tree-sitter node types.
-/// Returns (lines_code, lines_comment).
-/// A line is a comment line if every leaf node on that line is a comment.
-/// Otherwise if any named non-comment leaf touches the line, it is a code line.
-fn classify_lines(root: tree_sitter::Node, lines_total: u32) -> (u32, u32) {
-    let (code, comment) = walk_classify(HashSet::new(), HashSet::new(), root);
-    (code.len() as u32, comment.iter().filter(|&&l| l <= lines_total).count() as u32)
-}
-
-/// Depth-first walk over the whole tree, classifying every leaf's lines.
-fn walk_classify(
-    mut code: HashSet<u32>,
-    mut comment: HashSet<u32>,
-    root: tree_sitter::Node,
-) -> (HashSet<u32>, HashSet<u32>) {
-    let mut cursor = root.walk();
-    loop {
-        classify_leaf(cursor.node(), &mut code, &mut comment);
-        if cursor.goto_first_child() {
-            continue;
-        }
-        loop {
-            if cursor.goto_next_sibling() {
-                break;
-            }
-            if !cursor.goto_parent() {
-                return (code, comment);
-            }
-        }
-    }
-}
-
-/// Apply one leaf node's classification to every line it touches.
-fn classify_leaf(node: tree_sitter::Node, code: &mut HashSet<u32>, comment: &mut HashSet<u32>) {
-    if node.child_count() != 0 {
-        return;
-    }
-    let start = node.start_position().row as u32 + 1;
-    let end = node.end_position().row as u32 + 1;
-    let is_comment = node.kind().contains("comment");
-    for line in start..=end {
-        if is_comment {
-            if !code.contains(&line) {
-                comment.insert(line);
-            }
-        } else if !node.kind().trim().is_empty() {
-            code.insert(line);
-            comment.remove(&line);
-        }
     }
 }

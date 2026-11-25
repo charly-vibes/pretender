@@ -14,8 +14,8 @@
 //! decomposed while moving so behavior, output bytes, and side-effect
 //! ordering stay identical (pretender-5zo.2.2).
 use super::gate::{
-    BASELINE_PATH, decide_exit_code, lease_diagnostic, lease_fail_closed, violation_finding_ids,
-    violation_findings,
+    decide_exit_code, lease_diagnostic, lease_fail_closed, violation_finding_ids,
+    violation_findings, BASELINE_PATH,
 };
 use super::scan::scan_for_check;
 use crate::cli::args::ReportFormat;
@@ -23,13 +23,15 @@ use crate::cli::infra::{
     color_enabled, load_config, open_report_sink, persist_last_check_report, warn_if_no_config,
 };
 use crate::cli::Executable;
-use crate::events::{EmitOpts, emit_history_events};
-use crate::report::{CheckReport, HumanOpts, write_human_report, write_json_report, write_sarif_report};
+use crate::events::{emit_history_events, EmitOpts};
+use crate::report::{
+    write_human_report, write_json_report, write_sarif_report, CheckReport, HumanOpts,
+};
 use crate::CheckArgs;
 use anyhow::{Context, Result};
 use pretender::config::{Config, Mode};
-use pretender::roles::RoleDetector;
 use pretender::history;
+use pretender::roles::RoleDetector;
 use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 use std::path::Path;

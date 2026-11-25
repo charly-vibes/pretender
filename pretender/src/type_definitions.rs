@@ -71,7 +71,10 @@ pub(crate) fn build_type_definitions(
 /// also records which type bodies were deliberately captured.
 fn dedupe_defs(defs: Vec<TypeDefCapture>) -> (Vec<TypeDefCapture>, HashSet<usize>) {
     let mut seen = HashSet::new();
-    let defs = defs.into_iter().filter(|def| seen.insert(def.node.id())).collect();
+    let defs = defs
+        .into_iter()
+        .filter(|def| seen.insert(def.node.id()))
+        .collect();
     (defs, seen)
 }
 
@@ -152,7 +155,11 @@ fn field_entry(
     if field_inside_uncaptured_type(field.node, defs[owner].node, captured_def_ids) {
         return None;
     }
-    Some((owner, field.node.start_byte(), captured_field(&field, name, source)))
+    Some((
+        owner,
+        field.node.start_byte(),
+        captured_field(&field, name, source),
+    ))
 }
 
 /// Build the `Field` model entry for one captured type member.

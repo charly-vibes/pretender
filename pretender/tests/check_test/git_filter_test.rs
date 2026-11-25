@@ -20,18 +20,21 @@ fn test_check_staged_only_scans_staged_files() {
 
     // Commit a baseline file so HEAD exists
     let baseline = dir.join("baseline.py");
-    std::fs::write(&baseline, "def baseline(): pass\n").unwrap_or_else(|e| panic!("write baseline: {e:?}"));
+    std::fs::write(&baseline, "def baseline(): pass\n")
+        .unwrap_or_else(|e| panic!("write baseline: {e:?}"));
     git_add(&dir, &baseline);
     git_commit(&dir, "baseline");
 
     // Stage file_a.py
     let file_a = dir.join("file_a.py");
-    std::fs::write(&file_a, "def func_a(): pass\n").unwrap_or_else(|e| panic!("write file_a: {e:?}"));
+    std::fs::write(&file_a, "def func_a(): pass\n")
+        .unwrap_or_else(|e| panic!("write file_a: {e:?}"));
     git_add(&dir, &file_a);
 
     // Write file_b.py but do NOT stage it
     let file_b = dir.join("file_b.py");
-    std::fs::write(&file_b, "def func_b(): pass\n").unwrap_or_else(|e| panic!("write file_b: {e:?}"));
+    std::fs::write(&file_b, "def func_b(): pass\n")
+        .unwrap_or_else(|e| panic!("write file_b: {e:?}"));
 
     let output = pretender_cmd()
         .args(["check", ".", "--staged"])
@@ -118,13 +121,15 @@ fn test_check_diff_only_filters_to_changed_files() {
 
     // First commit: file_old.py
     let file_old = dir.join("file_old.py");
-    std::fs::write(&file_old, "def old(): pass\n").unwrap_or_else(|e| panic!("write file_old: {e:?}"));
+    std::fs::write(&file_old, "def old(): pass\n")
+        .unwrap_or_else(|e| panic!("write file_old: {e:?}"));
     git_add(&dir, &file_old);
     git_commit(&dir, "first commit");
 
     // Second commit (HEAD): add file_new.py
     let file_new = dir.join("file_new.py");
-    std::fs::write(&file_new, "def new_func(): pass\n").unwrap_or_else(|e| panic!("write file_new: {e:?}"));
+    std::fs::write(&file_new, "def new_func(): pass\n")
+        .unwrap_or_else(|e| panic!("write file_new: {e:?}"));
     git_add(&dir, &file_new);
     git_commit(&dir, "second commit");
 
@@ -158,16 +163,19 @@ fn test_check_diff_only_includes_unstaged_worktree_edits() {
     git_init(&dir);
 
     let baseline = dir.join("baseline.py");
-    std::fs::write(&baseline, "def baseline(): pass\n").unwrap_or_else(|e| panic!("write baseline: {e:?}"));
+    std::fs::write(&baseline, "def baseline(): pass\n")
+        .unwrap_or_else(|e| panic!("write baseline: {e:?}"));
     git_add(&dir, &baseline);
     let unchanged = dir.join("unchanged.py");
-    std::fs::write(&unchanged, "def unchanged(): pass\n").unwrap_or_else(|e| panic!("write unchanged: {e:?}"));
+    std::fs::write(&unchanged, "def unchanged(): pass\n")
+        .unwrap_or_else(|e| panic!("write unchanged: {e:?}"));
     git_add(&dir, &unchanged);
     git_commit(&dir, "baseline commit");
 
     // Pending worktree edit: base..HEAD has nothing, so a commit-only diff
     // would evaluate an older commit and miss this file entirely.
-    std::fs::write(&baseline, "def baseline():\n    return 1\n").unwrap_or_else(|e| panic!("write baseline: {e:?}"));
+    std::fs::write(&baseline, "def baseline():\n    return 1\n")
+        .unwrap_or_else(|e| panic!("write baseline: {e:?}"));
 
     let output = pretender_cmd()
         .args(["check", ".", "--diff-only", "--diff-base=HEAD"])
@@ -198,7 +206,8 @@ fn test_check_diff_only_includes_newly_staged_untracked_file() {
     git_init(&dir);
 
     let baseline = dir.join("baseline.py");
-    std::fs::write(&baseline, "def baseline(): pass\n").unwrap_or_else(|e| panic!("write baseline: {e:?}"));
+    std::fs::write(&baseline, "def baseline(): pass\n")
+        .unwrap_or_else(|e| panic!("write baseline: {e:?}"));
     git_add(&dir, &baseline);
     git_commit(&dir, "baseline commit");
 
@@ -245,7 +254,8 @@ fn test_check_exclude_globs_match_walked_paths_from_dot() {
         ("vendor/lib.py", "def vendored(): pass\n"),
     ] {
         let full = dir.join(relative);
-        std::fs::create_dir_all(full.parent().unwrap_or_else(|| panic!("parent dir"))).unwrap_or_else(|e| panic!("mkdir: {e:?}"));
+        std::fs::create_dir_all(full.parent().unwrap_or_else(|| panic!("parent dir")))
+            .unwrap_or_else(|e| panic!("mkdir: {e:?}"));
         std::fs::write(full, source).unwrap_or_else(|e| panic!("write source: {e:?}"));
     }
 
@@ -284,7 +294,8 @@ fn test_check_exclude_dot_prefixed_glob_matches_walked_path() {
     std::fs::create_dir_all(dir.join("tests")).unwrap_or_else(|e| panic!("mkdir tests: {e:?}"));
     std::fs::write(dir.join("tests").join("test_a.py"), "def test_a(): pass\n")
         .unwrap_or_else(|e| panic!("write test file: {e:?}"));
-    std::fs::write(dir.join("app.py"), "def app(): pass\n").unwrap_or_else(|e| panic!("write app file: {e:?}"));
+    std::fs::write(dir.join("app.py"), "def app(): pass\n")
+        .unwrap_or_else(|e| panic!("write app file: {e:?}"));
 
     let dot = check_in(&dir, Path::new("."))
         .output()

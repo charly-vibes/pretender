@@ -18,7 +18,9 @@ fn test_check_reports_min_assertions_for_test_role() {
         "def test_missing_assertion():\n    helper()\n",
     );
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -36,7 +38,9 @@ fn test_check_exempts_fixture_unit_from_min_assertions() {
         "def simple():\n    return 1\n\ndef with_branch(x):\n    if x:\n        return 1\n    return 0\n",
     );
 
-    let output = check_in(&dir, &staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check_in(&dir, &staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -53,7 +57,9 @@ fn test_check_exempts_helper_unit_from_min_assertions() {
         "def tempdir():\n    return 1\n",
     );
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert!(
         output.status.success(),
@@ -76,7 +82,9 @@ fn test_check_rust_test_attribute_keeps_min_assertions() {
         "#[test]\nfn adds() {\n    let a = 2;\n}\n",
     );
 
-    let output = check_in(&dir, &staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check_in(&dir, &staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -93,7 +101,9 @@ fn test_check_exempts_unattributed_rust_unit_from_min_assertions() {
         "fn probe_helper() {\n    let a = 2;\n}\n",
     );
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -110,7 +120,9 @@ fn test_check_accepts_test_role_when_assertion_present() {
         "def test_has_assertion():\n    assert True\n",
     );
 
-    let output = check(&staged).output().unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+    let output = check(&staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);

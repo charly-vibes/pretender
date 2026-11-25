@@ -87,8 +87,8 @@ fn test_report_html_writes_output_file() {
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );
-    let html = std::fs::read_to_string(&out_path)
-        .unwrap_or_else(|e| panic!("html report exists: {e:?}"));
+    let html =
+        std::fs::read_to_string(&out_path).unwrap_or_else(|e| panic!("html report exists: {e:?}"));
     assert!(html.contains("<!doctype html>"), "html: {html}");
     assert!(html.contains("python_violator.py"), "html: {html}");
     assert!(html.contains("too_many_params"), "html: {html}");

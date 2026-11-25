@@ -29,8 +29,12 @@ fn duration_setup() -> (PathBuf, PathBuf, PathBuf) {
     );
     // Create the test file so role detection can find it
     let test_file = dir.join("tests/unit/test_math.py");
-    std::fs::create_dir_all(test_file.parent().unwrap_or_else(|| panic!("test file path has no parent")))
-        .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
+    std::fs::create_dir_all(
+        test_file
+            .parent()
+            .unwrap_or_else(|| panic!("test file path has no parent")),
+    )
+    .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
     std::fs::write(&test_file, "def test_addition(): pass")
         .unwrap_or_else(|e| panic!("write test file: {e:?}"));
 
@@ -139,8 +143,12 @@ fn test_duration_no_threshold_no_findings() {
         "#,
     );
     let test_file = dir.join("tests/unit/test_math.py");
-    std::fs::create_dir_all(test_file.parent().unwrap_or_else(|| panic!("test file path has no parent")))
-        .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
+    std::fs::create_dir_all(
+        test_file
+            .parent()
+            .unwrap_or_else(|| panic!("test file path has no parent")),
+    )
+    .unwrap_or_else(|e| panic!("create dirs: {e:?}"));
     std::fs::write(&test_file, "def test_addition(): pass")
         .unwrap_or_else(|e| panic!("write test file: {e:?}"));
 
@@ -196,8 +204,8 @@ fn test_duration_cache_persisted() {
     // Check that the cache file contains test_findings
     let cache_path = dir.join(".pretender/last-check.json");
     assert!(cache_path.exists(), "cache file should exist");
-    let cache_content = std::fs::read_to_string(&cache_path)
-        .unwrap_or_else(|e| panic!("read cache: {e:?}"));
+    let cache_content =
+        std::fs::read_to_string(&cache_path).unwrap_or_else(|e| panic!("read cache: {e:?}"));
     assert!(
         cache_content.contains("test_findings"),
         "expected test_findings in cache: {cache_content}"
