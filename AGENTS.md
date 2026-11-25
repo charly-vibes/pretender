@@ -261,3 +261,5 @@ Commands:
 - scope    Show active .ddl/
 
 <!-- DDL:END -->
+
+Structural standard and dogfooding workflow: see [CONTRIBUTING.md](CONTRIBUTING.md#structural-standard-self-hosted-dogfooding). Refactor PRs ship a refreshed `pretender-baseline.json`; the ledger may only shrink, never add IDs.
