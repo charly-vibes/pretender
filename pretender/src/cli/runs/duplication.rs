@@ -40,6 +40,13 @@ impl Executable for DuplicationArgs {
     }
 }
 
+/// Explain a zero-supported-file scan instead of silently reporting "clean".
+fn warn_no_supported_sources() {
+    eprintln!(
+        "warning: no supported source files found to scan for clones (supported extensions: rs, py, js, jsx, mjs, cjs, ts, mts, tsx, cts, rb, go, java, c, h, cpp, cc, cxx, hpp, hxx, jl, r, R)"
+    );
+}
+
 /// Read the duplicable sources, skipping paths without a supported language
 /// and warning on unreadable files (verbatim skip/warn behavior).
 fn collect_duplication_sources(file_paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
@@ -52,6 +59,9 @@ fn collect_duplication_sources(file_paths: &[PathBuf]) -> Vec<(PathBuf, String)>
             Ok(source) => files.push((path.clone(), source)),
             Err(e) => eprintln!("warning: skipping {}: {e}", path.display()),
         }
+    }
+    if files.is_empty() {
+        warn_no_supported_sources();
     }
     files
 }
