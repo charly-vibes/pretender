@@ -31,11 +31,23 @@ pub fn staged_files(cwd: &Path) -> Result<HashSet<PathBuf>> {
 pub fn diff_base_files(cwd: &Path, base_ref: &str) -> Result<HashSet<PathBuf>> {
     let root = repo_root(cwd)?;
 
-    let mut files = HashSet::new();
-    // `base_ref..HEAD`: commits between the reviewed base and HEAD. A 128
-    // "unknown revision" here means `base_ref` did not resolve.
+    let mut files = committed_diff_paths(&root, base_ref)?;
+
+    // `HEAD..index`: staged changes, including freshly `git add`ed files.
+    files.extend(staged_paths(&root)?);
+
+    // `index..worktree`: unstaged edits still pending before the commit.
+    let pending = run_git(&root, &["diff", "--name-only", KEEP_DIFF_FILTER])
+        .context("failed to diff worktree against index")?;
+    files.extend(paths_from_stdout(&root, &pending.stdout));
+    Ok(files)
+}
+
+/// Committed changes (`base_ref..HEAD`) relative to `root`, deletions
+/// excluded. A 128 "unknown revision" here means `base_ref` did not resolve.
+fn committed_diff_paths(root: &Path, base_ref: &str) -> Result<HashSet<PathBuf>> {
     let committed = match run_git(
-        &root,
+        root,
         &["diff", "--name-only", KEEP_DIFF_FILTER, base_ref, "HEAD"],
     ) {
         Ok(out) => out,
@@ -46,16 +58,7 @@ pub fn diff_base_files(cwd: &Path, base_ref: &str) -> Result<HashSet<PathBuf>> {
         }
         Err(err) => return Err(err).context("failed to diff base against HEAD"),
     };
-    files.extend(paths_from_stdout(&root, &committed.stdout));
-
-    // `HEAD..index`: staged changes, including freshly `git add`ed files.
-    files.extend(staged_paths(&root)?);
-
-    // `index..worktree`: unstaged edits still pending before the commit.
-    let pending = run_git(&root, &["diff", "--name-only", KEEP_DIFF_FILTER])
-        .context("failed to diff worktree against index")?;
-    files.extend(paths_from_stdout(&root, &pending.stdout));
-    Ok(files)
+    Ok(paths_from_stdout(root, &committed.stdout))
 }
 
 /// Staged paths (HEAD..index) relative to `root`, deletions excluded.
