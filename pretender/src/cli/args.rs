@@ -73,6 +73,8 @@ pub(crate) struct ReportArgs {
 
 #[derive(Parser)]
 pub(crate) struct DuplicationArgs {
+    /// Paths to scan for clones (default: .)
+    #[arg(default_values = ["."])]
     pub(crate) paths: Vec<PathBuf>,
     /// Minimum AST node count to consider a clone (default: 10)
     #[arg(long)]
@@ -211,4 +213,16 @@ pub(crate) struct FeedbackArgs {
     /// Read error context from last error scratch
     #[arg(long)]
     pub(crate) from_last_error: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn duplication_args_default_paths_is_cwd() {
+        let args = DuplicationArgs::parse_from(["duplication"]);
+        assert_eq!(args.paths, vec![PathBuf::from(".")]);
+    }
 }

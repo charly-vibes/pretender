@@ -77,6 +77,22 @@ fn min_nodes_threshold_filters_small_subtrees() -> Result<()> {
 }
 
 #[test]
+fn detects_identical_rust_functions_in_temp_file() -> Result<()> {
+    let source = "fn a() -> i32 { 1 }\nfn b() -> i32 { 1 }\n";
+    let path = std::env::temp_dir().join(format!("pretender_dup_test_{}.rs", std::process::id()));
+    std::fs::write(&path, source)?;
+    let groups = detect_clones(&[(path.clone(), source.to_string())], 3, false);
+    let _ = std::fs::remove_file(&path);
+    let groups = groups?;
+    assert!(
+        !groups.is_empty(),
+        "expected a clone group for two identical Rust functions"
+    );
+    assert!(groups[0].locations.len() >= 2);
+    Ok(())
+}
+
+#[test]
 fn leaf_classification_pins_normalization_tokens() {
     assert_eq!(leaf_token("identifier"), "$VAR");
     assert_eq!(leaf_token("string"), "$LIT_str");
