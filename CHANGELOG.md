@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-27
+
+### Fixed
+
+- **Clojure `[smell_weights]` now reach ABC (x078, PR #93)** — **behavior
+  change**: the Calls capture in the clojure query was unanchored, so every
+  list element's `value:` field matched and last-wins overwrote the head
+  callee; weight lookups missed and fell back to 1.0. Anchored to the head
+  symbol; three clojure abc values in the golden fixture changed
+  (complex-func 7.211 → 8.062). Regenerated `governance/golden.json`.
+- `pretender duplication` scans `.` by default instead of reporting "no
+  structural clones detected" with zero paths (gh #89).
+- `pretender feedback` works in non-Rust projects instead of hard-failing on
+  the missing local `Cargo.toml` (gh #91).
+- `pretender explain` documents the coupling metric and its thresholds (part
+  of gh #90).
+
+### Added
+
+- **Beads store lint gate (yn0j, PR #93)** — `just beads-lint` requires every
+  non-empty line of `.beads/issues.jsonl` to parse as an issue; wired into
+  `ci`, the pre-commit hook, and CI as the cheapest gate.
+- Espectacular cargo runner enabled and four stale contract test bindings
+  rebound to real tests (c60, PR #93); `params-metric` capability spec
+  synced with its contract (`fix-rust-params-capture` archived).
+
+### Changed
+
+- genesis-vibes pin 0.12.3 → 0.13.2 (6tyf); regex 1.13.2, anyhow 1.0.105,
+  clap_complete 4.6.12 (dependabot).
+
 ## [0.12.0] - 2026-11-25
 
 ### Added
