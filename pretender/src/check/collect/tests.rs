@@ -30,7 +30,16 @@ mod gitignore_walk_tests {
 
     /// Git init plus the `.gitignore` and ignored directories.
     fn init_ignored_repo(root: &std::path::Path) {
-        git2::Repository::init(root).unwrap_or_else(|e| panic!("git init: {e}"));
+        let out = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(root)
+            .output()
+            .unwrap_or_else(|e| panic!("git init: {e}"));
+        assert!(
+            out.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         fs_write(&root.join(".gitignore"), "target/\nvendor/\n");
         mkdir(root, "target");
         mkdir(root, "vendor");

@@ -49,9 +49,15 @@ fn test_doctor_json_output_has_envelope_shape() {
     // Verify genesis envelope shape
     assert!(json.get("ok").is_some(), "envelope must have 'ok' field");
     assert_eq!(json["ok"], true, "doctor ran successfully, ok=true");
-    assert_eq!(
-        json["envelope_version"], "0.1",
-        "envelope_version should be 0.1"
+    // genesis 0.14's DoctorReport::to_envelope stamps its own crate version
+    // as envelope_version; pretender only controls cli_version, so pin the
+    // shape (present, non-empty) rather than which version it is.
+    assert!(
+        json["envelope_version"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty()),
+        "envelope_version should be a non-empty version string: {:?}",
+        json["envelope_version"]
     );
     assert_eq!(
         json["envelope_kind"], "doctor",

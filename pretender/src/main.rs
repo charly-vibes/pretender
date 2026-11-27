@@ -146,6 +146,7 @@ fn write_error_scratch() {
         exit: 1,
         footer: None,
         kind: "Error".to_string(),
+        message: None,
     };
     scratch::write_scratch_best_effort("pretender", &record);
 }

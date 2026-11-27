@@ -43,7 +43,7 @@ pub(crate) fn write_json_report(
 ) -> Result<()> {
     let version = env!("CARGO_PKG_VERSION");
     let kind = EnvelopeKind::Check;
-    let mut env = Envelope::success(version, kind, report, vec![], vec![]);
+    let mut env = Envelope::success(version, version, kind, report, vec![], vec![]);
     apply_lease_warning(&mut env, lease_warning);
     serde_json::to_writer_pretty(&mut *sink, &env)?;
     writeln!(sink)?;

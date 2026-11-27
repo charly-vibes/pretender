@@ -40,8 +40,7 @@ fn test_meter_gate_hook_stops_commit() {
 #[test]
 fn test_hooks_install_and_uninstall_manage_pretender_shim() {
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+    git_init(&dir);
 
     let install = hooks_in(&dir, "install")
         .output()
@@ -74,8 +73,7 @@ fn test_hooks_install_and_uninstall_manage_pretender_shim() {
 #[test]
 fn test_hooks_install_pre_push_installs_pre_push_hook() {
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+    git_init(&dir);
 
     let install = hooks_in_named(&dir, ("install", "pre-push"))
         .output()
@@ -113,8 +111,10 @@ fn test_hooks_install_pre_push_installs_pre_push_hook() {
 #[test]
 fn test_hooks_install_creates_hooks_dir_when_absent() {
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git")).unwrap_or_else(|e| panic!("git dir: {e:?}"));
+    git_init(&dir);
     // .git/hooks does NOT exist
+    std::fs::remove_dir_all(dir.join(".git/hooks"))
+        .unwrap_or_else(|e| panic!("remove hooks dir: {e:?}"));
 
     let install = hooks_in(&dir, "install")
         .output()
@@ -133,8 +133,7 @@ fn test_hooks_install_creates_hooks_dir_when_absent() {
 #[test]
 fn test_hooks_uninstall_is_noop_when_no_hook() {
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+    git_init(&dir);
     // no hook file present
 
     let uninstall = hooks_in(&dir, "uninstall")
@@ -150,8 +149,8 @@ fn test_hooks_uninstall_is_noop_when_no_hook() {
 #[test]
 fn test_hooks_uninstall_refuses_foreign_hook() {
     let dir = tempdir();
+    git_init(&dir);
     let hooks_dir = dir.join(".git/hooks");
-    std::fs::create_dir_all(&hooks_dir).unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
     std::fs::write(
         hooks_dir.join("pre-commit"),
         "#!/bin/sh\necho 'custom hook'\n",
@@ -179,8 +178,8 @@ fn test_hooks_uninstall_refuses_foreign_hook() {
 #[test]
 fn test_hooks_install_refuses_foreign_hook() {
     let dir = tempdir();
+    git_init(&dir);
     let hooks_dir = dir.join(".git/hooks");
-    std::fs::create_dir_all(&hooks_dir).unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
     std::fs::write(
         hooks_dir.join("pre-commit"),
         "#!/bin/sh\necho 'custom hook'\n",
@@ -210,8 +209,7 @@ fn test_hooks_install_refuses_foreign_hook() {
 #[test]
 fn test_hooks_install_is_idempotent() {
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+    git_init(&dir);
 
     let first = hooks_in(&dir, "install")
         .output()
@@ -243,8 +241,7 @@ fn test_hooks_install_is_idempotent() {
 fn test_hooks_install_from_subdirectory() {
     // Hooks must be installed at the repo root, not the CWD.
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+    git_init(&dir);
     let subdir = dir.join("src/sub/deep");
     std::fs::create_dir_all(&subdir).unwrap_or_else(|e| panic!("create subdir: {e:?}"));
 

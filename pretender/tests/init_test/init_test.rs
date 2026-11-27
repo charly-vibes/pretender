@@ -183,8 +183,7 @@ fn init_interactive(dir: &std::path::Path) -> std::process::Output {
 #[test]
 fn test_init_interactive_can_install_hook_and_ci() {
     let dir = tempdir();
-    std::fs::create_dir_all(dir.join(".git/hooks"))
-        .unwrap_or_else(|e| panic!("git hooks dir: {e:?}"));
+    git_init(&dir);
 
     init_interactive(&dir);
 

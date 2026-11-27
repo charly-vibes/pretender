@@ -111,8 +111,9 @@ fn test_check_json_output_has_envelope_shape() {
     assert!(json.get("ok").is_some(), "envelope must have 'ok' field");
     assert_eq!(json["ok"], true, "successful check should have ok=true");
     assert_eq!(
-        json["envelope_version"], "0.1",
-        "envelope_version should be 0.1"
+        json["envelope_version"],
+        env!("CARGO_PKG_VERSION"),
+        "envelope_version should be the caller's package version (genesis 0.14 caller-supplied)"
     );
     assert_eq!(
         json["envelope_kind"], "check",

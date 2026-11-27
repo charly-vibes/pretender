@@ -51,6 +51,7 @@ fn emit_mutation_result(report: &mutation::MutationReport, format: ReportFormat)
         ReportFormat::Json => {
             let env = Envelope::success(
                 env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_VERSION"),
                 EnvelopeKind::Check,
                 report,
                 vec![],
