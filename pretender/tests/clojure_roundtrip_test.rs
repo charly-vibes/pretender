@@ -248,14 +248,13 @@ fn clojure_nesting_levels_match_control_fixture() {
     assert_eq!(cognitive(unit), 6);
 }
 
-/// D6 semantics pin (verified at HEAD), through the production registry
-/// parser: complex-func has A=0, B=4 (if, if, doseq, if), C = 6 calls
-/// (pos?, pos?, atom, swap!, even?, swap!) x 1.0 = 6.0. Production
-/// engines currently do NOT apply [smell_weights] to the C-count:
-/// `QueryEngine` never wires `WeightMaps.call` into `call_weights`
-/// (pre-existing dead plumbing, tracked under the smell-weights
-/// ticket). This pin freezes that truth; it must be revisited when the
-/// wiring lands.
+/// D6 semantics pin, through the production registry parser:
+/// complex-func has A=0, B=4 (if, if, doseq, if), C = 6 calls weighted
+/// by the clojure manifest's [smell_weights]: swap! (1.5) twice
+/// contributes 3.0, the other four calls (pos?, pos?, atom, even?)
+/// 1.0 each (atom's declared weight is 1.0) — C = 7.0. `QueryEngine::new_with_branch_weights`
+/// wires `WeightMaps.call` into `call_weights`, which `call_site`
+/// applies per call. abc = sqrt(16 + 49).
 #[test]
 fn clojure_control_forms_abc_semantics_pin() {
     let record = lookup("clj").unwrap_or_else(|| panic!("clj must be registered"));
@@ -264,7 +263,7 @@ fn clojure_control_forms_abc_semantics_pin() {
         .parse(Path::new("clojure_sample.clj"), SAMPLE_SOURCE)
         .unwrap_or_else(|e| panic!("clojure sample must parse: {e:?}"));
     assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
-    let expected = (4.0f64 * 4.0 + 6.0 * 6.0).sqrt();
+    let expected = (4.0f64 * 4.0 + 7.0 * 7.0).sqrt();
     let measured = abc(find_unit(&module, "complex-func"));
     assert!((measured - expected).abs() < 1e-9, "abc was {measured}");
 }

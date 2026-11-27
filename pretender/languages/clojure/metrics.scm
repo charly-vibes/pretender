@@ -94,8 +94,14 @@
   value: (sym_lit) @_or
   (#eq? @_or "or")) @branch.logical.or
 
-; Calls (ABC C-count)
+; Calls (ABC C-count): the `.` anchor pins @call.callee to the list's
+; head symbol. Without it the unanchored repeated `value:` field matches
+; at every sym_lit position — `(swap! total + a b)` yields one match per
+; argument symbol, and the last insert into `CaptureMap.calls` overwrites
+; the head, so `[smell_weights]` lookups keyed on `swap!` never hit
+; (python's fixed `function:` field never had this ambiguity).
 (list_lit
+  .
   value: (sym_lit) @call.callee) @call
 
 ; Assignments (ABC A-count)
