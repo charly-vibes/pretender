@@ -6,4 +6,4 @@ superseded_by = ""
 authored_with = "0.12.0"
 
 [tests]
-cargo = [{flags = "test_typescript_complexity"}]
+cargo = [{flags = "test_camel_case_complexity_columns_across_languages"}]
