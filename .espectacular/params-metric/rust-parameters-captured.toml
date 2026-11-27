@@ -1,0 +1,9 @@
+id = "rust-parameters-captured"
+description = "Rust functions report a non-empty params list (two declared params -> length 2, self counts as one); params_max enforcement applies."
+archetype = "PF"
+status = "active"
+superseded_by = ""
+authored_with = "0.12.0"
+
+[tests]
+cargo = [{flags = "rust_sample_function_yields_nonzero_params"}]
