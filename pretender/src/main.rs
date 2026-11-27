@@ -68,7 +68,20 @@ fn main() -> ExitCode {
         .build();
 
     let cli = parse_cli(&mut guide);
-    dispatch(&mut guide, cli.command)
+    let code = dispatch(&mut guide, cli.command);
+    print_update_notice();
+    code
+}
+
+/// Best-effort update check against crates.io (cached-passive, fail-silent,
+/// CI-skipped). Any notice prints after the command's own output so it never
+/// interleaves with results or errors.
+fn print_update_notice() {
+    if let Some(info) =
+        genesis::update_check::check(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+    {
+        println!("{}", genesis::update_check::notice(&info));
+    }
 }
 
 /// Parse global CLI args, offering typo suggestions for bad subcommands.

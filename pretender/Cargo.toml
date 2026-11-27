@@ -16,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 regex = "1"
-genesis-vibes = "0.14"
+genesis-vibes = { version = "0.15", features = ["update-check"] }
 ignore = "0.4"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"

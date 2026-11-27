@@ -142,19 +142,66 @@ fn extract_repo_from_cargo_toml_at(project_root: &Path) -> Result<String> {
 
 /// Convert a repository URL to `owner/repo` form.
 ///
+/// Canonicalization (protocol, credentials, scp syntax, query string,
+/// `.git` suffix) delegates to [`genesis::git::remote_key`]; the leading
+/// host segment is dropped because genesis feedback files issues against
+/// `owner/repo` (`gh issue create --repo`, fallback issue URLs).
+///
 /// Handles: https://github.com/owner/repo, https://github.com/owner/repo.git,
-///          git@github.com:owner/repo.git, ssh://git@github.com/owner/repo.git
+///          git@github.com:owner/repo.git, ssh://git@github.com/owner/repo.git,
+///          plus PAT (`https://pat@github.com/...`) and query-string forms
 fn repo_slug(url: &str) -> String {
-    url.trim_start_matches("https://github.com/")
-        .trim_start_matches("git@github.com:")
-        .trim_start_matches("ssh://git@github.com/")
-        .trim_end_matches(".git")
-        .to_string()
+    let key = genesis::git::remote_key(url);
+    match key.split_once('/') {
+        Some((_host, owner_repo)) => owner_repo.to_string(),
+        None => key,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The genesis `remote_key` fixture set (genesis
+    /// tests/git_queries_remote.rs): `(url, remote_key output, repo_slug
+    /// output)` — the slug is the key minus its host segment.
+    const REMOTE_KEY_FIXTURES: &[(&str, &str, &str)] = &[
+        (
+            "git@github.com:owner/repo.git",
+            "github.com/owner/repo",
+            "owner/repo",
+        ),
+        (
+            "ssh://git@github.com/owner/repo.git",
+            "github.com/owner/repo",
+            "owner/repo",
+        ),
+        (
+            "https://github.com/owner/repo.git",
+            "github.com/owner/repo",
+            "owner/repo",
+        ),
+        (
+            "https://pat@github.com/owner/repo.git",
+            "github.com/owner/repo",
+            "owner/repo",
+        ),
+        (
+            "https://github.com/owner/repo",
+            "github.com/owner/repo",
+            "owner/repo",
+        ),
+        (
+            "https://github.com/owner/repo?foo=bar",
+            "github.com/owner/repo",
+            "owner/repo",
+        ),
+        (
+            "http://user:pass@host.tld/org/repo.git",
+            "host.tld/org/repo",
+            "org/repo",
+        ),
+    ];
 
     #[test]
     fn repo_slug_strips_common_remotes() {
@@ -165,6 +212,28 @@ mod tests {
             "ssh://git@github.com/o/r.git",
         ] {
             assert_eq!(repo_slug(url), "o/r");
+        }
+    }
+
+    #[test]
+    fn repo_slug_matches_remote_key_on_genesis_fixtures() {
+        // The genesis `remote_key` fixture set (genesis
+        // tests/git_queries_remote.rs): scp, ssh, https, PAT, and
+        // query-string forms. repo_slug must stay equivalent to
+        // `genesis::git::remote_key` with the host segment dropped
+        // (genesis feedback files against `owner/repo`), and byte-identical
+        // to the pre-migration slug on the github forms.
+        for &(url, key, slug) in REMOTE_KEY_FIXTURES {
+            // Byte-identical to genesis's own remote_key output.
+            assert_eq!(genesis::git::remote_key(url), key, "remote_key({url})");
+            // repo_slug ≡ remote_key with the host segment dropped.
+            let owner_repo = key.split_once('/').map(|(_, rest)| rest.to_string());
+            assert_eq!(
+                repo_slug(url),
+                owner_repo.unwrap_or_default(),
+                "slug({url})"
+            );
+            assert_eq!(repo_slug(url), slug, "slug({url})");
         }
     }
 

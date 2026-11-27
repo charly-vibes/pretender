@@ -10,7 +10,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use super::clock::{now_unix_secs, parse_timestamp_secs};
@@ -104,9 +104,7 @@ impl EventStore {
     /// check run, including clean runs.
     pub fn persist_last_snapshot(&self, snap: &FindingsSnapshot) -> Result<()> {
         ensure_parent_dir(&self.snapshot_path)?;
-        let tmp = self.snapshot_path.with_extension("json.tmp");
-        fs::write(&tmp, serde_json::to_vec_pretty(snap)?)?;
-        fs::rename(&tmp, &self.snapshot_path)
+        genesis::fs::atomic_write_json(&self.snapshot_path, snap)
             .with_context(|| format!("failed to write snapshot: {}", self.snapshot_path.display()))
     }
 
@@ -153,15 +151,15 @@ impl EventStore {
         Ok(events)
     }
 
-    // Atomic write: write to a sibling .tmp file then rename so a mid-write
-    // kill cannot corrupt the event log.
+    // Atomic write via genesis::fs::atomic_write (stage → fsync → rename), so
+    // a mid-write kill cannot corrupt the event log.
     fn write_events(&self, events: &[ViolationEvent]) -> Result<()> {
-        let tmp_path = tmp_sibling(&self.events_path);
-        let result = write_all_events(&tmp_path, &self.events_path, events);
-        if result.is_err() {
-            let _ = fs::remove_file(&tmp_path);
+        let mut bytes = Vec::new();
+        for event in events {
+            writeln!(bytes, "{}", serde_json::to_string(event)?)?;
         }
-        result
+        genesis::fs::atomic_write(&self.events_path, &bytes)
+            .with_context(|| format!("failed to finalize events: {}", self.events_path.display()))
     }
 
     pub fn persist_summary(&self, summary: &HistorySummary) -> Result<()> {
@@ -201,22 +199,4 @@ fn cap_by_size(events: Vec<ViolationEvent>) -> Vec<ViolationEvent> {
         return events[keep_from..].to_vec();
     }
     events
-}
-
-fn tmp_sibling(path: &Path) -> PathBuf {
-    let mut tmp_name = path.as_os_str().to_owned();
-    tmp_name.push(".tmp");
-    PathBuf::from(tmp_name)
-}
-
-fn write_all_events(tmp_path: &Path, dest: &Path, events: &[ViolationEvent]) -> Result<()> {
-    let file = fs::File::create(tmp_path)
-        .with_context(|| format!("failed to create temp events: {}", tmp_path.display()))?;
-    let mut writer = BufWriter::new(file);
-    for event in events {
-        writeln!(writer, "{}", serde_json::to_string(event)?)?;
-    }
-    writer.flush()?;
-    fs::rename(tmp_path, dest)
-        .with_context(|| format!("failed to finalize events: {}", dest.display()))
 }
