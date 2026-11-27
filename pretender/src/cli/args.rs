@@ -86,6 +86,8 @@ pub(crate) struct DuplicationArgs {
 
 #[derive(Parser)]
 pub(crate) struct MutationArgs {
+    /// Paths to scan for mutation targets (default: .)
+    #[arg(default_values = ["."])]
     pub(crate) paths: Vec<PathBuf>,
     /// Minimum mutation score (0–100); exit non-zero if below threshold
     #[arg(long, default_value_t = 60)]
@@ -223,6 +225,12 @@ mod tests {
     #[test]
     fn duplication_args_default_paths_is_cwd() {
         let args = DuplicationArgs::parse_from(["duplication"]);
+        assert_eq!(args.paths, vec![PathBuf::from(".")]);
+    }
+
+    #[test]
+    fn mutation_args_default_paths_is_cwd() {
+        let args = MutationArgs::parse_from(["mutation"]);
         assert_eq!(args.paths, vec![PathBuf::from(".")]);
     }
 }
