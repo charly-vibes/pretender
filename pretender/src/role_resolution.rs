@@ -51,9 +51,21 @@ impl RoleDetector {
     }
 
     fn glob_role(&self, path: &Path) -> Option<Role> {
+        // Walking `.` (the full-repo gate default) yields `./`-prefixed
+        // entries, and explicit `./dir` arguments carry the same prefix;
+        // role globs are written walker-relative, so also try the
+        // stripped form — the same both-spellings contract as
+        // `super::collect`'s exclude matching (pretender-jg9y).
+        let walker_relative = path
+            .strip_prefix(".")
+            .ok()
+            .filter(|rest| !rest.as_os_str().is_empty());
         self.patterns
             .iter()
-            .filter(|pattern| pattern.matcher.is_match(path))
+            .filter(|pattern| {
+                pattern.matcher.is_match(path)
+                    || walker_relative.is_some_and(|rest| pattern.matcher.is_match(rest))
+            })
             .max_by_key(|pattern| pattern.specificity)
             .map(|pattern| pattern.role)
     }

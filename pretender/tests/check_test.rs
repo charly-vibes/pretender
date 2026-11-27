@@ -28,13 +28,19 @@ mod config_test;
 mod data_model_test;
 #[path = "check_test/entry_test.rs"]
 mod entry_test;
+#[path = "check_test/exported_scope_test.rs"]
+mod exported_scope_test;
 #[path = "check_test/git_filter_test.rs"]
 mod git_filter_test;
 #[path = "check_test/human_output_test.rs"]
 mod human_output_test;
 #[path = "check_test/min_assertions_test.rs"]
 mod min_assertions_test;
+#[path = "check_test/mock_support_test.rs"]
+mod mock_support_test;
 #[path = "check_test/modes_test.rs"]
 mod modes_test;
 #[path = "check_test/resolution_test.rs"]
 mod resolution_test;
+#[path = "check_test/unwrap_exclusions_test.rs"]
+mod unwrap_exclusions_test;

@@ -245,3 +245,47 @@ pub fn doctor_in(dir: &Path, extra_args: &[&str]) -> Command {
         .env("GIT_CONFIG_GLOBAL", neutral_git_config_global());
     cmd
 }
+
+/// The `metric` violations reported anywhere in a `check` envelope, as
+/// `(path, actual)` pairs across file-level and unit-level violations.
+#[allow(dead_code)] // shared harness: not every test target consumes every helper
+pub fn metric_findings(envelope: &serde_json::Value, metric: &str) -> Vec<(String, f64)> {
+    let files = envelope["data"]["files"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    files
+        .iter()
+        .flat_map(|file| file_findings(file, metric))
+        .collect()
+}
+
+fn file_findings(file: &serde_json::Value, metric: &str) -> Vec<(String, f64)> {
+    let path = file["path"].as_str().unwrap_or_default().to_string();
+    let units = file["units"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let mut pairs: Vec<(String, f64)> = violation_actuals(&file["file_violations"], metric)
+        .into_iter()
+        .map(|actual| (path.clone(), actual))
+        .collect();
+    let unit_actuals: Vec<f64> = units
+        .iter()
+        .flat_map(|unit| violation_actuals(unit, metric))
+        .collect();
+    pairs.extend(
+        unit_actuals
+            .into_iter()
+            .map(|actual| (path.clone(), actual)),
+    );
+    pairs
+}
+
+fn violation_actuals(violations: &serde_json::Value, metric: &str) -> Vec<f64> {
+    violations
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+        .iter()
+        .filter(|v| v["metric"].as_str() == Some(metric))
+        .map(|v| v["actual"].as_f64().unwrap_or_default())
+        .collect()
+}

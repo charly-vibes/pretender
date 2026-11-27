@@ -30,6 +30,14 @@
   macro: (identifier) @assertion.macro_name
   (#match? @assertion.macro_name "^(assert|assert_eq|assert_ne|debug_assert|debug_assert_eq|debug_assert_ne|panic|unreachable)$")) @assert.macro_invocation
 
+; Assertion method calls — assert_cmd / predicates-style chains
+; (pretender-jg9y). Every call in the chain is its own call_expression
+; node, so each link counts: `.assert().success().stdout(...)` counts 3.
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @assertion.method_name)
+  (#match? @assertion.method_name "^(assert|success|failure|code|stdout|stderr|predicate)$")) @assert.method_call
+
 ; Type definitions (universal code model)
 (struct_item
   name: (type_identifier) @type.name) @type.definition

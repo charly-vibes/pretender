@@ -113,6 +113,17 @@ fn path_hint_matches(normalized: &str, hint: &str) -> bool {
         .any(|(at, _)| at == 0 || normalized.as_bytes()[at - 1] == b'/')
 }
 
+/// True for shared test-support helper modules: any boundary-aligned
+/// directory segment named `support` (pretender-jg9y). These files wire
+/// the system under test; `mock_count`'s budget stays for leaf tests.
+pub fn is_test_support_path(path: &Path) -> bool {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase()
+        .split('/')
+        .any(|segment| segment == "support")
+}
+
 /// Best-effort role for paths the configured role tables didn't claim.
 pub(crate) fn heuristic_role(path: &Path) -> Option<Role> {
     let normalized = path
@@ -278,7 +289,6 @@ impl FileLimits {
 }
 
 impl ExportRules {
-    /// No export rules outside the library role.
     fn none() -> Self {
         Self {
             exported_params_max: None,

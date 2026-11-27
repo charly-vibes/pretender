@@ -13,7 +13,7 @@
 //! stage functions split into verbatim-behaving helpers.
 use super::{FileCheckCtx, FileFacts};
 use crate::report::ViolationReport;
-use pretender::roles::Role;
+use pretender::roles::{is_test_support_path, Role};
 use pretender::{
     cluster_detector, data_model, error_metrics, inheritance_depth, mock_detector,
     mutability_metrics, primitive_obsession,
@@ -31,23 +31,32 @@ fn violation(metric: &str, actual: f64, limit: f64) -> ViolationReport {
 
 /// Mock-overuse detection for test-role files.
 pub(super) fn check_mock_overuse(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
-    if role == Role::Test && ctx.config.thresholds.test.checks.mock_count_max > 0 {
-        let analysis = mock_detector::detect_mocks(
-            ctx.source,
-            &ctx.module.language,
-            &ctx.config.patterns.mock.extra,
-            ctx.path,
-        );
-        if analysis.total_usage > ctx.config.thresholds.test.checks.mock_count_max {
-            let max = ctx.config.thresholds.test.checks.mock_count_max;
-            facts.file_violations.push(violation(
-                "mock_count",
-                analysis.total_usage as f64,
-                max as f64,
-            ));
-        }
-        facts.mock_analysis = analysis;
+    // Test-support helpers wire the system under test for the real test
+    // binaries (pretender-jg9y): their `.expect(...)` plumbing is not mock
+    // usage, so the budget stays reserved for leaf tests.
+    let leaf_test = role == Role::Test && !is_test_support_path(ctx.path);
+    if !leaf_test || ctx.config.thresholds.test.checks.mock_count_max == 0 {
+        return;
     }
+    record_mock_overuse(ctx, facts);
+}
+
+fn record_mock_overuse(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
+    let analysis = mock_detector::detect_mocks(
+        ctx.source,
+        &ctx.module.language,
+        &ctx.config.patterns.mock.extra,
+        ctx.path,
+    );
+    let max = ctx.config.thresholds.test.checks.mock_count_max;
+    if analysis.total_usage > max {
+        facts.file_violations.push(violation(
+            "mock_count",
+            analysis.total_usage as f64,
+            max as f64,
+        ));
+    }
+    facts.mock_analysis = analysis;
 }
 
 /// Void-mutator detection (non-test roles by default, role-specific
@@ -86,10 +95,11 @@ pub(super) fn check_mut_ratio(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
     }
 }
 
-/// Unwrap-density check.
-pub(super) fn check_unwrap_density(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts) {
+/// Unwrap-density check. Test-role files exclude `#[cfg(test)]`-gated
+/// expects (pretender-jg9y); the role-aware detector owns that rule.
+pub(super) fn check_unwrap_density(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
     if ctx.thresholds.file.unwrap_max > 0 {
-        let sites = error_metrics::detect_unwraps(ctx.source, &ctx.module.language);
+        let sites = error_metrics::detect_unwraps_with_role(ctx.source, &ctx.module.language, role);
         if sites.len() as u32 > ctx.thresholds.file.unwrap_max {
             let max = ctx.thresholds.file.unwrap_max;
             facts

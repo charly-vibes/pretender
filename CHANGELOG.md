@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Four heuristic gaps (pretender-jg9y)** — (1) Rust `min_assertions` now
+  counts every link in an assert_cmd-style method chain
+  (`.assert().success().stdout(...)` counts 3) via a new
+  `@assert.method_call` capture in the Rust query; (2) `unwraps` pins the
+  `unwrap_or` family as non-counting and excludes `.expect(...)` inside
+  `#[cfg(test)]`-gated modules for test-role files
+  (`detect_unwraps_with_role`); (3) `mock_count` skips shared test-support
+  helper paths (any boundary-aligned `support` directory segment) while
+  leaf tests keep firing; (4) full-repo gate runs now resolve role globs
+  against `./`-prefixed walked paths, so library-role `exported_params`
+  (and other role-gated rules) report identically to path-scoped runs.
+
 ## [0.13.0] - 2026-11-27
 
 ### Fixed

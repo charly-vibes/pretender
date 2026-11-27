@@ -1,0 +1,11 @@
+run_id: tdd-ro5-2026-11-27-pretender-jg9y-four-heuristic-gaps
+pipeline: tdd-ro5
+topic: pretender-jg9y four heuristic gaps
+created_at: '2026-11-27T20:59:13.395959939+00:00'
+current_step: 8
+approvals: {}
+epic: null
+child_issues: []
+child_runs: []
+handoff_artifact: null
+bypasses: []

@@ -117,7 +117,7 @@ fn run_file_checks(ctx: &FileCheckCtx<'_>, facts: &mut FileFacts, role: Role) {
     checks::check_mock_overuse(ctx, facts, role);
     checks::check_void_mutators(ctx, facts);
     checks::check_mut_ratio(ctx, facts);
-    checks::check_unwrap_density(ctx, facts);
+    checks::check_unwrap_density(ctx, facts, role);
     checks::check_primitive_obsession(ctx, facts);
     checks::check_data_model(ctx, facts);
     checks::check_inheritance_depth(ctx, facts);

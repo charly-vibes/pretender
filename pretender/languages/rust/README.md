@@ -34,6 +34,11 @@ Rust's exhaustive pattern matching.
 | `^assert_ne$` | `assert_ne!(...)` |
 | `^panic$` | `panic!(...)` |
 
+Method calls in the assert_cmd / predicates vocabulary also count, one per
+chain link (pretender-jg9y): `.assert()`, `.success()`, `.failure()`,
+`.code(...)`, `.stdout(...)`, `.stderr(...)`, `.predicate(...)` — so
+`cmd.assert().success().stdout(p)` counts 3.
+
 ## Quirks and limitations
 
 - **`&&` and `||` operators are not tracked** — logical operators do not

@@ -11,7 +11,7 @@
 //! lib-pub, so the assertions run unchanged as an integration target.
 
 use pretender::config::Config;
-use pretender::roles::{EffectiveThresholds, Role};
+use pretender::roles::{is_test_support_path, EffectiveThresholds, Role};
 
 fn config(toml: &str) -> Config {
     Config::parse_str(toml).unwrap_or_else(|e| panic!("config parses: {e}"))
@@ -62,4 +62,37 @@ fn unit_test_effective_thresholds_inherit_test_and_overlay_duration() {
 
     // Base test has no duration threshold
     assert_eq!(base_test.duration_max_ms, 0);
+}
+
+#[test]
+fn test_support_paths_are_boundary_aligned() {
+    // pretender-jg9y: a `support` directory segment marks shared
+    // test-support helpers, at any depth and either separator spelling.
+    for path in [
+        "tests/support/envelope.rs",
+        "./tests/support/envelope.rs",
+        "sad/tests/support/envelope.rs",
+        "tests\\support\\envelope.rs",
+        "TESTS/SUPPORT/envelope.rs",
+    ] {
+        assert!(
+            is_test_support_path(std::path::Path::new(path)),
+            "{path} must count as test support"
+        );
+    }
+}
+
+#[test]
+fn non_support_paths_are_not_test_support() {
+    for path in [
+        "tests/envelope_test.rs",
+        "src/support.rs",
+        "lib/supporting/mod.rs",
+        "tests/supportive/envelope.rs",
+    ] {
+        assert!(
+            !is_test_support_path(std::path::Path::new(path)),
+            "{path} must not count as test support"
+        );
+    }
 }

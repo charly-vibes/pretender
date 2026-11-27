@@ -47,6 +47,67 @@ fn rust_assertion_macros_count_as_assertions() {
 }
 
 #[test]
+fn rust_assert_method_chain_counts_each_link() {
+    // pretender-jg9y gap 1: a 3-link assert_cmd-style chain counts 3 —
+    // each call in the chain is its own assertion.
+    let engine = rust_engine();
+    let source = concat!(
+        "struct Assert;\n",
+        "impl Assert {\n",
+        "    fn success(self) -> Self { self }\n",
+        "    fn stdout(self, _: &str) -> Self { self }\n",
+        "}\n",
+        "struct Cmd;\n",
+        "impl Cmd {\n",
+        "    fn assert(self) -> Assert { Assert }\n",
+        "}\n",
+        "#[test]\n",
+        "fn runs() {\n",
+        "    Cmd.assert().success().stdout(\"ok\");\n",
+        "}\n",
+    );
+    let (module, _) = engine
+        .parse(Path::new("test.rs"), source)
+        .unwrap_or_else(|e| panic!("parse test.rs: {e:?}"));
+    let unit = module
+        .units
+        .iter()
+        .find(|u| u.name == "runs")
+        .unwrap_or_else(|| panic!("unit runs captured"));
+    assert_eq!(unit.assertions, 3);
+}
+
+#[test]
+fn rust_single_assert_method_counts_once() {
+    let engine = rust_engine();
+    let source = "struct Cmd;\nimpl Cmd {\n    fn assert(self) -> Self { self }\n}\n#[test]\nfn one_link() {\n    Cmd.assert();\n}\n";
+    let (module, _) = engine
+        .parse(Path::new("test.rs"), source)
+        .unwrap_or_else(|e| panic!("parse test.rs: {e:?}"));
+    let unit = module
+        .units
+        .iter()
+        .find(|u| u.name == "one_link")
+        .unwrap_or_else(|| panic!("unit one_link captured"));
+    assert_eq!(unit.assertions, 1);
+}
+
+#[test]
+fn rust_non_assertion_methods_do_not_count() {
+    let engine = rust_engine();
+    let source = "#[test]\nfn mutates() {\n    let mut list = Vec::new();\n    list.push(1);\n    let _ = list.len();\n    let _ = list.pop();\n}\n";
+    let (module, _) = engine
+        .parse(Path::new("test.rs"), source)
+        .unwrap_or_else(|e| panic!("parse test.rs: {e:?}"));
+    let unit = module
+        .units
+        .iter()
+        .find(|u| u.name == "mutates")
+        .unwrap_or_else(|| panic!("unit mutates captured"));
+    assert_eq!(unit.assertions, 0);
+}
+
+#[test]
 fn rust_non_assertion_macros_do_not_count() {
     let engine = rust_engine();
     let source = "#[test]\nfn formats() {\n    let s = format!(\"{}\", 1);\n    vec![1, 2];\n    panic_if_bad(s);\n}\n\nfn panic_if_bad<T>(_: T) {}\n";

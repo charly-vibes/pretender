@@ -128,3 +128,26 @@ fn test_check_accepts_test_role_when_assertion_present() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!stdout.contains("min_assertions"), "stdout: {stdout}");
 }
+
+#[test]
+fn test_check_assert_cmd_chain_counts_each_link() {
+    // pretender-jg9y gap 1: a 3-link assert_cmd-style chain satisfies
+    // min_assertions because every link counts.
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tests/fixtures/rust_assert_chain.rs"),
+    )
+    .unwrap_or_else(|e| panic!("read chain fixture: {e}"));
+    let (dir, staged) = write_temp_file("tests/chain_test.rs", &source);
+
+    let output = check_in(&dir, &staged)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {e:?}"));
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("min_assertions"),
+        "a 3-link assertion chain must satisfy min_assertions; stdout: {stdout}"
+    );
+}
