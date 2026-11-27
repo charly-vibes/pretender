@@ -144,8 +144,27 @@ dogfood-red path rule baseline="pretender-baseline.json":
         cargo run --quiet -p pretender -- check .
     fi
 
+# Beads store lint (pretender-yn0j): every non-empty line of
+# .beads/issues.jsonl must parse as a JSON object with an `id` field.
+# Historically malformed lines were silently skipped (RED: podras), so this
+# gate fails the commit/CI naming the first bad line. Exits 0 on a clean store.
+beads-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    store=".beads/issues.jsonl"
+    [[ -s "$store" ]] || exit 0
+    n=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        n=$((n + 1))
+        [[ -z "$line" ]] && continue
+        if ! printf '%s' "$line" | jq -e '.id' >/dev/null 2>&1; then
+            echo "beads-lint: $store:$n: malformed line (expected a JSON object with an \`id\` field)" >&2
+            exit 1
+        fi
+    done < "$store"
+
 # Full CI gate: fmt + type-check + lint + test + structural gate + golden behavior lock
-ci: fmt-check type-check lint test dogfood golden-check
+ci: beads-lint fmt-check type-check lint test dogfood golden-check
 
 # Project-local preflight gate.
 # Prefer this over `bd preflight` for now; the current beads preflight is
