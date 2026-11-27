@@ -67,12 +67,13 @@ mirroring Python's grammar-level `block` nodes. Consumed forms (`let`,
 
 ### Smell weights
 
-`[smell_weights]` (e.g. `swap!` 1.5) currently do **not** scale the ABC
-C-count: `QueryEngine` never wires `WeightMaps.call` into per-call
-weights, so every call contributes 1.0. This is pre-existing engine
-behavior, pinned by
-`clojure_control_forms_abc_semantics_pin`; revisit when the wiring lands.
-Branch weights are uniform 1/1 and the manifest↔query consistency is
+`[smell_weights]` (e.g. `swap!` 1.5) scale the ABC C-count per call:
+`QueryEngine::new_with_branch_weights` wires `WeightMaps.call` into
+per-call weights, and each call contributes its declared weight
+(defaulting to 1.0 for callees with no entry) in place of a bare call.
+The wired semantics are pinned by
+`clojure_control_forms_abc_semantics_pin`; branch weights are uniform
+1/1 and the manifest↔query consistency is
 guarded by `every_branch_capture_has_a_manifest_entry`.
 
 ## Parameters
@@ -108,7 +109,6 @@ match issues seen when using separate patterns with identical structure.
   so `defrecord`/`deftype`/`defprotocol` bodies cannot be captured
   distinctly; zero `@type.*` captures are deliberate (archived design
   D2/D3).
-- **ABC call weights** — *Not implemented yet*: `[smell_weights]` never
-  reach the engine's per-call weights, so every call contributes 1.0
-  regardless of its declared weight (pretender-x078, engine-wide). See
-  Smell weights above.
+- **ABC call weights** — *Implemented (pretender-x078)*: `[smell_weights]`
+  reach the engine's per-call weights; every call contributes its
+  declared weight (default 1.0). See Smell weights above.

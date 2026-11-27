@@ -80,7 +80,7 @@
         },
         {
           "metrics": {
-            "abc": 3.1622776601683795,
+            "abc": 4.123105625617661,
             "assertions": 0,
             "cognitive": 1,
             "cyclomatic": 2,
@@ -145,7 +145,7 @@
         },
         {
           "metrics": {
-            "abc": 6.708203932499369,
+            "abc": 7.615773105863909,
             "assertions": 0,
             "cognitive": 6,
             "cyclomatic": 4,
@@ -316,7 +316,7 @@
       "units": [
         {
           "metrics": {
-            "abc": 7.211102550927978,
+            "abc": 8.06225774829855,
             "assertions": 0,
             "cognitive": 6,
             "cyclomatic": 5,

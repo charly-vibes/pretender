@@ -22,6 +22,9 @@ pre-commit:
       run: just type-check
     lint:
       run: just lint
+    # pretender-yn0j: the beads store is committed here, so lint it pre-commit
+    beads-lint:
+      run: just beads-lint
 
 pre-push:
   parallel: true

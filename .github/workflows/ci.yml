@@ -72,6 +72,11 @@ jobs:
       # repo's CI immediately, not wait for the next hub conformance run.
       - name: Smoke live Pages URL
         run: curl -fsS --max-time 10 --retry 2 https://charly-vibes.github.io/pretender/ >/dev/null
+      # Cheapest gate first: jq one-liner over .beads/issues.jsonl
+      # (pretender-yn0j: malformed store lines must fail CI, not be skipped).
+      - name: Beads store lint
+        run: just beads-lint
+
       - name: Run CI pipeline
         # `just ci` includes the dogfood structural gate: pretender checks this
         # repo's own source against the committed pretender-baseline.json, so

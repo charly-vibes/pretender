@@ -70,6 +70,7 @@ The system SHALL represent control-flow points as `Branch` values with kind, spa
 - **WHEN** a Clojure form is `(try body (catch E e handler) (finally cleanup))`
 - **THEN** exactly one catch branch is captured and cyclomatic complexity of the enclosing unit increases by 1
 
+<!-- no-test: no existing test parses logical operators in two different code units and asserts sequence-ID scoping; the engine assigns per-parent ids in src/engine/clause.rs but no test pins the cross-unit scoping -->
 #### Scenario: Logical sequence IDs are scoped to code unit
 - **WHEN** logical operators are captured in two different code units
 - **THEN** their sequence IDs are unique only within each enclosing code unit
