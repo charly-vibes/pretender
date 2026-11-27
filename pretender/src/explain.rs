@@ -98,6 +98,38 @@ const CATALOG: &[MetricDoc] = &[
         citation: "API design: public functions should do one thing; longer ones hide complexity from callers.",
         improve: "Delegate to private helpers; split multi-phase exported functions.",
     },
+    MetricDoc {
+        name: "ce",
+        measures: "Efferent coupling: number of distinct in-project modules a module depends on.",
+        formula: "Count of imports resolving to other project modules",
+        default_threshold: "0 (disabled by default; set thresholds.coupling.ce_max to enable)",
+        citation: "Chidamber & Kemerer (1994), \"A Metrics Suite for Object-Oriented Design\", IEEE TSE",
+        improve: "Reduce import surface per module; depend on narrow abstractions instead of concrete siblings.",
+    },
+    MetricDoc {
+        name: "ca",
+        measures: "Afferent coupling: number of distinct in-project modules that depend on a module.",
+        formula: "Count of other modules importing this module",
+        default_threshold: "0 (disabled by default; set thresholds.coupling.ca_max to enable)",
+        citation: "Chidamber & Kemerer (1994), \"A Metrics Suite for Object-Oriented Design\", IEEE TSE",
+        improve: "Split modules that attract too many importers; expose smaller, focused public surfaces.",
+    },
+    MetricDoc {
+        name: "cbo",
+        measures: "Coupling between objects: total in-project connections of a module (efferent plus afferent).",
+        formula: "Ce + Ca for the module",
+        default_threshold: "0 (disabled by default; set thresholds.coupling.cbo_max to enable)",
+        citation: "Chidamber & Kemerer (1994), \"A Metrics Suite for Object-Oriented Design\", IEEE TSE",
+        improve: "Break bidirectional dependencies; move shared helpers into a dedicated low-level module.",
+    },
+    MetricDoc {
+        name: "coupling",
+        measures: "Module-level structural coupling: Ce, Ca, CBO per module, plus import-cycle detection.",
+        formula: "Ce = in-project imports made; Ca = in-project importers; CBO = Ce + Ca",
+        default_threshold: "0 (disabled by default; set thresholds.coupling.{ce_max,ca_max,cbo_max,lcom_hs_max,cycle_detection} to enable)",
+        citation: "Chidamber & Kemerer (1994), \"A Metrics Suite for Object-Oriented Design\", IEEE TSE",
+        improve: "Reduce each module's import surface; split high-fan-in modules; break import cycles.",
+    },
 ];
 
 pub fn lookup(name: &str) -> Option<&'static MetricDoc> {
@@ -190,5 +222,38 @@ mod tests {
         assert!(names.contains(&"abc"));
         assert!(names.contains(&"nesting_max"));
         assert_eq!(names.len(), CATALOG.len());
+    }
+
+    #[test]
+    fn coupling_family_is_in_catalog() {
+        assert!(lookup("coupling").is_some(), "coupling must be in catalog");
+        for name in ["ce", "ca", "cbo"] {
+            assert!(lookup(name).is_some(), "{name} must be in catalog");
+        }
+    }
+
+    #[test]
+    fn ce_doc_pins_default_threshold() {
+        let doc = lookup("ce").expect("ce must be in catalog");
+        assert!(doc
+            .default_threshold
+            .contains("0 (disabled by default; set thresholds.coupling.ce_max"));
+    }
+
+    #[test]
+    fn ca_doc_pins_default_threshold() {
+        let doc = lookup("ca").expect("ca must be in catalog");
+        assert!(doc
+            .default_threshold
+            .contains("0 (disabled by default; set thresholds.coupling.ca_max"));
+    }
+
+    #[test]
+    fn cbo_doc_pins_default_threshold() {
+        let doc = lookup("cbo").expect("cbo must be in catalog");
+        assert!(doc
+            .default_threshold
+            .contains("0 (disabled by default; set thresholds.coupling.cbo_max"));
+        assert!(doc.citation.contains("Chidamber & Kemerer"));
     }
 }
